@@ -306,4 +306,4 @@ if __name__ == "__main__":
     bot.add_handler(CommandHandler("launch", cmd_launch))
     bot.add_handler(CommandHandler("help",   cmd_help))
     bot.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), on_message))
-    bot.run_polling()
+    bot.run_polling(drop_pending_updates=True)
