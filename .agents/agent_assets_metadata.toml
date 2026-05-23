@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "drWsNqj8-2mn3IIXugWvo"
+uri = "file://ARIA_Project_Schema.pdf"
+type = "pdf"
+title = "ARIA Project Schema"

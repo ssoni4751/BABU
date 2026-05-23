@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.11"
 dependencies = [
+    "fpdf2>=2.8.7",
     "langchain-core>=1.4.0",
     "langchain-google-genai>=4.2.3",
     "langchain-groq>=1.1.2",
