@@ -1,5 +1,6 @@
 import os
-import asyncio
+import sys
+import traceback
 from typing import Annotated, TypedDict, Literal, List
 
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -13,8 +14,8 @@ TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 
 os.environ["GOOGLE_API_KEY"] = GEMINI_KEY
 
-llm_pa = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.2)
-llm_dept = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.7)
+llm_pa = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.2)
+llm_dept = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.7)
 
 
 class AriaState(TypedDict):
@@ -99,17 +100,20 @@ aria_brain = workflow.compile()
 
 async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message.text
+    print(f"[MSG] from {update.message.from_user.id}: {msg[:80]}", flush=True)
     await update.message.chat.send_action("typing")
     try:
         output = aria_brain.invoke({"messages": [HumanMessage(content=msg)]})
         reply = output["messages"][-1].content
+        print(f"[OK] gear={output.get('gear','?')} reply_len={len(reply)}", flush=True)
     except Exception as e:
-        reply = f"ARIA encountered an error: {e}"
+        traceback.print_exc(file=sys.stdout)
+        reply = f"⚠️ ARIA error: {e}"
     await update.message.reply_text(reply)
 
 
 if __name__ == "__main__":
-    print("--- ARIA IS LIVE ON TELEGRAM ---")
+    print("--- ARIA IS LIVE ON TELEGRAM ---", flush=True)
     bot = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     bot.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), on_message))
     bot.run_polling()
