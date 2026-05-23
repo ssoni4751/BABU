@@ -9,10 +9,9 @@ from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 
-GEMINI_KEY = os.environ["GEMINI_API_KEY"]
 TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 
-os.environ["GOOGLE_API_KEY"] = GEMINI_KEY
+# langchain-google-genai reads GOOGLE_API_KEY automatically
 
 llm_pa = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.2)
 llm_dept = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.7)
