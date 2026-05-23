@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 import traceback
@@ -239,14 +240,31 @@ def start_health_server():
 # ── Telegram handlers ──────────────────────────────────────────────────────
 
 async def run_aria(update: Update, msg: str):
-    await update.message.chat.send_action("typing")
+    # Keep sending "typing" every 4s while the brain runs in a background thread
+    stop_typing = asyncio.Event()
+
+    async def keep_typing():
+        while not stop_typing.is_set():
+            try:
+                await update.message.chat.send_action("typing")
+            except Exception:
+                pass
+            await asyncio.sleep(4)
+
+    typing_task = asyncio.create_task(keep_typing())
     try:
-        output = aria_brain.invoke({"messages": [HumanMessage(content=msg)]})
+        output = await asyncio.to_thread(
+            aria_brain.invoke, {"messages": [HumanMessage(content=msg)]}
+        )
         reply = output["messages"][-1].content
         print(f"[OK] gear={output.get('gear','?')} len={len(reply)}", flush=True)
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
         reply = f"⚠️ ARIA error: {e}"
+    finally:
+        stop_typing.set()
+        typing_task.cancel()
+
     await update.message.reply_text(reply)
 
 
