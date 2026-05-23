@@ -3,7 +3,7 @@ import sys
 import traceback
 from typing import Annotated, TypedDict, Literal, List
 
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from telegram import Update
@@ -11,10 +11,9 @@ from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTyp
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 
-# langchain-google-genai reads GOOGLE_API_KEY automatically
-
-llm_pa = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.2)
-llm_dept = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.7)
+# Fast model for routing + research agents; smart model for final PA response
+llm_pa = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.2)
+llm_dept = ChatGroq(model="llama-3.1-8b-instant", temperature=0.7)
 
 
 class AriaState(TypedDict):
@@ -112,7 +111,7 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 if __name__ == "__main__":
-    print("--- ARIA IS LIVE ON TELEGRAM ---", flush=True)
+    print("--- ARIA IS LIVE ON TELEGRAM (Groq/Llama) ---", flush=True)
     bot = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     bot.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), on_message))
     bot.run_polling()
