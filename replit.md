@@ -1,45 +1,78 @@
-# [Project name]
+# ARIA — Multi-Agent Telegram AI Assistant
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+ARIA is a Telegram bot powered by a LangGraph multi-agent system. It automatically routes messages into two "gears" and uses a 3-agent research swarm for deep queries.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `python aria/bot.py` — run the ARIA Telegram bot
+- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000, unused by bot)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+
+## Required Secrets
+
+| Secret | Purpose |
+|---|---|
+| `GROQ_API_KEY` | Groq API key for Llama LLMs (free at console.groq.com) |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot token from @BotFather |
+| `GOOGLE_API_KEY` | (unused — legacy Gemini key) |
+| `GEMINI_API_KEY` | (unused — legacy Gemini key) |
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- **Language:** Python 3.11
+- **Bot framework:** python-telegram-bot
+- **AI orchestration:** LangGraph + LangChain
+- **LLM provider:** Groq (free tier — 6,000 req/day)
+  - Router + Research agents: `llama-3.1-8b-instant` (fast)
+  - PA (final response): `llama-3.3-70b-versatile` (smart)
+- **Deployment:** Replit Reserved VM (always-on)
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+```
+aria/
+  bot.py          ← All ARIA logic (router, research dept, PA node, Telegram handler)
+artifacts/
+  api-server/     ← Node.js API scaffold (unused by bot, hosts deployment config)
+```
 
-## Architecture decisions
+## Architecture — ARIA Agent Graph
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+```
+User Message (Telegram)
+        │
+        ▼
+  [intent_router]  ← decides WALK or SPRINT
+        │
+        ▼
+  [research_dept]  ← SPRINT only: 3 agents in sequence
+  │   ANALYST   — hard data & technical context
+  │   SKEPTIC   — challenges assumptions & risks
+  │   STRATEGIST — long-term implications
+        │
+        ▼
+    [pa_node]    ← Personal Assistant synthesizes final reply
+        │
+        ▼
+  Telegram Reply
+```
 
-## Product
+## Gear System
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+| Gear | Trigger | Behavior |
+|---|---|---|
+| WALK | Casual chat, or `/walk` command | Single PA call — brief, direct |
+| SPRINT | Research/analysis query, or `/sprint` command | 3-agent swarm → PA synthesis |
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Uses Groq free tier (no billing card needed)
+- Deployed as Reserved VM for 24/7 uptime
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- Bot uses **polling** (not webhooks) — works fine on VM deployment, not on autoscale
+- Do NOT use autoscale deployment — polling needs a persistent process
+- `GOOGLE_API_KEY` / `GEMINI_API_KEY` are stored but unused (switched to Groq due to quota issues)
+- LangGraph's retry logic can delay error responses by ~30s when rate-limited
