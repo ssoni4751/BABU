@@ -16,3 +16,9 @@ run = "pnpm --filter @workspace/api-server run dev"
 
 [services.production.run]
 args = ["python", "aria/bot.py"]
+
+[services.production.run.env]
+PORT = "8080"
+
+[services.production.health.startup]
+path = "/api/healthz"

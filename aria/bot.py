@@ -1,6 +1,8 @@
 import os
 import sys
 import traceback
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Annotated, TypedDict, Literal, List
 
 from langchain_groq import ChatGroq
@@ -10,8 +12,8 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
+PORT = int(os.environ.get("PORT", 8080))
 
-# Fast model for routing + research agents; smart model for final PA response
 llm_pa = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.2)
 llm_dept = ChatGroq(model="llama-3.1-8b-instant", temperature=0.7)
 
@@ -96,6 +98,27 @@ workflow.add_edge("pa", END)
 aria_brain = workflow.compile()
 
 
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path in ("/", "/healthz", "/api/healthz"):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status":"ok","bot":"ARIA"}')
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, format, *args):
+        pass
+
+
+def start_health_server():
+    server = HTTPServer(("0.0.0.0", PORT), HealthHandler)
+    print(f"[HEALTH] Server running on port {PORT}", flush=True)
+    server.serve_forever()
+
+
 async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message.text
     print(f"[MSG] from {update.message.from_user.id}: {msg[:80]}", flush=True)
@@ -111,6 +134,9 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 if __name__ == "__main__":
+    health_thread = threading.Thread(target=start_health_server, daemon=True)
+    health_thread.start()
+
     print("--- ARIA IS LIVE ON TELEGRAM (Groq/Llama) ---", flush=True)
     bot = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     bot.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), on_message))
