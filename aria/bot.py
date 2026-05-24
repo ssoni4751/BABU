@@ -31,11 +31,26 @@ from telegram.ext import (
     filters,
 )
 
+from langchain_google_genai import ChatGoogleGenerativeAI
+
 TELEGRAM_TOKEN  = os.environ["TELEGRAM_BOT_TOKEN"]
 PORT            = int(os.environ.get("PORT", 8080))
+GEMINI_KEY      = os.environ.get("GEMINI_API_KEY", "")
 
-llm_pa   = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.2)
-llm_dept = ChatGroq(model="llama-3.1-8b-instant",    temperature=0.7)
+CURRENT_PA_MODEL   = "llama-3.3-70b-versatile"
+CURRENT_DEPT_MODEL = "llama-3.1-8b-instant"
+
+def build_llm(model_name: str, temp: float):
+    """Dynamically construct either ChatGroq or ChatGoogleGenerativeAI based on model name."""
+    if model_name.startswith("gemini-"):
+        if not GEMINI_KEY:
+            raise ValueError("GEMINI_API_KEY is not configured in environment variables.")
+        return ChatGoogleGenerativeAI(model=model_name, temperature=temp, google_api_key=GEMINI_KEY)
+    else:
+        return ChatGroq(model=model_name, temperature=temp)
+
+llm_pa   = build_llm(CURRENT_PA_MODEL,   0.2)
+llm_dept = build_llm(CURRENT_DEPT_MODEL, 0.7)
 
 # ── Knowledge base ─────────────────────────────────────────────────────────
 
@@ -589,6 +604,68 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global llm_pa, llm_dept, CURRENT_PA_MODEL, CURRENT_DEPT_MODEL
+
+    args = context.args
+    if not args:
+        menu = (
+            "🤖 *ARIA Model Settings*\n\n"
+            f"• *Current PA (Assistant) Model:* `{CURRENT_PA_MODEL}`\n"
+            f"• *Current Swarm (Research) Model:* `{CURRENT_DEPT_MODEL}`\n\n"
+            "*Available Models to Switch:*\n"
+            "1️⃣ `llama-3.3-70b-versatile` (Llama 3.3 - Best Quality)\n"
+            "2️⃣ `llama-3.1-8b-instant` (Llama 3.1 8B - Fastest / Best Limits)\n"
+            "3️⃣ `mixtral-8x7b-32768` (Mixtral 8x7B - Great Balance)\n"
+            "4️⃣ `gemma2-9b-it` (Gemma 2 9B - Fast & Smart)\n"
+            "5️⃣ `deepseek-r1-distill-llama-70b` (DeepSeek R1 - Deep Reasoning)\n"
+            "6️⃣ `gemini-1.5-flash` (Gemini 1.5 - Extremely fast, HUGE limits!)\n"
+            "7️⃣ `gemini-2.5-pro` (Gemini 2.5 Pro - Elite Reasoning & Coding)\n\n"
+            "*How to Switch:*\n"
+            "• `/model <1-7>` - Change the main Personal Assistant model\n"
+            "• `/model swarm <1-7>` - Change the underlying swarm/research model\n\n"
+            "💡 *Tip:* If Groq free tier is exhausted, switch the PA model to **6** (Gemini 1.5 Flash) or **7** (Gemini 2.5 Pro) for infinite capacity!"
+        )
+        await update.message.reply_text(menu, parse_mode="Markdown")
+        return
+
+    is_swarm = False
+    choice = args[0]
+    if choice.lower() == "swarm" and len(args) > 1:
+        is_swarm = True
+        choice = args[1]
+
+    model_map = {
+        "1": "llama-3.3-70b-versatile",
+        "2": "llama-3.1-8b-instant",
+        "3": "mixtral-8x7b-32768",
+        "4": "gemma2-9b-it",
+        "5": "deepseek-r1-distill-llama-70b",
+        "6": "gemini-1.5-flash",
+        "7": "gemini-2.5-pro"
+    }
+
+    selected_model = model_map.get(choice)
+    if not selected_model:
+        if choice in [m for m in model_map.values()]:
+            selected_model = choice
+        else:
+            await update.message.reply_text("❌ Invalid choice. Use `/model` to see the list of valid options.")
+            return
+
+    try:
+        if is_swarm:
+            CURRENT_DEPT_MODEL = selected_model
+            llm_dept = build_llm(CURRENT_DEPT_MODEL, 0.7)
+            await update.message.reply_text(f"✅ Swarm/Research model switched to: `{CURRENT_DEPT_MODEL}`")
+        else:
+            CURRENT_PA_MODEL = selected_model
+            llm_pa = build_llm(CURRENT_PA_MODEL, 0.2)
+            await update.message.reply_text(f"✅ Main Personal Assistant model switched to: `{CURRENT_PA_MODEL}`")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Failed to switch model: {e}")
+
+
 # ── Entry point ────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -602,5 +679,6 @@ if __name__ == "__main__":
     bot.add_handler(CommandHandler("launch", cmd_launch))
     bot.add_handler(CommandHandler("clear",  cmd_clear))
     bot.add_handler(CommandHandler("help",   cmd_help))
+    bot.add_handler(CommandHandler("model",  cmd_model))
     bot.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), on_message))
     bot.run_polling(drop_pending_updates=True)
