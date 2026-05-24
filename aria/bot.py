@@ -1,12 +1,14 @@
 import asyncio
 import json
 import os
+import re
 import sys
 import threading
 import traceback
+import urllib.request
 from collections import defaultdict, deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Annotated, List, Literal, TypedDict
+from typing import Annotated, List, Literal, Optional, TypedDict
 
 from langchain_groq import ChatGroq
 from langgraph.graph import END, StateGraph
@@ -20,8 +22,9 @@ from telegram.ext import (
     filters,
 )
 
-TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-PORT = int(os.environ.get("PORT", 8080))
+TELEGRAM_TOKEN  = os.environ["TELEGRAM_BOT_TOKEN"]
+MAKE_WEBHOOK    = os.environ.get("MAKE_WEBHOOK_URL", "")
+PORT            = int(os.environ.get("PORT", 8080))
 
 llm_pa   = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.2)
 llm_dept = ChatGroq(model="llama-3.1-8b-instant",    temperature=0.7)
@@ -42,7 +45,8 @@ KNOWLEDGE_BASE = {
     ),
     "tools": (
         "Every ARIA agent has access to: live web search (DuckDuckGo), "
-        "conversation memory (per-session history), and the ARIA knowledge base."
+        "conversation memory (per-session history), the ARIA knowledge base, "
+        "and Make.com automation (email via Gmail, Calendar events, Sheets logging, and more)."
     ),
     "models": (
         "Router and research agents use llama-3.1-8b-instant (fast). "
@@ -74,10 +78,86 @@ def web_search(query: str, max_results: int = 4) -> str:
         return f"[Search unavailable: {e}]"
 
 
+# ── Make.com automation ────────────────────────────────────────────────────
+
+# Actions ARIA can detect and trigger
+MAKE_ACTIONS = {
+    "send_email":       "Send an email via Gmail",
+    "create_event":     "Create a Google Calendar event",
+    "log_to_sheet":     "Log data to a Google Sheet",
+    "create_doc":       "Create a Google Doc",
+    "send_slack":       "Send a Slack message",
+    "create_task":      "Create a task (Notion / Todoist / Sheets)",
+}
+
+ACTION_DETECTION_PROMPT = """Analyze the user message and decide if it requests an automation action.
+
+Supported actions: send_email, create_event, log_to_sheet, create_doc, send_slack, create_task
+
+If an action is requested, reply with a JSON object ONLY (no other text):
+{
+  "action": "<action_name>",
+  "params": {
+    // For send_email: "to", "subject", "body"
+    // For create_event: "title", "date", "time", "duration", "description"
+    // For log_to_sheet: "sheet_name", "data" (dict of column->value)
+    // For create_doc: "title", "content"
+    // For send_slack: "channel", "message"
+    // For create_task: "title", "due_date", "notes"
+  }
+}
+
+If NO action is requested, reply with exactly: NO_ACTION"""
+
+
+def detect_action(message: str) -> Optional[dict]:
+    """Use LLM to detect if message contains an automation request."""
+    try:
+        res = llm_dept.invoke([
+            SystemMessage(content=ACTION_DETECTION_PROMPT),
+            HumanMessage(content=message),
+        ])
+        text = res.content.strip()
+        if text == "NO_ACTION" or not text.startswith("{"):
+            return None
+        # Extract JSON even if LLM adds extra text
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+        if match:
+            return json.loads(match.group())
+        return None
+    except Exception:
+        return None
+
+
+def fire_make_webhook(action: str, params: dict, session_id: str, source: str = "aria") -> tuple[bool, str]:
+    """POST to Make.com webhook. Returns (success, message)."""
+    if not MAKE_WEBHOOK:
+        return False, "Make.com webhook not configured."
+    payload = json.dumps({
+        "action":     action,
+        "params":     params,
+        "session_id": session_id,
+        "source":     source,
+    }).encode()
+    try:
+        req = urllib.request.Request(
+            MAKE_WEBHOOK,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            status = resp.status
+        if status in (200, 201, 202, 204):
+            return True, f"✅ Action `{action}` sent to Make.com successfully."
+        return False, f"Make.com responded with HTTP {status}."
+    except Exception as e:
+        return False, f"Webhook error: {e}"
+
+
 # ── Memory ─────────────────────────────────────────────────────────────────
 
 _memory_lock = threading.Lock()
-# session_id → deque of (role, content) tuples
 _histories: dict[str, deque] = defaultdict(lambda: deque(maxlen=20))
 
 
@@ -86,8 +166,7 @@ def get_history_text(session_id: str) -> str:
         h = list(_histories[session_id])
     if not h:
         return ""
-    lines = [f"{role.upper()}: {content}" for role, content in h]
-    return "\n".join(lines)
+    return "\n".join(f"{role.upper()}: {content}" for role, content in h)
 
 
 def add_to_history(session_id: str, user_msg: str, aria_msg: str) -> None:
@@ -99,39 +178,39 @@ def add_to_history(session_id: str, user_msg: str, aria_msg: str) -> None:
 # ── LangGraph state ────────────────────────────────────────────────────────
 
 class AriaState(TypedDict):
-    messages:      Annotated[list[BaseMessage], "Conversation"]
-    gear:          Literal["WALK", "SPRINT", "LAUNCH"]
-    research_data: List[str]
-    user_query:    str
-    history_text:  str
-    session_id:    str
+    messages:       Annotated[list[BaseMessage], "Conversation"]
+    gear:           Literal["WALK", "SPRINT", "LAUNCH"]
+    research_data:  List[str]
+    user_query:     str
+    history_text:   str
+    session_id:     str
     search_results: str
+    action_result:  str   # result of Make.com webhook if triggered
 
 
 # ── Nodes ──────────────────────────────────────────────────────────────────
 
 def intent_router(state: AriaState):
     query = state["messages"][-1].content
-
     for cmd in ("/launch", "!launch"):
         if cmd in query.lower():
-            return {"gear": "LAUNCH", "user_query": query, "research_data": [], "search_results": ""}
+            return {"gear": "LAUNCH", "user_query": query, "research_data": [], "search_results": "", "action_result": ""}
     if "/sprint" in query.lower():
-        return {"gear": "SPRINT", "user_query": query, "research_data": [], "search_results": ""}
+        return {"gear": "SPRINT", "user_query": query, "research_data": [], "search_results": "", "action_result": ""}
     if "/walk" in query.lower():
-        return {"gear": "WALK",   "user_query": query, "research_data": [], "search_results": ""}
+        return {"gear": "WALK",   "user_query": query, "research_data": [], "search_results": "", "action_result": ""}
 
     routing_prompt = (
         "Classify this query into exactly one tier:\n"
         "- LAUNCH: multi-part, deeply complex, strategic, requires comprehensive analysis\n"
         "- SPRINT: factual, analytical, or research question\n"
-        "- WALK: casual chat, simple question, greeting\n"
+        "- WALK: casual chat, simple question, greeting, or action request (email, calendar, etc.)\n"
         "Reply with just one word: LAUNCH, SPRINT, or WALK."
     )
     res = llm_dept.invoke([HumanMessage(content=f"{routing_prompt}\n\nQuery: {query}")])
     raw = res.content.upper()
     gear = "LAUNCH" if "LAUNCH" in raw else ("SPRINT" if "SPRINT" in raw else "WALK")
-    return {"gear": gear, "user_query": query, "research_data": [], "search_results": ""}
+    return {"gear": gear, "user_query": query, "research_data": [], "search_results": "", "action_result": ""}
 
 
 SPRINT_AGENTS = [
@@ -153,6 +232,23 @@ LAUNCH_ROUND_2 = [
 ]
 
 
+def action_node(state: AriaState):
+    """Detect and fire Make.com automations before research runs."""
+    query      = state["user_query"]
+    session_id = state.get("session_id", "default")
+
+    action_data = detect_action(query)
+    if not action_data or "action" not in action_data:
+        return {"action_result": ""}
+
+    action = action_data["action"]
+    params = action_data.get("params", {})
+    print(f"[MAKE] Detected action={action} params={params}", flush=True)
+    ok, msg = fire_make_webhook(action, params, session_id)
+    print(f"[MAKE] Result: {msg}", flush=True)
+    return {"action_result": msg}
+
+
 def research_dept(state: AriaState):
     gear  = state["gear"]
     query = state["user_query"]
@@ -160,8 +256,7 @@ def research_dept(state: AriaState):
     if gear == "WALK":
         return {"research_data": [], "search_results": ""}
 
-    # Shared web search for all non-WALK gears
-    print(f"[SEARCH] querying web for: {query[:60]}", flush=True)
+    print(f"[SEARCH] {query[:60]}", flush=True)
     search_ctx = web_search(query)
     kb_ctx     = search_knowledge(query)
     shared_ctx = ""
@@ -169,6 +264,14 @@ def research_dept(state: AriaState):
         shared_ctx += f"[ARIA Knowledge Base]\n{kb_ctx}\n\n"
     if search_ctx:
         shared_ctx += f"[Live Web Search Results]\n{search_ctx}"
+
+    make_tool_desc = ""
+    if MAKE_WEBHOOK:
+        make_tool_desc = (
+            "\n\n[Make.com Automation Tools available]\n"
+            + "\n".join(f"• {k}: {v}" for k, v in MAKE_ACTIONS.items())
+        )
+        shared_ctx += make_tool_desc
 
     def run_agent(name: str, role: str, extra_context: str = "") -> str:
         system = (
@@ -185,17 +288,17 @@ def research_dept(state: AriaState):
         reports = [run_agent(name, role) for name, role in SPRINT_AGENTS]
         return {"research_data": reports, "search_results": search_ctx}
 
-    # LAUNCH — 2-round deep swarm
-    r1 = [run_agent(name, role) for name, role in LAUNCH_ROUND_1]
+    r1     = [run_agent(name, role) for name, role in LAUNCH_ROUND_1]
     r1_ctx = "\n\n".join(r1)
-    r2 = [run_agent(name, role, extra_context=r1_ctx) for name, role in LAUNCH_ROUND_2]
+    r2     = [run_agent(name, role, extra_context=r1_ctx) for name, role in LAUNCH_ROUND_2]
     return {"research_data": r1 + r2, "search_results": search_ctx}
 
 
 def pa_node(state: AriaState):
-    gear     = state["gear"]
-    research = "\n\n".join(state["research_data"])
-    history  = state.get("history_text", "")
+    gear          = state["gear"]
+    research      = "\n\n".join(state["research_data"])
+    history       = state.get("history_text", "")
+    action_result = state.get("action_result", "")
 
     if gear == "LAUNCH":
         style = (
@@ -213,7 +316,15 @@ def pa_node(state: AriaState):
     else:
         style = (
             "Always start with [WALK] on its own line.\n"
-            "Be brief, warm, and direct. One or two short paragraphs max."
+            "Be brief, warm, and direct. One or two short paragraphs max.\n"
+            "If an automation action was taken, confirm it clearly to the user."
+        )
+
+    make_ctx = ""
+    if MAKE_WEBHOOK:
+        make_ctx = (
+            "\n\nYou can trigger Google services via Make.com. If the user asked to send an email, "
+            "create a calendar event, log to sheets, etc., confirm it was done (or explain what happened)."
         )
 
     manifesto = (
@@ -222,12 +333,15 @@ def pa_node(state: AriaState):
         f"1. You are the sole interface. Never mention internal agents.\n"
         f"2. {style}\n"
         f"3. Use conversation history for context but don't repeat it verbatim."
+        f"{make_ctx}"
     )
 
     parts = []
     if history:
         parts.append(f"[Conversation History]\n{history}")
     parts.append(f"User: {state['user_query']}")
+    if action_result:
+        parts.append(f"[Automation Result]\n{action_result}")
     if research:
         parts.append(f"[Internal Research]\n{research}")
 
@@ -239,10 +353,12 @@ def pa_node(state: AriaState):
 
 workflow = StateGraph(AriaState)
 workflow.add_node("router",   intent_router)
+workflow.add_node("action",   action_node)
 workflow.add_node("research", research_dept)
 workflow.add_node("pa",       pa_node)
 workflow.set_entry_point("router")
-workflow.add_edge("router",   "research")
+workflow.add_edge("router",   "action")
+workflow.add_edge("action",   "research")
 workflow.add_edge("research", "pa")
 workflow.add_edge("pa",       END)
 aria_brain = workflow.compile()
@@ -251,16 +367,16 @@ aria_brain = workflow.compile()
 # ── Core invoke helper ─────────────────────────────────────────────────────
 
 def invoke_aria(message: str, session_id: str = "default") -> tuple[str, str]:
-    """Run the brain synchronously. Returns (reply, gear)."""
     history_text = get_history_text(session_id)
     output = aria_brain.invoke({
-        "messages":      [HumanMessage(content=message)],
-        "gear":          "WALK",
-        "research_data": [],
-        "user_query":    message,
-        "history_text":  history_text,
-        "session_id":    session_id,
+        "messages":       [HumanMessage(content=message)],
+        "gear":           "WALK",
+        "research_data":  [],
+        "user_query":     message,
+        "history_text":   history_text,
+        "session_id":     session_id,
         "search_results": "",
+        "action_result":  "",
     })
     reply = output["messages"][-1].content
     gear  = output.get("gear", "WALK")
@@ -297,10 +413,10 @@ STATUS_HTML = """<!DOCTYPE html>
   <div class="badge"><span class="dot"></span>LIVE</div>
   <h1>ARIA</h1>
   <p class="sub">Multi-Agent AI Assistant</p>
-  <div class="gear"><strong>WALK</strong><span>Quick direct reply</span></div>
+  <div class="gear"><strong>WALK</strong><span>Quick reply + Google automations via Make.com</span></div>
   <div class="gear"><strong>SPRINT</strong><span>3-agent swarm + web search</span></div>
   <div class="gear launch"><strong>LAUNCH</strong><span>6-agent deep swarm + web search + synthesis</span></div>
-  <p class="footer">Groq &bull; Llama 3 &bull; LangGraph &bull; Memory &bull; Web Search</p>
+  <p class="footer">Groq &bull; Llama 3 &bull; LangGraph &bull; Memory &bull; Web Search &bull; Make.com</p>
 </div>
 </body>
 </html>"""
@@ -320,18 +436,21 @@ class HealthHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path in ("/healthz", "/api/healthz"):
-            body = b'{"status":"ok","bot":"ARIA","features":["memory","web_search","knowledge_base"]}'
+            body = json.dumps({
+                "status": "ok", "bot": "ARIA",
+                "features": ["memory", "web_search", "knowledge_base", "make_automation"],
+                "make_configured": bool(MAKE_WEBHOOK),
+            }).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self._cors()
             self.end_headers()
             self.wfile.write(body)
         elif self.path in ("/", ""):
-            body = STATUS_HTML.encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
-            self.wfile.write(body)
+            self.wfile.write(STATUS_HTML.encode())
         else:
             self.send_response(404)
             self.end_headers()
@@ -341,20 +460,16 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
             return
-
         try:
             length = int(self.headers.get("Content-Length", 0))
             body   = json.loads(self.rfile.read(length))
             msg    = str(body.get("message", "")).strip()
             sid    = str(body.get("session_id", "web_anon")).strip() or "web_anon"
-
             if not msg:
                 raise ValueError("empty message")
-
             print(f"[WEB] session={sid[:16]} msg={msg[:80]}", flush=True)
             reply, gear = invoke_aria(msg, sid)
             print(f"[WEB OK] gear={gear} len={len(reply)}", flush=True)
-
             response = json.dumps({"reply": reply, "gear": gear}).encode()
             self.send_response(200)
             self.send_header("Content-Type",   "application/json")
@@ -362,7 +477,6 @@ class HealthHandler(BaseHTTPRequestHandler):
             self._cors()
             self.end_headers()
             self.wfile.write(response)
-
         except Exception as e:
             traceback.print_exc(file=sys.stdout)
             err = json.dumps({"error": str(e)}).encode()
@@ -423,7 +537,7 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_walk(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = " ".join(context.args) if context.args else ""
     if not text:
-        await update.message.reply_text("Usage: /walk <your message>")
+        await update.message.reply_text("Usage: /walk <message>")
         return
     await run_aria(update, f"/walk {text}", tg_session(update))
 
@@ -431,7 +545,7 @@ async def cmd_walk(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_sprint(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = " ".join(context.args) if context.args else ""
     if not text:
-        await update.message.reply_text("Usage: /sprint <your question>")
+        await update.message.reply_text("Usage: /sprint <question>")
         return
     await run_aria(update, f"/sprint {text}", tg_session(update))
 
@@ -441,19 +555,18 @@ async def cmd_launch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not text:
         await update.message.reply_text("Usage: /launch <complex question>")
         return
-    print(f"[TG LAUNCH] {update.message.from_user.id}: {text[:80]}", flush=True)
-    await update.message.reply_text("🚀 LAUNCH engaged — 6-agent deep swarm + live web search. ~30s…")
+    await update.message.reply_text("🚀 LAUNCH engaged — 6-agent deep swarm + web search. ~30s…")
     await run_aria(update, f"/launch {text}", tg_session(update))
 
 
 async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    sid = tg_session(update)
     with _memory_lock:
-        _histories[sid].clear()
+        _histories[tg_session(update)].clear()
     await update.message.reply_text("🗑 Memory cleared. Fresh start.")
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    make_line = "\n• Send email, create calendar event, log to sheet — just ask naturally" if MAKE_WEBHOOK else ""
     await update.message.reply_text(
         "🤖 *ARIA — Multi-Agent AI Assistant*\n\n"
         "*Gears:*\n"
@@ -461,10 +574,10 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /sprint <question> — 3-agent swarm + web search\n"
         "• /launch <question> — 6-agent deep swarm + web search\n\n"
         "*Extras:*\n"
-        "• /clear — Reset your conversation memory\n"
-        "• /help — Show this menu\n\n"
+        "• /clear — Reset conversation memory\n"
+        f"• /help — Show this menu{make_line}\n\n"
         "Or just send a message — ARIA routes automatically.\n"
-        "I remember your conversation and search the web for every research query.",
+        "I remember your conversation and search the web for research queries.",
         parse_mode="Markdown",
     )
 
@@ -474,7 +587,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 if __name__ == "__main__":
     health_thread = threading.Thread(target=start_health_server, daemon=True)
     health_thread.start()
-    print("--- ARIA IS LIVE (Memory | Web Search | Knowledge Base | WALK + SPRINT + LAUNCH) ---", flush=True)
+    make_status = f"Make.com ({'configured' if MAKE_WEBHOOK else 'NOT configured'})"
+    print(f"--- ARIA IS LIVE | Memory | Web Search | Knowledge Base | {make_status} | WALK + SPRINT + LAUNCH ---", flush=True)
     bot = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     bot.add_handler(CommandHandler("walk",   cmd_walk))
     bot.add_handler(CommandHandler("sprint", cmd_sprint))

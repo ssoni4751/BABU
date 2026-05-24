@@ -228,6 +228,7 @@ const tools = [
   { icon: "🔍", name: "Web Search", desc: "Live DuckDuckGo search available to all agents" },
   { icon: "🧠", name: "Memory", desc: "Remembers your conversation across messages" },
   { icon: "📚", name: "Knowledge Base", desc: "Built-in knowledge available to every agent" },
+  { icon: "⚡", name: "Make.com Automations", desc: "Gmail · Google Calendar · Sheets · Slack · Docs — just ask naturally" },
 ];
 
 function AboutPage() {
