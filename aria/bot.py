@@ -497,12 +497,16 @@ async def run_aria(update: Update, msg: str, session_id: str):
     stop_typing = asyncio.Event()
 
     async def keep_typing():
-        while not stop_typing_set():
+        # ✅ FIX: Changed loop conditional check and wrapped it inside proper async execution context
+        while not stop_typing.is_set():
             try:
                 await update.message.chat.send_action("typing")
             except Exception:
                 pass
-            await asyncio.sleep(4)
+            try:
+                await asyncio.sleep(4)
+            except asyncio.CancelledError:
+                break
 
     typing_task = asyncio.create_task(keep_typing())
     try:
@@ -514,6 +518,10 @@ async def run_aria(update: Update, msg: str, session_id: str):
     finally:
         stop_typing.set()
         typing_task.cancel()
+        try:
+            await typing_task
+        except asyncio.CancelledError:
+            pass
 
     match = re.search(r'\[IMAGE\]\s*url=([^\s\n]+)(?:\s+caption=(.+))?', reply, re.DOTALL)
     if match:
