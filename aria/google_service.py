@@ -18,7 +18,8 @@ SCOPES = [
     "https://www.googleapis.com/auth/documents",
     "https://www.googleapis.com/auth/drive.file",  # To search and create files dynamically
     "https://www.googleapis.com/auth/tasks",        # To create and manage tasks
-    "https://www.googleapis.com/auth/photoslibrary.readonly"  # To read Google Photos
+    "https://www.googleapis.com/auth/photoslibrary.readonly",  # To read Google Photos
+    "https://www.googleapis.com/auth/contacts.readonly"       # To read Google Contacts
 ]
 
 # Root paths for credentials
@@ -498,6 +499,92 @@ def copy_google_photos_to_drive(category: str, folder_name: str) -> tuple[bool, 
         return False, f"Failed to copy files from Google Photos: {e}"
 
 
+def copy_google_contacts_to_drive(sheet_name: str = "Contacts") -> tuple[bool, str]:
+    """Fetch all user contacts using Google People API and write them to a Google Sheet."""
+    creds = get_google_creds()
+    if not creds:
+        return False, "Google Workspace authentication not configured."
+
+    try:
+        people_service = build("people", "v1", credentials=creds)
+        drive_service = build("drive", "v3", credentials=creds)
+        sheets_service = build("sheets", "v4", credentials=creds)
+
+        print("[CONTACTS] Fetching contacts from Google People API...", flush=True)
+        results = people_service.people().connections().list(
+            resourceName="people/me",
+            pageSize=1000,
+            personFields="names,emailAddresses,phoneNumbers"
+        ).execute()
+
+        connections = results.get("connections", [])
+        if not connections:
+            return True, "No contacts found in your Google Account."
+
+        contacts_data = []
+        for person in connections:
+            names = person.get("names", [])
+            emails = person.get("emailAddresses", [])
+            phones = person.get("phoneNumbers", [])
+
+            first_name = names[0].get("givenName", "") if names else ""
+            last_name = names[0].get("familyName", "") if names else ""
+            email = emails[0].get("value", "") if emails else ""
+            phone = phones[0].get("value", "") if phones else ""
+
+            if first_name or last_name or email or phone:
+                contacts_data.append({
+                    "First Name": first_name,
+                    "Last Name": last_name,
+                    "Email": email,
+                    "Phone": phone
+                })
+
+        if not contacts_data:
+            return True, "No valid contact details found."
+
+        # Search for sheet in Drive
+        safe_sheet_name = sheet_name.replace("'", "\\'")
+        query = f"mimeType='application/vnd.google-apps.spreadsheet' and name='{safe_sheet_name}' and trashed=false"
+        results = drive_service.files().list(q=query, spaces="drive", fields="files(id, name)").execute()
+        files = results.get("files", [])
+
+        spreadsheet_id = None
+        if files:
+            spreadsheet_id = files[0]["id"]
+        else:
+            spreadsheet_body = {"properties": {"title": sheet_name}}
+            new_sheet = sheets_service.spreadsheets().create(body=spreadsheet_body, fields="spreadsheetId").execute()
+            spreadsheet_id = new_sheet.get("spreadsheetId")
+
+        # Prepare values
+        headers = ["Timestamp", "First Name", "Last Name", "Email", "Phone"]
+        rows = [[datetime.now().strftime("%Y-%m-%d %H:%M:%S"), c["First Name"], c["Last Name"], c["Email"], c["Phone"]] for c in contacts_data]
+
+        # Clear existing content first
+        sheets_service.spreadsheets().values().clear(
+            spreadsheetId=spreadsheet_id,
+            range="Sheet1!A1:Z"
+        ).execute()
+
+        # Update values
+        body = {
+            "values": [headers] + rows
+        }
+        sheets_service.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id,
+            range="Sheet1!A1",
+            valueInputOption="RAW",
+            body=body
+        ).execute()
+
+        return True, f"✅ Successfully copied {len(contacts_data)} contacts to Google Sheet '{sheet_name}' in Google Drive!"
+
+    except Exception as e:
+        print(f"[CONTACTS ERROR] {e}", flush=True)
+        return False, f"Failed to copy contacts: {e}"
+
+
 # ── Central Execution Router ─────────────────────────────────────────────────
 
 def execute_google_action(action: str, params: dict) -> tuple[bool, str]:
@@ -540,6 +627,10 @@ def execute_google_action(action: str, params: dict) -> tuple[bool, str]:
         category = params.get("category", "DOCUMENTS")
         folder_name = params.get("folder_name", "Photos")
         return copy_google_photos_to_drive(category, folder_name)
+
+    elif action == "copy_contacts_to_drive":
+        sheet_name = params.get("sheet_name", "Contacts")
+        return copy_google_contacts_to_drive(sheet_name)
 
     else:
         return False, f"Action `{action}` is not natively supported in direct Google Workspace integration."
