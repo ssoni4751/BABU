@@ -491,4 +491,239 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(response)))
             self._cors()
             self.end_headers()
+def do_GET(self):
+        if self.path in ("/healthz", "/api/healthz"):
+            body = json.dumps({
+                "status": "ok", "bot": "ARIA",
+                "features": ["memory", "web_search", "knowledge_base", "make_automation"],
+                "make_configured": bool(MAKE_WEBHOOK),
+            }).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self._cors()
+            self.end_headers()
+            self.wfile.write(body)
+        elif self.path in ("/", ""):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(STATUS_HTML.encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_POST(self):
+        if self.path != "/api/chat":
+            self.send_response(404)
+            self.end_headers()
+            return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            body   = json.loads(self.rfile.read(length))
+            msg    = str(body.get("message", "")).strip()
+            sid    = str(body.get("session_id", "web_anon")).strip() or "web_anon"
+            if not msg:
+                raise ValueError("empty message")
+            print(f"[WEB] session={sid[:16]} msg={msg[:80]}", flush=True)
+            reply, gear = invoke_aria(msg, sid)
+            print(f"[WEB OK] gear={gear} len={len(reply)}", flush=True)
+            response = json.dumps({"reply": reply, "gear": gear}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type",   "application/json")
+            self.send_header("Content-Length", str(len(response)))
+            self._cors()
+            self.end_headers()
+            self.wfile.write(response)
+        except Exception as e:
+            traceback.print_exc(file=sys.stdout)
+            err = json.dumps({"error": str(e)}).encode()
+            self.send_response(500)
+            self.send_header("Content-Type",   "application/json")
+            self.send_header("Content-Length", str(len(err)))
+            self._cors()
+            self.end_headers()
+            self.wfile.write(err)
+
+    def log_message(self, format, *args):
+        pass
+
+
+def start_health_server():
+    server = ThreadingHTTPServer(("0.0.0.0", PORT), HealthHandler)
+    print(f"[HEALTH] Chat API + status on port {PORT}", flush=True)
+    server.serve_forever()
+
+
+# ── Telegram handlers ──────────────────────────────────────────────────────
+
+async def run_aria(update: Update, msg: str, session_id: str):
+    stop_typing = asyncio.Event()
+
+    async def keep_typing():
+        while not stop_typing.is_set():
+            try:
+                await update.message.chat.send_action("typing")
+            except Exception:
+                pass
+            await asyncio.sleep(4)
+
+    typing_task = asyncio.create_task(keep_typing())
+    try:
+        reply, gear = await asyncio.to_thread(invoke_aria, msg, session_id)
+        print(f"[TG OK] gear={gear} len={len(reply)}", flush=True)
+    except Exception as e:
+        traceback.print_exc(file=sys.stdout)
+        reply = f"⚠️ ARIA error: {e}"
+    finally:
+        stop_typing.set()
+        typing_task.cancel()
+
+    # Check for [IMAGE] tag to reply with a photo
+    match = re.search(r'\[IMAGE\]\s*url=([^\s\n]+)(?:\s+caption=(.+))?', reply, re.DOTALL)
+    if match:
+        url = match.group(1)
+        caption = match.group(2) if match.group(2) else ""
+        await update.message.reply_photo(photo=url, caption=caption.strip())
+        return
+
+    await update.message.reply_text(reply)
+
+
+def tg_session(update: Update) -> str:
+    return f"tg_{update.message.from_user.id}"
+
+
+async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message.text
+    print(f"[TG MSG] {update.message.from_user.id}: {msg[:80]}", flush=True)
+    await run_aria(update, msg, tg_session(update))
+
+
+async def cmd_walk(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = " ".join(context.args) if context.args else ""
+    if not text:
+        await update.message.reply_text("Usage: /walk <message>")
+        return
+    await run_aria(update, f"/walk {text}", tg_session(update))
+
+
+async def cmd_sprint(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = " ".join(context.args) if context.args else ""
+    if not text:
+        await update.message.reply_text("Usage: /sprint <question>")
+        return
+    await run_aria(update, f"/sprint {text}", tg_session(update))
+
+
+async def cmd_launch(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = " ".join(context.args) if context.args else ""
+    if not text:
+        await update.message.reply_text("Usage: /launch <complex question>")
+        return
+    await update.message.reply_text("🚀 LAUNCH engaged — 6-agent deep swarm + web search. ~30s…")
+    await run_aria(update, f"/launch {text}", tg_session(update))
+
+
+async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    with _memory_lock:
+        _histories[tg_session(update)].clear()
+    await update.message.reply_text("🗑 Memory cleared. Fresh start.")
+
+
+async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    google_line = "\n• Send email, create calendar event, log to sheet — just ask naturally" if is_google_configured() else ""
+    await update.message.reply_text(
+        "🤖 *ARIA — Multi-Agent AI Assistant*\n\n"
+        "*Gears:*\n"
+        "• /walk <msg> — Quick direct reply\n"
+        "• /sprint <question> — 3-agent swarm + web search\n"
+        "• /launch <question> — 6-agent deep swarm + web search\n\n"
+        "*Extras:*\n"
+        "• /clear — Reset conversation memory\n"
+        f"• /help — Show this menu{google_line}\n\n"
+        "Or just send a message — ARIA routes automatically.\n"
+        "I remember your conversation and search the web for research queries.",
+        parse_mode="Markdown",
+    )
+
+
+async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global llm_pa, llm_dept, CURRENT_PA_MODEL, CURRENT_DEPT_MODEL
+
+    args = context.args
+    if not args:
+        menu = (
+            "🤖 *ARIA Model Settings*\n\n"
+            f"• *Current PA (Assistant) Model:* `{CURRENT_PA_MODEL}`\n"
+            f"• *Current Swarm (Research) Model:* `{CURRENT_DEPT_MODEL}`\n\n"
+            "*Available Models to Switch:*\n"
+            "1️⃣ `llama-3.3-70b-versatile` (Llama 3.3 - Best Quality)\n"
+            "2️⃣ `llama-3.1-8b-instant` (Llama 3.1 8B - Fastest / Best Limits)\n"
+            "3️⃣ `mixtral-8x7b-32768` (Mixtral 8x7B - Great Balance)\n"
+            "4️⃣ `gemma2-9b-it` (Gemma 2 9B - Fast & Smart)\n"
+            "5️⃣ `deepseek-r1-distill-llama-70b` (DeepSeek R1 - Deep Reasoning)\n"
+            "6️⃣ `gemini-1.5-flash` (Gemini 1.5 - Extremely fast, HUGE limits!)\n"
+            "7️⃣ `gemini-2.5-pro` (Gemini 2.5 Pro - Elite Reasoning & Coding)\n\n"
+            "*How to Switch:*\n"
+            "• `/model <1-7>` - Change the main Personal Assistant model\n"
+            "• `/model swarm <1-7>` - Change the underlying swarm/research model\n\n"
+            "💡 *Tip:* If Groq free tier is exhausted, switch the PA model to **6** (Gemini 1.5 Flash) or **7** (Gemini 2.5 Pro) for infinite capacity!"
+        )
+        await update.message.reply_text(menu, parse_mode="Markdown")
+        return
+
+    is_swarm = False
+    choice = args[0]
+    if choice.lower() == "swarm" and len(args) > 1:
+        is_swarm = True
+        choice = args[1]
+
+    model_map = {
+        "1": "llama-3.3-70b-versatile",
+        "2": "llama-3.1-8b-instant",
+        "3": "mixtral-8x7b-32768",
+        "4": "gemma2-9b-it",
+        "5": "deepseek-r1-distill-llama-70b",
+        "6": "gemini-1.5-flash",
+        "7": "gemini-2.5-pro"
+    }
+
+    selected_model = model_map.get(choice)
+    if not selected_model:
+        if choice in [m for m in model_map.values()]:
+            selected_model = choice
+        else:
+            await update.message.reply_text("❌ Invalid choice. Use `/model` to see the list of valid options.")
+            return
+
+    try:
+        if is_swarm:
+            CURRENT_DEPT_MODEL = selected_model
+            llm_dept = build_llm(CURRENT_DEPT_MODEL, 0.7)
+            await update.message.reply_text(f"✅ Swarm/Research model switched to: `{CURRENT_DEPT_MODEL}`")
+        else:
+            CURRENT_PA_MODEL = selected_model
+            llm_pa = build_llm(CURRENT_PA_MODEL, 0.2)
+            await update.message.reply_text(f"✅ Main Personal Assistant model switched to: `{CURRENT_PA_MODEL}`")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Failed to switch model: {e}")
+
+
+# ── Entry point ────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    health_thread = threading.Thread(target=start_health_server, daemon=True)
+    health_thread.start()
+    google_status = f"Google Workspace ({'active' if is_google_configured() else 'NOT configured'})"
+    print(f"--- ARIA IS LIVE | Memory | Web Search | Knowledge Base | {google_status} | WALK + SPRINT + LAUNCH ---", flush=True)
+    bot = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    bot.add_handler(CommandHandler("walk",   cmd_walk))
+    bot.add_handler(CommandHandler("sprint", cmd_sprint))
+    bot.add_handler(CommandHandler("launch", cmd_launch))
+    bot.add_handler(CommandHandler("clear",  cmd_clear))
+    bot.add_handler(CommandHandler("help",   cmd_help))
+    bot.add_handler(CommandHandler("model",  cmd_model))
+    bot.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), on_message))
+    bot.run_polling(drop_pending_updates=True)
+
    
