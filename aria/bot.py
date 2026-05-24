@@ -408,7 +408,7 @@ class HealthHandler(BaseHTTPRequestHandler):
 
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin",  "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
 
     def do_OPTIONS(self):
@@ -497,7 +497,7 @@ async def run_aria(update: Update, msg: str, session_id: str):
     stop_typing = asyncio.Event()
 
     async def keep_typing():
-        while not stop_typing.is__set():
+        while not stop_typing_set():
             try:
                 await update.message.chat.send_action("typing")
             except Exception:
