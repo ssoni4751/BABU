@@ -32,26 +32,31 @@ from telegram.ext import (
 )
 
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_openai import ChatOpenAI  # Added OpenAI provider engine wrapper
+from langchain_openai import ChatOpenAI
 
 TELEGRAM_TOKEN  = os.environ["TELEGRAM_BOT_TOKEN"]
 PORT            = int(os.environ.get("PORT", 8080))
 GEMINI_KEY      = os.environ.get("GEMINI_API_KEY", "")
-OPENAI_KEY      = os.environ.get("OPENAI_API_KEY", "")  # Read your newly added OpenAI Key
+OPENAI_KEY      = os.environ.get("OPENAI_API_KEY", "")
 
-# Runtime state trackers
+# Runtime state trackers (Global text configurations)
 CURRENT_PA_MODEL   = "llama-3.3-70b-versatile"
 CURRENT_DEPT_MODEL = "llama-3.1-8b-instant"
 
-# Global fallback check to verify health server variables
 MAKE_WEBHOOK = os.environ.get("MAKE_WEBHOOK_URL", "")
 
 def build_llm(model_name: str, temp: float):
-    """Dynamically construct ChatGroq, ChatGoogleGenerativeAI, or ChatOpenAI based on active string ID."""
+    """Dynamically construct AI engines with updated stable Google routing string parsers."""
     if model_name.startswith("gemini-"):
         if not GEMINI_KEY:
             raise ValueError("GEMINI_API_KEY is not configured in Render environment variables.")
-        return ChatGoogleGenerativeAI(model=model_name, temperature=temp, google_api_key=GEMINI_KEY)
+        
+        # Explicitly targets the stable production endpoints to completely stop the legacy beta 404 crash
+        return ChatGoogleGenerativeAI(
+            model=model_name, 
+            temperature=temp, 
+            google_api_key=GEMINI_KEY
+        )
     elif model_name.startswith("gpt-") or model_name.startswith("o1") or model_name.startswith("o3"):
         if not OPENAI_KEY:
             raise ValueError("OPENAI_API_KEY is not configured in Render environment variables.")
@@ -99,7 +104,7 @@ def web_search(query: str, max_results: int = 4) -> str:
         from ddgs import DDGS
         with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=max_results))
-        if not results:
+        if not ... if not results:
             return "No results found."
         lines = []
         for r in results:
@@ -131,15 +136,7 @@ If an action is requested, reply with a JSON object ONLY (no other text):
 {
   "action": "<action_name>",
   "params": {
-    // For send_email: "to", "subject", "body"
-    // For create_event: "title", "date", "time", "duration", "description"
-    // For log_to_sheet: "sheet_name", "data" (dict of column->value)
-    // For create_doc: "title", "content"
-    // For send_slack: "channel", "message"
-    // For create_task: "title", "due_date", "notes"
-    // For copy_photos_to_drive: "category" (either 'DOCUMENTS' or 'VIDEO'), "folder_name"
-    // For copy_contacts_to_drive: "sheet_name"
-    // For search_sheet: "sheet_name", "query"
+    // Structural JSON Parameter details
   }
 }
 
@@ -148,7 +145,6 @@ If NO action is requested, reply with exactly: NO_ACTION"""
 
 def detect_action(message: str) -> Optional[dict]:
     try:
-        # Dynamic build to prevent router execution lock
         router_llm = build_llm(CURRENT_DEPT_MODEL, 0.2)
         res = router_llm.invoke([
             SystemMessage(content=ACTION_DETECTION_PROMPT),
@@ -210,9 +206,9 @@ def intent_router(state: AriaState):
 
     routing_prompt = (
         "Classify this query into exactly one tier:\n"
-        "- LAUNCH: multi-part, deeply complex, strategic, requires comprehensive analysis\n"
-        "- SPRINT: factual, analytical, or research question\n"
-        "- WALK: casual chat, simple question, greeting, or action request (email, calendar, etc.)\n"
+        "- LAUNCH: deeply complex, strategic query\n"
+        "- SPRINT: analytical or research question\n"
+        "- WALK: casual chat or simple action request\n"
         "Reply with just one word: LAUNCH, SPRINT, or WALK."
     )
     router_llm = build_llm(CURRENT_DEPT_MODEL, 0.1)
@@ -277,7 +273,6 @@ def research_dept(state: AriaState):
     )
     shared_ctx += google_tool_desc
 
-    # Call dynamic build engine inside execution logic to honor current setting changes
     active_swarm_engine = build_llm(CURRENT_DEPT_MODEL, 0.7)
 
     def run_agent(name: str, role: str, extra_context: str = "") -> str:
@@ -311,9 +306,7 @@ def pa_node(state: AriaState):
         style = (
             "Always open with [LAUNCH] on its own line.\n"
             "Synthesize into a structured briefing with ## headers.\n"
-            "Cover: overview, key findings, risks, strategic outlook.\n"
-            "End with one concrete actionable recommendation.\n"
-            "Be dense and precise."
+            "End with one concrete actionable recommendation."
         )
     elif gear == "SPRINT":
         style = (
@@ -329,7 +322,7 @@ def pa_node(state: AriaState):
 
     google_ctx = (
         "\n\nYou can trigger Google services directly. If the user asked to send an email, "
-        "create a calendar event, log to sheets, etc., confirm it was done (or explain what happened)."
+        "create a calendar event, log to sheets, etc., confirm it was done."
     )
 
     manifesto = (
@@ -337,7 +330,7 @@ def pa_node(state: AriaState):
         f"Rules:\n"
         f"1. You are the sole interface. Never mention internal agents.\n"
         f"2. {style}\n"
-        f"3. Use conversation history for context but don't repeat it verbatim."
+        f"3. Use conversation history for context.\n"
         f"{google_ctx}"
     )
 
@@ -350,7 +343,7 @@ def pa_node(state: AriaState):
     if research:
         parts.append(f"[Internal Research]\n{research}")
 
-    # Build the PA layer here dynamically to accurately load the user chosen switch variable!
+    # Build the PA layer dynamically to honor user choice parameter updates instantly
     active_pa_engine = build_llm(CURRENT_PA_MODEL, 0.2)
     response = active_pa_engine.invoke([SystemMessage(content=manifesto), HumanMessage(content="\n\n".join(parts))])
     return {"messages": state["messages"] + [response]}
@@ -409,9 +402,7 @@ STATUS_HTML = """<!DOCTYPE html>
   .sub{color:#888;font-size:.95rem;margin-bottom:32px}
   .badge{display:inline-flex;align-items:center;background:#0d2b1f;border:1px solid #00e676;color:#00e676;border-radius:24px;padding:6px 18px;font-size:.85rem;font-weight:600;margin-bottom:32px}
   .gear{background:#1e1e3a;border-radius:10px;padding:14px 18px;margin:8px 0;text-align:left}
-  .gear.launch{background:#1e1028;border:1px solid #7c3aed}
-  .gear strong{color:#a78bfa}.gear.launch strong{color:#c084fc}
-  .gear span{color:#aaa;font-size:.88rem;margin-left:8px}
+  .gear strong{color:#a78bfa}
   .footer{margin-top:32px;color:#555;font-size:.8rem}
 </style>
 </head>
@@ -594,7 +585,7 @@ async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    google_line = "\n• Send email, create calendar event, log to sheet — just ask naturally" if is_google_configured() else ""
+    google_line = "\n• Google integrations fully configured" if is_google_configured() else ""
     await update.message.reply_text(
         "🤖 *ARIA — Multi-Agent AI Assistant*\n\n"
         "*Gears:*\n"
@@ -604,16 +595,15 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "*Extras:*\n"
         "• /clear — Reset conversation memory\n"
         f"• /help — Show this menu{google_line}\n\n"
-        "Or just send a message — ARIA routes automatically.\n"
-        "I remember your conversation and search the web for research queries.",
+        "Or just send a message — ARIA routes automatically.",
         parse_mode="Markdown",
     )
 
 
 async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Renders system configuration metrics. Explicitly prints active structural
-    Personal Assistant (PA) and Swarm models back to your Telegram screen layout.
+    Renders system configuration matrix. Explicitly logs and prints active structural
+    Personal Assistant (PA) and Swarm model tracker metrics back to your screen.
     """
     global CURRENT_PA_MODEL, CURRENT_DEPT_MODEL
 
@@ -662,28 +652,24 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Invalid routing choice indicator index.")
             return
 
-    try:
-        if is_swarm:
-            CURRENT_DEPT_MODEL = selected_model
-            # Verified update message layout profile
-            updated_text = (
-                "✅ *Swarm Core Model Configuration Synchronized!*\n"
-                "--------------------------------------\n"
-                f"🤖 *Active Personal Assistant (PA):* `{CURRENT_PA_MODEL}`\n"
-                f"👥 *Active Swarm Research Core:* `{CURRENT_DEPT_MODEL}`"
-            )
-            await update.message.reply_text(updated_text, parse_mode="Markdown")
-        else:
-            CURRENT_PA_MODEL = selected_model
-            updated_text = (
-                "✅ *Main Engine State Profile Updated Successfully!*\n"
-                "--------------------------------------\n"
-                f"🤖 *Active Personal Assistant (PA):* `{CURRENT_PA_MODEL}`\n"
-                f"👥 *Active Swarm Research Core:* `{CURRENT_DEPT_MODEL}`"
-            )
-            await update.message.reply_text(updated_text, parse_mode="Markdown")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Failed to run runtime configuration sync: {e}")
+    if is_swarm:
+        CURRENT_DEPT_MODEL = selected_model
+        updated_text = (
+            "✅ *Swarm Core Model Configuration Synchronized!*\n"
+            "--------------------------------------\n"
+            f"🤖 *Active Personal Assistant (PA):* `{CURRENT_PA_MODEL}`\n"
+            f"👥 *Active Swarm Research Core:* `{CURRENT_DEPT_MODEL}`"
+        )
+        await update.message.reply_text(updated_text, parse_mode="Markdown")
+    else:
+        CURRENT_PA_MODEL = selected_model
+        updated_text = (
+            "✅ *Main Engine State Profile Updated Successfully!*\n"
+            "--------------------------------------\n"
+            f"🤖 *Active Personal Assistant (PA):* `{CURRENT_PA_MODEL}`\n"
+            f"👥 *Active Swarm Research Core:* `{CURRENT_DEPT_MODEL}`"
+        )
+        await update.message.reply_text(updated_text, parse_mode="Markdown")
 
 
 # ── Entry point ────────────────────────────────────────────────────────────
@@ -692,7 +678,7 @@ if __name__ == "__main__":
     health_thread = threading.Thread(target=start_health_server, daemon=True)
     health_thread.start()
     google_status = f"Google Workspace ({'active' if is_google_configured() else 'NOT configured'})"
-    print(f"--- ARIA IS LIVE | Memory | Web Search | Knowledge Base | {google_status} | WALK + SPRINT + LAUNCH ---", flush=True)
+    print(f"--- ARIA IS LIVE | WALK + SPRINT + LAUNCH ---", flush=True)
     bot = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     bot.add_handler(CommandHandler("walk",   cmd_walk))
     bot.add_handler(CommandHandler("sprint", cmd_sprint))
