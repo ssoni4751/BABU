@@ -3,6 +3,12 @@ langchain-core>=1.4.0
 langchain-google-genai>=4.2.3
 langchain-groq>=1.1.2
 langgraph>=1.2.1
+openai
+google-generativeai
+langchain-core
+langchain-openai
+langchain-google-genai
+langchain-groq
 python-telegram-bot>=22.7
 ddgs>=9.0.0
 google-api-python-client>=2.129.0
