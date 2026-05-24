@@ -98,11 +98,12 @@ MAKE_ACTIONS = {
     "create_task":      "Create a task (Notion / Todoist / Sheets)",
     "copy_photos_to_drive": "Copy photos/videos from Google Photos to Google Drive",
     "copy_contacts_to_drive": "Fetch Google Contacts and write them to a Google Sheet in Google Drive",
+    "search_sheet":     "Search for a query or name inside a specific Google Sheet (e.g. Contacts)",
 }
 
 ACTION_DETECTION_PROMPT = """Analyze the user message and decide if it requests an automation action.
 
-Supported actions: send_email, create_event, log_to_sheet, create_doc, send_slack, create_task, copy_photos_to_drive, copy_contacts_to_drive
+Supported actions: send_email, create_event, log_to_sheet, create_doc, send_slack, create_task, copy_photos_to_drive, copy_contacts_to_drive, search_sheet
 
 If an action is requested, reply with a JSON object ONLY (no other text):
 {
@@ -116,6 +117,7 @@ If an action is requested, reply with a JSON object ONLY (no other text):
     // For create_task: "title", "due_date", "notes"
     // For copy_photos_to_drive: "category" (either 'DOCUMENTS' for ID cards/docs or 'VIDEO' for videos), "folder_name" (folder where files should be copied in Google Drive)
     // For copy_contacts_to_drive: "sheet_name" (name of Google Sheet to save contacts, e.g. "Contacts")
+    // For search_sheet: "sheet_name" (name of Google Sheet to search, e.g. "Contacts"), "query" (term or name to search for, e.g. "Mama Jalaun")
   }
 }
 

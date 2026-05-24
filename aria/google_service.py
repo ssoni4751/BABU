@@ -585,6 +585,66 @@ def copy_google_contacts_to_drive(sheet_name: str = "Contacts") -> tuple[bool, s
         return False, f"Failed to copy contacts: {e}"
 
 
+def search_google_sheet(sheet_name: str, query: str) -> tuple[bool, str]:
+    """Search for a specific query inside a Google Sheet by name."""
+    creds = get_google_creds()
+    if not creds:
+        return False, "Google Workspace authentication not configured."
+
+    try:
+        drive_service = build("drive", "v3", credentials=creds)
+        sheets_service = build("sheets", "v4", credentials=creds)
+
+        # 1. Search for the sheet in user's Google Drive
+        safe_sheet_name = sheet_name.replace("'", "\\'")
+        drive_query = f"mimeType='application/vnd.google-apps.spreadsheet' and name='{safe_sheet_name}' and trashed=false"
+        print(f"[SHEETS] Searching Drive for sheet to search: '{sheet_name}'...", flush=True)
+        results = drive_service.files().list(q=drive_query, spaces="drive", fields="files(id, name)").execute()
+        files = results.get("files", [])
+
+        if not files:
+            return False, f"Google Sheet '{sheet_name}' not found in your Google Drive."
+
+        spreadsheet_id = files[0]["id"]
+
+        # 2. Get all values in the sheet
+        result = sheets_service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range="Sheet1!A1:Z"
+        ).execute()
+
+        rows = result.get("values", [])
+        if not rows:
+            return True, f"Google Sheet '{sheet_name}' is empty."
+
+        headers = rows[0]
+        data_rows = rows[1:]
+
+        # 3. Search for matches
+        q = str(query).lower().strip()
+        matches = []
+
+        for r_idx, row in enumerate(data_rows):
+            # Check if query matches any cell in the row
+            row_str = " ".join(str(cell) for cell in row).lower()
+            if q in row_str:
+                match_details = []
+                for c_idx, cell in enumerate(row):
+                    header = headers[c_idx] if c_idx < len(headers) else f"Column {c_idx+1}"
+                    match_details.append(f"{header}: {cell}")
+                matches.append(f"• {', '.join(match_details)}")
+
+        if not matches:
+            return True, f"No matches found for '{query}' in Google Sheet '{sheet_name}'."
+
+        formatted_result = f"🔍 Found {len(matches)} match(es) for '{query}' in '{sheet_name}':\n" + "\n".join(matches)
+        return True, formatted_result
+
+    except Exception as e:
+        print(f"[SHEETS SEARCH ERROR] {e}", flush=True)
+        return False, f"Failed to search Google Sheet: {e}"
+
+
 # ── Central Execution Router ─────────────────────────────────────────────────
 
 def execute_google_action(action: str, params: dict) -> tuple[bool, str]:
@@ -631,6 +691,13 @@ def execute_google_action(action: str, params: dict) -> tuple[bool, str]:
     elif action == "copy_contacts_to_drive":
         sheet_name = params.get("sheet_name", "Contacts")
         return copy_google_contacts_to_drive(sheet_name)
+
+    elif action == "search_sheet":
+        sheet_name = params.get("sheet_name", "Contacts")
+        query = params.get("query", "")
+        if not query:
+            return False, "Missing 'query' parameter to search."
+        return search_google_sheet(sheet_name, query)
 
     else:
         return False, f"Action `{action}` is not natively supported in direct Google Workspace integration."
