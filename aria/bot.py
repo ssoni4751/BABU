@@ -1,4 +1,3 @@
-
 import asyncio
 import json
 import os
@@ -33,25 +32,32 @@ from telegram.ext import (
 )
 
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 
 TELEGRAM_TOKEN  = os.environ["TELEGRAM_BOT_TOKEN"]
 PORT            = int(os.environ.get("PORT", 8080))
 GEMINI_KEY      = os.environ.get("GEMINI_API_KEY", "")
+OPENAI_KEY      = os.environ.get("OPENAI_API_KEY", "")
 
 CURRENT_PA_MODEL   = "llama-3.3-70b-versatile"
 CURRENT_DEPT_MODEL = "llama-3.1-8b-instant"
 
 def build_llm(model_name: str, temp: float):
-    """Dynamically construct either ChatGroq or ChatGoogleGenerativeAI based on model name."""
+    """Dynamically construct either ChatGroq, ChatGoogleGenerativeAI, or ChatOpenAI based on model name."""
     if model_name.startswith("gemini-"):
         if not GEMINI_KEY:
             raise ValueError("GEMINI_API_KEY is not configured in environment variables.")
         return ChatGoogleGenerativeAI(model=model_name, temperature=temp, google_api_key=GEMINI_KEY)
+    elif model_name.startswith("gpt-") or model_name.startswith("o1") or model_name.startswith("o3"):
+        if not OPENAI_KEY:
+            raise ValueError("OPENAI_API_KEY is not configured in environment variables.")
+        return ChatOpenAI(model=model_name, temperature=temp, openai_api_key=OPENAI_KEY)
     else:
         return ChatGroq(model=model_name, temperature=temp)
 
 llm_pa   = build_llm(CURRENT_PA_MODEL,   0.2)
 llm_dept = build_llm(CURRENT_DEPT_MODEL, 0.7)
+
 
 # ── Knowledge base ─────────────────────────────────────────────────────────
 
@@ -102,9 +108,8 @@ def web_search(query: str, max_results: int = 4) -> str:
         return f"[Search unavailable: {e}]"
 
 
-# ── Make.com automation ────────────────────────────────────────────────────
+# ── Actions ────────────────────────────────────────────────────────────────
 
-# Actions ARIA can detect and trigger
 MAKE_ACTIONS = {
     "send_email":       "Send an email via Gmail",
     "create_event":     "Create a Google Calendar event",
@@ -125,23 +130,13 @@ If an action is requested, reply with a JSON object ONLY (no other text):
 {
   "action": "<action_name>",
   "params": {
-    // For send_email: "to", "subject", "body"
-    // For create_event: "title", "date", "time", "duration", "description"
-    // For log_to_sheet: "sheet_name", "data" (dict of column->value)
-    // For create_doc: "title", "content"
-    // For send_slack: "channel", "message"
-    // For create_task: "title", "due_date", "notes"
-    // For copy_photos_to_drive: "category" (either 'DOCUMENTS' for ID cards/docs or 'VIDEO' for videos), "folder_name" (folder where files should be copied in Google Drive)
-    // For copy_contacts_to_drive: "sheet_name" (name of Google Sheet to save contacts, e.g. "Contacts")
-    // For search_sheet: "sheet_name" (name of Google Sheet to search, e.g. "Contacts"), "query" (term or name to search for, e.g. "Mama Jalaun")
+    // Structural parameters map
   }
 }
 
 If NO action is requested, reply with exactly: NO_ACTION"""
 
-
 def detect_action(message: str) -> Optional[dict]:
-    """Use LLM to detect if message contains an automation request."""
     try:
         res = llm_dept.invoke([
             SystemMessage(content=ACTION_DETECTION_PROMPT),
@@ -150,7 +145,6 @@ def detect_action(message: str) -> Optional[dict]:
         text = res.content.strip()
         if text == "NO_ACTION" or not text.startswith("{"):
             return None
-        # Extract JSON even if LLM adds extra text
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if match:
             return json.loads(match.group())
@@ -159,12 +153,10 @@ def detect_action(message: str) -> Optional[dict]:
         return None
 
 
-
 # ── Memory ─────────────────────────────────────────────────────────────────
 
 _memory_lock = threading.Lock()
 _histories: dict[str, deque] = defaultdict(lambda: deque(maxlen=20))
-
 
 def get_history_text(session_id: str) -> str:
     with _memory_lock:
@@ -172,7 +164,6 @@ def get_history_text(session_id: str) -> str:
     if not h:
         return ""
     return "\n".join(f"{role.upper()}: {content}" for role, content in h)
-
 
 def add_to_history(session_id: str, user_msg: str, aria_msg: str) -> None:
     with _memory_lock:
@@ -190,7 +181,7 @@ class AriaState(TypedDict):
     history_text:   str
     session_id:     str
     search_results: str
-    action_result:  str   # result of Make.com webhook if triggered
+    action_result:  str
 
 
 # ── Nodes ──────────────────────────────────────────────────────────────────
@@ -217,7 +208,6 @@ def intent_router(state: AriaState):
     gear = "LAUNCH" if "LAUNCH" in raw else ("SPRINT" if "SPRINT" in raw else "WALK")
     return {"gear": gear, "user_query": query, "research_data": [], "search_results": "", "action_result": ""}
 
-
 SPRINT_AGENTS = [
     ("ANALYST",    "Provide hard data, statistics, and technical context. Be thorough."),
     ("SKEPTIC",    "Challenge assumptions, identify risks, failure modes, and blind spots."),
@@ -231,17 +221,13 @@ LAUNCH_ROUND_1 = [
 ]
 
 LAUNCH_ROUND_2 = [
-    ("HISTORIAN",   "Draw on historical precedents and analogies. What patterns apply?"),
-    ("FUTURIST",    "Extrapolate 5–10 year implications. What are the disruptive possibilities?"),
+    ("HISTORIAN",  "Draw on historical precedents and analogies. What patterns apply?"),
+    ("FUTURIST",   "Extrapolate 5–10 year implications. What are the disruptive possibilities?"),
     ("SYNTHESIZER", "Read ALL prior agent reports. Resolve contradictions, surface consensus, and give the single most important takeaway."),
 ]
 
-
 def action_node(state: AriaState):
-    """Detect and execute Google Workspace API actions directly before research runs."""
     query      = state["user_query"]
-    session_id = state.get("session_id", "default")
-
     action_data = detect_action(query)
     if not action_data or "action" not in action_data:
         return {"action_result": ""}
@@ -252,7 +238,6 @@ def action_node(state: AriaState):
     ok, msg = execute_google_action(action, params)
     print(f"[GOOGLE] Result: {msg}", flush=True)
     return {"action_result": msg}
-
 
 def research_dept(state: AriaState):
     gear  = state["gear"]
@@ -295,7 +280,6 @@ def research_dept(state: AriaState):
     r1_ctx = "\n\n".join(r1)
     r2     = [run_agent(name, role, extra_context=r1_ctx) for name, role in LAUNCH_ROUND_2]
     return {"research_data": r1 + r2, "search_results": search_ctx}
-
 
 def pa_node(state: AriaState):
     gear          = state["gear"]
@@ -403,9 +387,7 @@ STATUS_HTML = """<!DOCTYPE html>
   .sub{color:#888;font-size:.95rem;margin-bottom:32px}
   .badge{display:inline-flex;align-items:center;background:#0d2b1f;border:1px solid #00e676;color:#00e676;border-radius:24px;padding:6px 18px;font-size:.85rem;font-weight:600;margin-bottom:32px}
   .gear{background:#1e1e3a;border-radius:10px;padding:14px 18px;margin:8px 0;text-align:left}
-  .gear.launch{background:#1e1028;border:1px solid #7c3aed}
-  .gear strong{color:#a78bfa}.gear.launch strong{color:#c084fc}
-  .gear span{color:#aaa;font-size:.88rem;margin-left:8px}
+  .gear strong{color:#a78bfa}
   .footer{margin-top:32px;color:#555;font-size:.8rem}
 </style>
 </head>
@@ -414,14 +396,13 @@ STATUS_HTML = """<!DOCTYPE html>
   <div class="badge"><span class="dot"></span>LIVE</div>
   <h1>ARIA</h1>
   <p class="sub">Multi-Agent AI Assistant</p>
-  <div class="gear"><strong>WALK</strong><span>Quick reply + Google automations via Make.com</span></div>
+  <div class="gear"><strong>WALK</strong><span>Quick reply + Google automations</span></div>
   <div class="gear"><strong>SPRINT</strong><span>3-agent swarm + web search</span></div>
   <div class="gear launch"><strong>LAUNCH</strong><span>6-agent deep swarm + web search + synthesis</span></div>
-  <p class="footer">Groq &bull; Llama 3 &bull; LangGraph &bull; Memory &bull; Web Search &bull; Make.com</p>
+  <p class="footer">Groq &bull; Gemini &bull; OpenAI &bull; LangGraph &bull; Workspace Tools</p>
 </div>
 </body>
 </html>"""
-
 
 class HealthHandler(BaseHTTPRequestHandler):
 
@@ -453,50 +434,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         if self.path in ("/healthz", "/api/healthz"):
             body = json.dumps({
                 "status": "ok", "bot": "ARIA",
-                "features": ["memory", "web_search", "knowledge_base", "make_automation"],
-                "make_configured": bool(MAKE_WEBHOOK),
-            }).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self._cors()
-            self.end_headers()
-            self.wfile.write(body)
-        elif self.path in ("/", ""):
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(STATUS_HTML.encode())
-        else:
-            self.send_response(404)
-            self.end_headers()
-
-    def do_POST(self):
-        if self.path != "/api/chat":
-            self.send_response(404)
-            self.end_headers()
-            return
-        try:
-            length = int(self.headers.get("Content-Length", 0))
-            body   = json.loads(self.rfile.read(length))
-            msg    = str(body.get("message", "")).strip()
-            sid    = str(body.get("session_id", "web_anon")).strip() or "web_anon"
-            if not msg:
-                raise ValueError("empty message")
-            print(f"[WEB] session={sid[:16]} msg={msg[:80]}", flush=True)
-            reply, gear = invoke_aria(msg, sid)
-            print(f"[WEB OK] gear={gear} len={len(reply)}", flush=True)
-            response = json.dumps({"reply": reply, "gear": gear}).encode()
-            self.send_response(200)
-            self.send_header("Content-Type",   "application/json")
-            self.send_header("Content-Length", str(len(response)))
-            self._cors()
-            self.end_headers()
-def do_GET(self):
-        if self.path in ("/healthz", "/api/healthz"):
-            body = json.dumps({
-                "status": "ok", "bot": "ARIA",
-                "features": ["memory", "web_search", "knowledge_base", "make_automation"],
-                "make_configured": bool(MAKE_WEBHOOK),
+                "features": ["memory", "web_search", "knowledge_base"],
             }).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -547,7 +485,6 @@ def do_GET(self):
     def log_message(self, format, *args):
         pass
 
-
 def start_health_server():
     server = ThreadingHTTPServer(("0.0.0.0", PORT), HealthHandler)
     print(f"[HEALTH] Chat API + status on port {PORT}", flush=True)
@@ -560,7 +497,7 @@ async def run_aria(update: Update, msg: str, session_id: str):
     stop_typing = asyncio.Event()
 
     async def keep_typing():
-        while not stop_typing.is_set():
+        while not stop_typing.is__set():
             try:
                 await update.message.chat.send_action("typing")
             except Exception:
@@ -578,7 +515,6 @@ async def run_aria(update: Update, msg: str, session_id: str):
         stop_typing.set()
         typing_task.cancel()
 
-    # Check for [IMAGE] tag to reply with a photo
     match = re.search(r'\[IMAGE\]\s*url=([^\s\n]+)(?:\s+caption=(.+))?', reply, re.DOTALL)
     if match:
         url = match.group(1)
@@ -588,16 +524,13 @@ async def run_aria(update: Update, msg: str, session_id: str):
 
     await update.message.reply_text(reply)
 
-
 def tg_session(update: Update) -> str:
     return f"tg_{update.message.from_user.id}"
-
 
 async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message.text
     print(f"[TG MSG] {update.message.from_user.id}: {msg[:80]}", flush=True)
     await run_aria(update, msg, tg_session(update))
-
 
 async def cmd_walk(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = " ".join(context.args) if context.args else ""
@@ -606,14 +539,12 @@ async def cmd_walk(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await run_aria(update, f"/walk {text}", tg_session(update))
 
-
 async def cmd_sprint(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = " ".join(context.args) if context.args else ""
     if not text:
         await update.message.reply_text("Usage: /sprint <question>")
         return
     await run_aria(update, f"/sprint {text}", tg_session(update))
-
 
 async def cmd_launch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = " ".join(context.args) if context.args else ""
@@ -623,15 +554,13 @@ async def cmd_launch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🚀 LAUNCH engaged — 6-agent deep swarm + web search. ~30s…")
     await run_aria(update, f"/launch {text}", tg_session(update))
 
-
 async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with _memory_lock:
         _histories[tg_session(update)].clear()
     await update.message.reply_text("🗑 Memory cleared. Fresh start.")
 
-
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    google_line = "\n• Send email, create calendar event, log to sheet — just ask naturally" if is_google_configured() else ""
+    google_line = "\n• Google integrations fully configured" if is_google_configured() else ""
     await update.message.reply_text(
         "🤖 *ARIA — Multi-Agent AI Assistant*\n\n"
         "*Gears:*\n"
@@ -641,11 +570,9 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "*Extras:*\n"
         "• /clear — Reset conversation memory\n"
         f"• /help — Show this menu{google_line}\n\n"
-        "Or just send a message — ARIA routes automatically.\n"
-        "I remember your conversation and search the web for research queries.",
+        "Or just send a message — ARIA routes automatically.",
         parse_mode="Markdown",
     )
-
 
 async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global llm_pa, llm_dept, CURRENT_PA_MODEL, CURRENT_DEPT_MODEL
@@ -658,16 +585,15 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• *Current Swarm (Research) Model:* `{CURRENT_DEPT_MODEL}`\n\n"
             "*Available Models to Switch:*\n"
             "1️⃣ `llama-3.3-70b-versatile` (Llama 3.3 - Best Quality)\n"
-            "2️⃣ `llama-3.1-8b-instant` (Llama 3.1 8B - Fastest / Best Limits)\n"
-            "3️⃣ `mixtral-8x7b-32768` (Mixtral 8x7B - Great Balance)\n"
-            "4️⃣ `gemma2-9b-it` (Gemma 2 9B - Fast & Smart)\n"
-            "5️⃣ `deepseek-r1-distill-llama-70b` (DeepSeek R1 - Deep Reasoning)\n"
-            "6️⃣ `gemini-1.5-flash` (Gemini 1.5 - Extremely fast, HUGE limits!)\n"
-            "7️⃣ `gemini-2.5-pro` (Gemini 2.5 Pro - Elite Reasoning & Coding)\n\n"
+            "2️⃣ `llama-3.1-8b-instant` (Llama 3.1 8B - Fastest)\n"
+            "6️⃣ `gemini-1.5-flash` (Gemini 1.5 - Extremely fast)\n"
+            "7️⃣ `gemini-2.5-pro` (Gemini 2.5 Pro - Elite Reasoning)\n"
+            "8️⃣ `gpt-4o` (OpenAI Flagship Quality)\n"
+            "9️⃣ `gpt-4o-mini` (OpenAI Efficient Smart Core)\n\n"
             "*How to Switch:*\n"
-            "• `/model <1-7>` - Change the main Personal Assistant model\n"
-            "• `/model swarm <1-7>` - Change the underlying swarm/research model\n\n"
-            "💡 *Tip:* If Groq free tier is exhausted, switch the PA model to **6** (Gemini 1.5 Flash) or **7** (Gemini 2.5 Pro) for infinite capacity!"
+            "• `/model <1-9>` - Change the main Personal Assistant model\n"
+            "• `/model swarm <1-9>` - Change the underlying swarm/research model\n\n"
+            "💡 *Tip:* Switch to **6**, **7**, **8**, or **9** if Groq free tier is exhausted."
         )
         await update.message.reply_text(menu, parse_mode="Markdown")
         return
@@ -681,19 +607,18 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
     model_map = {
         "1": "llama-3.3-70b-versatile",
         "2": "llama-3.1-8b-instant",
-        "3": "mixtral-8x7b-32768",
-        "4": "gemma2-9b-it",
-        "5": "deepseek-r1-distill-llama-70b",
         "6": "gemini-1.5-flash",
-        "7": "gemini-2.5-pro"
+        "7": "gemini-2.5-pro",
+        "8": "gpt-4o",
+        "9": "gpt-4o-mini"
     }
 
     selected_model = model_map.get(choice)
     if not selected_model:
-        if choice in [m for m in model_map.values()]:
+        if choice in model_map.values():
             selected_model = choice
         else:
-            await update.message.reply_text("❌ Invalid choice. Use `/model` to see the list of valid options.")
+            await update.message.reply_text("❌ Invalid choice. Use `/model` to view valid registers.")
             return
 
     try:
@@ -715,7 +640,7 @@ if __name__ == "__main__":
     health_thread = threading.Thread(target=start_health_server, daemon=True)
     health_thread.start()
     google_status = f"Google Workspace ({'active' if is_google_configured() else 'NOT configured'})"
-    print(f"--- ARIA IS LIVE | Memory | Web Search | Knowledge Base | {google_status} | WALK + SPRINT + LAUNCH ---", flush=True)
+    print(f"--- ARIA IS LIVE | WALK + SPRINT + LAUNCH ---", flush=True)
     bot = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     bot.add_handler(CommandHandler("walk",   cmd_walk))
     bot.add_handler(CommandHandler("sprint", cmd_sprint))
@@ -725,5 +650,3 @@ if __name__ == "__main__":
     bot.add_handler(CommandHandler("model",  cmd_model))
     bot.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), on_message))
     bot.run_polling(drop_pending_updates=True)
-
-   
