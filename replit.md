@@ -1,13 +1,12 @@
-# ARIA — Multi-Agent Telegram AI Assistant
+# ARIA — Multi-Agent AI Assistant
 
-ARIA is a Telegram bot powered by a LangGraph multi-agent system. It automatically routes messages into two "gears" and uses a 3-agent research swarm for deep queries.
+ARIA is a multi-agent AI system accessible via Telegram and the web. It routes every query into one of three gears and gives all research agents live web search, conversation memory, and a knowledge base.
 
 ## Run & Operate
 
-- `python aria/bot.py` — run the ARIA Telegram bot
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000, unused by bot)
+- `python aria/bot.py` — run the ARIA bot (Telegram + web chat API)
+- `pnpm --filter @workspace/aria-web run dev` — run the status/chat web UI
 - `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
 
 ## Required Secrets
 
@@ -15,8 +14,6 @@ ARIA is a Telegram bot powered by a LangGraph multi-agent system. It automatical
 |---|---|
 | `GROQ_API_KEY` | Groq API key for Llama LLMs (free at console.groq.com) |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token from @BotFather |
-| `GOOGLE_API_KEY` | (unused — legacy Gemini key) |
-| `GEMINI_API_KEY` | (unused — legacy Gemini key) |
 
 ## Stack
 
@@ -26,53 +23,82 @@ ARIA is a Telegram bot powered by a LangGraph multi-agent system. It automatical
 - **LLM provider:** Groq (free tier — 6,000 req/day)
   - Router + Research agents: `llama-3.1-8b-instant` (fast)
   - PA (final response): `llama-3.3-70b-versatile` (smart)
+- **Web search:** DuckDuckGo (duckduckgo_search, free, no API key)
+- **Web UI:** React + Vite at `/` and `/chat`
 - **Deployment:** Replit Reserved VM (always-on)
 
 ## Where things live
 
 ```
 aria/
-  bot.py          ← All ARIA logic (router, research dept, PA node, Telegram handler)
+  bot.py               ← All ARIA logic + HTTP server (chat API + health)
 artifacts/
-  api-server/     ← Node.js API scaffold (unused by bot, hosts deployment config)
+  aria-web/            ← React status page (/) and chat UI (/chat)
+  api-server/          ← Hosts deployment config (artifact.toml)
 ```
 
 ## Architecture — ARIA Agent Graph
 
 ```
-User Message (Telegram)
+User Message (Telegram or Web /api/chat)
         │
         ▼
-  [intent_router]  ← decides WALK or SPRINT
+  [intent_router]  ← decides WALK, SPRINT, or LAUNCH
         │
         ▼
-  [research_dept]  ← SPRINT only: 3 agents in sequence
-  │   ANALYST   — hard data & technical context
-  │   SKEPTIC   — challenges assumptions & risks
-  │   STRATEGIST — long-term implications
+  [research_dept]  ← uses web search + knowledge base
+  │   SPRINT: ANALYST → SKEPTIC → STRATEGIST
+  │   LAUNCH Round 1: ANALYST → SKEPTIC → STRATEGIST
+  │   LAUNCH Round 2: HISTORIAN → FUTURIST → SYNTHESIZER
         │
         ▼
-    [pa_node]    ← Personal Assistant synthesizes final reply
+    [pa_node]    ← synthesizes with conversation memory
         │
         ▼
-  Telegram Reply
+  Reply (Telegram message or /api/chat JSON response)
 ```
 
 ## Gear System
 
 | Gear | Trigger | Behavior |
 |---|---|---|
-| WALK | Casual chat, or `/walk` command | Single PA call — brief, direct |
-| SPRINT | Research/analysis query, or `/sprint` command | 3-agent swarm → PA synthesis |
+| WALK | Casual chat, or `/walk` | Single PA call — brief, direct |
+| SPRINT | Research query, or `/sprint` | 3-agent swarm + web search → PA |
+| LAUNCH | Complex query, or `/launch` | 6-agent 2-round swarm + web search → PA |
+
+## Agent Tools (available to all research agents)
+
+| Tool | Implementation |
+|---|---|
+| Web Search | DuckDuckGo via `duckduckgo_search` |
+| Memory | Per-session conversation history (in-memory deque, max 20 turns) |
+| Knowledge Base | Built-in ARIA knowledge dict with keyword search |
+
+## Telegram Commands
+
+- `/walk <msg>` — Force WALK gear
+- `/sprint <question>` — Force SPRINT gear
+- `/launch <question>` — Force LAUNCH gear (warns ~30s)
+- `/clear` — Reset your conversation memory
+- `/help` — Show command list
+
+## Web Interface
+
+- `/` — About page with gear/tool overview and "Start chatting" CTA
+- `/chat` — Full chat interface; calls `POST /api/chat`
+- `/api/chat` — JSON endpoint `{message, session_id}` → `{reply, gear}`
+- `/api/healthz` — Health check
 
 ## User preferences
 
 - Uses Groq free tier (no billing card needed)
 - Deployed as Reserved VM for 24/7 uptime
+- Do NOT use autoscale — polling needs a persistent process
 
 ## Gotchas
 
-- Bot uses **polling** (not webhooks) — works fine on VM deployment, not on autoscale
-- Do NOT use autoscale deployment — polling needs a persistent process
-- `GOOGLE_API_KEY` / `GEMINI_API_KEY` are stored but unused (switched to Groq due to quota issues)
-- LangGraph's retry logic can delay error responses by ~30s when rate-limited
+- Bot uses **polling** (not webhooks) — Reserved VM only, never autoscale
+- Do NOT run the dev `ARIA Telegram Bot` workflow while deployed — causes polling conflict
+- `GOOGLE_API_KEY` / `GEMINI_API_KEY` stored but unused (legacy)
+- LAUNCH gear takes ~30-45s — `asyncio.to_thread` keeps the event loop alive
+- Memory is in-process only — restarting the bot clears all session history
