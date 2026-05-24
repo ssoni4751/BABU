@@ -1076,8 +1076,9 @@ async def cmd_model(
 # MAIN
 # =========================
 
-if __name__ == "__main__":
+async def main():
 
+    # Start health server thread
     threading.Thread(
         target=start_health_server,
         daemon=True,
@@ -1085,44 +1086,69 @@ if __name__ == "__main__":
 
     print("=== ARIA ONLINE ===")
 
-    bot = (
+    app = (
         ApplicationBuilder()
         .token(TELEGRAM_TOKEN)
         .build()
     )
 
-    bot.add_handler(
-        CommandHandler(
+    # Commands
+    app.add_handler(
         CommandHandler("walk", cmd_walk)
     )
 
-    bot.add_handler(
+    app.add_handler(
         CommandHandler("sprint", cmd_sprint)
     )
 
-    bot.add_handler(
+    app.add_handler(
         CommandHandler("launch", cmd_launch)
     )
 
-    bot.add_handler(
+    app.add_handler(
         CommandHandler("clear", cmd_clear)
     )
 
-    bot.add_handler(
+    app.add_handler(
         CommandHandler("help", cmd_help)
     )
 
-    bot.add_handler(
+    app.add_handler(
         CommandHandler("model", cmd_model)
     )
 
-    bot.add_handler(
+    # Messages
+    app.add_handler(
         MessageHandler(
             filters.TEXT & (~filters.COMMAND),
             on_message,
         )
     )
 
-    bot.run_polling(
+    print("[TG] Polling started")
+
+    await app.initialize()
+
+    await app.start()
+
+    await app.updater.start_polling(
         drop_pending_updates=True
     )
+
+    # Keep alive forever
+    while True:
+        await asyncio.sleep(3600)
+
+# =========================
+# ENTRY
+# =========================
+
+if __name__ == "__main__":
+
+    try:
+
+        asyncio.run(main())
+
+    except KeyboardInterrupt:
+
+        print("ARIA stopped.")
