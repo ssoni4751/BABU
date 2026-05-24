@@ -520,6 +520,14 @@ async def run_aria(update: Update, msg: str, session_id: str):
         stop_typing.set()
         typing_task.cancel()
 
+    # Check for [IMAGE] tag to reply with a photo
+    match = re.search(r'\[IMAGE\]\s*url=([^\s\n]+)(?:\s+caption=(.+))?', reply, re.DOTALL)
+    if match:
+        url = match.group(1)
+        caption = match.group(2) if match.group(2) else ""
+        await update.message.reply_photo(photo=url, caption=caption.strip())
+        return
+
     await update.message.reply_text(reply)
 
 

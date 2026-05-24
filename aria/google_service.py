@@ -645,6 +645,25 @@ def search_google_sheet(sheet_name: str, query: str) -> tuple[bool, str]:
         return False, f"Failed to search Google Sheet: {e}"
 
 
+def search_duckduckgo_image(query: str) -> tuple[bool, str]:
+    """Search DuckDuckGo for an image and return a tagged result for Telegram."""
+    try:
+        from ddgs import DDGS
+        print(f"[IMAGE SEARCH] Searching for images of '{query}'...", flush=True)
+        with DDGS() as ddgs:
+            results = list(ddgs.images(query, max_results=3))
+        if not results:
+            return False, f"No images found for '{query}'."
+
+        # Extract first image
+        img_url = results[0]["image"]
+        title = results[0].get("title", f"Image of {query}")
+        return True, f"[IMAGE] url={img_url} caption={title}"
+    except Exception as e:
+        print(f"[IMAGE SEARCH ERROR] {e}", flush=True)
+        return False, f"Failed to search for image: {e}"
+
+
 # ── Central Execution Router ─────────────────────────────────────────────────
 
 def execute_google_action(action: str, params: dict) -> tuple[bool, str]:
@@ -698,6 +717,12 @@ def execute_google_action(action: str, params: dict) -> tuple[bool, str]:
         if not query:
             return False, "Missing 'query' parameter to search."
         return search_google_sheet(sheet_name, query)
+
+    elif action == "search_image":
+        query = params.get("query", "")
+        if not query:
+            return False, "Missing 'query' parameter to search image."
+        return search_duckduckgo_image(query)
 
     else:
         return False, f"Action `{action}` is not natively supported in direct Google Workspace integration."
