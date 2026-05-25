@@ -271,11 +271,22 @@ def intent_router(state: AriaState):
     if "/walk" in query.lower():
         return {"gear": "WALK",   "user_query": query, "research_data": [], "search_results": "", "action_result": "", "tokens": {"prompt": 0, "completion": 0, "total": 0}}
 
+    # Programmatic search/research routing upgrade:
+    # If the user asks for a web search or requests factual timelines/schedules, upgrade to SPRINT
+    search_keywords = [
+        "search the web", "search for", "look up", "google for", "web search",
+        "latest updates", "news about", "ipl", "schedule for", "final date",
+        "when is", "what is the date", "who is", "how many", "where is"
+    ]
+    cleaned_q = query.lower()
+    if any(kw in cleaned_q for kw in search_keywords):
+        return {"gear": "SPRINT", "user_query": query, "research_data": [], "search_results": "", "action_result": "", "tokens": {"prompt": 0, "completion": 0, "total": 0}}
+
     routing_prompt = (
         "Classify this query into exactly one tier:\n"
         "- LAUNCH: multi-part, deeply complex, strategic, requires comprehensive analysis\n"
-        "- SPRINT: factual, analytical, or research question\n"
-        "- WALK: casual chat, simple question, greeting, or action request (email, calendar, etc.)\n"
+        "- SPRINT: factual, analytical, search, or research questions (asking for facts, dates, news, web lookups)\n"
+        "- WALK: casual chat, greetings, simple conversational replies, or direct action requests (sending email, calendar creation, logging to sheets)\n"
         "Reply with just one word: LAUNCH, SPRINT, or WALK."
     )
     res = llm_dept.invoke([HumanMessage(content=f"{routing_prompt}\n\nQuery: {query}")])
@@ -429,6 +440,16 @@ def pa_node(state: AriaState):
         parts.append(f"[Internal Research]\n{research}")
 
     response = llm_pa.invoke([SystemMessage(content=manifesto), HumanMessage(content="\n\n".join(parts))])
+    
+    # Programmatic safeguard: ensure [IMAGE] tag is preserved in the response if found in action_result
+    if action_result and "[IMAGE]" in action_result:
+        # Check if the response already contains the image tag
+        if "[IMAGE]" not in response.content:
+            # Extract the complete [IMAGE] tag line from action_result
+            match = re.search(r'(\[IMAGE\]\s*url=[^\s\n]+(?:\s+caption=[^\n]+)?)', action_result)
+            if match:
+                response.content += "\n\n" + match.group(1)
+                
     return {"messages": state["messages"] + [response], "tokens": extract_tokens(response)}
 
 
