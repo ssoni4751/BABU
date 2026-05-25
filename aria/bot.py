@@ -107,6 +107,14 @@ def search_profile(query: str) -> str:
     q = cleaned.lower().strip()
     results = []
     
+    # Simple stop-words list to filter out conversational noise
+    stopwords = {
+        "which", "year", "i", "passed", "grade", "ecam", "exam", "my", "me", "in", "on", 
+        "at", "to", "for", "of", "who", "when", "what", "is", "was", "are", "do", "you", 
+        "know", "tell", "show", "did", "does", "have", "has", "had", "a", "an", "the", "about"
+    }
+    search_words = [w for w in q.split() if w not in stopwords and len(w) >= 1]
+    
     # 1. Search L2: Family Graph
     family = USER_PROFILE.get("family_graph", {})
     for relation, details in family.items():
@@ -114,28 +122,27 @@ def search_profile(query: str) -> str:
         if isinstance(details, dict):
             for member_key, member_val in details.items():
                 member_key_clean = member_key.lower().replace("_", " ")
-                # Check if the relationship key (e.g. "father", "maternal_uncle_1") is mentioned in the query
-                # or if the query search term is inside the key/value
-                if member_key_clean in q or q in member_key_clean or any(word in q for word in member_key_clean.split()) or q in str(member_val).lower():
+                # Match if key is in query, or query is in key, or any search word matches key/value
+                if member_key_clean in q or q in member_key_clean or any(w in member_key_clean for w in search_words) or any(w in str(member_val).lower() for w in search_words):
                     results.append(f"• Family Connection ({relation.replace('_', ' ').title()} - {member_key.replace('_', ' ').title()}): {member_val}")
         elif isinstance(details, list):
             for item in details:
-                if q in str(item).lower() or any(word in str(item).lower() for word in q.split() if len(word) > 3):
+                if q in str(item).lower() or any(w in str(item).lower() for w in search_words):
                     results.append(f"• Family connection ({relation.replace('_', ' ').title()}): {item}")
         else:
-            if relation_clean in q or q in relation_clean or q in str(details).lower():
+            if relation_clean in q or q in relation_clean or any(w in str(details).lower() for w in search_words):
                 results.append(f"• Family connection ({relation.replace('_', ' ').title()}): {details}")
                 
     # 2. Search L3: Legacy & Autobiographical Memory
     edu_career = USER_PROFILE.get("education_and_career", {})
     for edu in edu_career.get("education", []):
-        edu_str = str(edu)
-        if q in edu_str.lower() or any(word in edu_str.lower() for word in q.split() if len(word) > 3):
+        edu_str = str(edu).lower()
+        if q in edu_str or any(w in edu_str for w in search_words):
             results.append(f"• Education Record: {edu}")
             
     for emp in edu_career.get("employment_history", []):
-        emp_str = str(emp)
-        if q in emp_str.lower() or any(word in emp_str.lower() for word in q.split() if len(word) > 3):
+        emp_str = str(emp).lower()
+        if q in emp_str or any(w in emp_str for w in search_words):
             results.append(f"• Employment Record: {emp}")
             
     journey = USER_PROFILE.get("mindset_and_journey", {})
@@ -144,10 +151,10 @@ def search_profile(query: str) -> str:
         if isinstance(details, dict):
             for k, v in details.items():
                 k_clean = k.lower().replace("_", " ")
-                if k_clean in q or category_clean in q or q in k_clean or q in str(v).lower() or any(word in str(v).lower() for word in q.split() if len(word) > 3):
+                if k_clean in q or category_clean in q or q in k_clean or q in str(v).lower() or any(w in str(v).lower() for w in search_words):
                     results.append(f"• Background History ({category.replace('_', ' ').title()} - {k.replace('_', ' ').title()}): {v}")
         else:
-            if category_clean in q or q in category_clean or q in str(details).lower() or any(word in str(details).lower() for word in q.split() if len(word) > 3):
+            if category_clean in q or q in category_clean or q in str(details).lower() or any(w in str(details).lower() for w in search_words):
                 results.append(f"• Background History ({category.replace('_', ' ').title()}): {details}")
                 
     if results:
