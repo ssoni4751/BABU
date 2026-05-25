@@ -109,7 +109,29 @@ def search_profile(query: str) -> str:
     # Programmatic Me/Myself/I override:
     # If the query is a general question asking about themselves, load the ENTIRE profile history and context!
     personal_pronouns = {"myself", "who am i", "my journey", "my background", "tell me about me", "my profile", "my biography", "my bio", "who is talk", "who is speak"}
-    if any(p in q for p in personal_pronouns):
+    is_general_profile = any(p in q for p in personal_pronouns)
+    
+    # Programmatic Query vs Statement Classifier:
+    # If the user is just sharing a conversational statement, diary entry, or thought, do NOT search the database!
+    if not is_general_profile:
+        question_starters = (
+            "who", "what", "when", "where", "why", "how", "is", "are", "was", "were", 
+            "can", "could", "should", "would", "do", "does", "did", "tell", "show", 
+            "search", "google", "find", "get", "retrieve", "lookup", "which"
+        )
+        query_phrases = ["what's", "who's", "where's", "how's", "can you", "could you", "do you know"]
+        
+        is_inquiry = (
+            q.endswith("?") 
+            or q.startswith(question_starters) 
+            or any(p in q for p in query_phrases)
+            or len(q.split()) < 4  # Short keyphrase lookups (e.g. "father name") are treated as queries
+        )
+        if not is_inquiry:
+            # Reassurance: Treated as a conversational statement or diary share. Skip database query!
+            return ""
+
+    if is_general_profile:
         results = []
         
         # Load L1 Daily Details
