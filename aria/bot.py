@@ -31,21 +31,26 @@ from telegram.ext import (
     filters,
 )
 
-from langchain_google_genai import ChatGoogleGenerativeAI
-
 TELEGRAM_TOKEN  = os.environ["TELEGRAM_BOT_TOKEN"]
 PORT            = int(os.environ.get("PORT", 8080))
 GEMINI_KEY      = os.environ.get("GEMINI_API_KEY", "")
+OPENAI_KEY      = os.environ.get("OPENAI_API_KEY", "")
 
 CURRENT_PA_MODEL   = "llama-3.3-70b-versatile"
 CURRENT_DEPT_MODEL = "llama-3.1-8b-instant"
 
 def build_llm(model_name: str, temp: float):
-    """Dynamically construct either ChatGroq or ChatGoogleGenerativeAI based on model name."""
+    """Dynamically construct ChatGroq, ChatGoogleGenerativeAI, or ChatOpenAI based on model name."""
     if model_name.startswith("gemini-"):
         if not GEMINI_KEY:
             raise ValueError("GEMINI_API_KEY is not configured in environment variables.")
+        from langchain_google_genai import ChatGoogleGenerativeAI
         return ChatGoogleGenerativeAI(model=model_name, temperature=temp, google_api_key=GEMINI_KEY)
+    elif model_name.startswith("gpt-"):
+        if not OPENAI_KEY:
+            raise ValueError("OPENAI_API_KEY is not configured in environment variables.")
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(model=model_name, temperature=temp, api_key=OPENAI_KEY)
     else:
         return ChatGroq(model=model_name, temperature=temp)
 
@@ -619,12 +624,13 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "3️⃣ `mixtral-8x7b-32768` (Mixtral 8x7B - Great Balance)\n"
             "4️⃣ `gemma2-9b-it` (Gemma 2 9B - Fast & Smart)\n"
             "5️⃣ `deepseek-r1-distill-llama-70b` (DeepSeek R1 - Deep Reasoning)\n"
-            "6️⃣ `gemini-1.5-flash` (Gemini 1.5 - Extremely fast, HUGE limits!)\n"
-            "7️⃣ `gemini-2.5-pro` (Gemini 2.5 Pro - Elite Reasoning & Coding)\n\n"
+            "6️⃣ `gemini-2.5-flash` (Gemini 2.5 Flash - Best Free Capacity!)\n"
+            "7️⃣ `gpt-4o-mini` (GPT-4o Mini - Fast & Cheap OpenAI)\n"
+            "8️⃣ `gpt-4o` (GPT-4o - Flagship OpenAI Intelligence)\n\n"
             "*How to Switch:*\n"
-            "• `/model <1-7>` - Change the main Personal Assistant model\n"
-            "• `/model swarm <1-7>` - Change the underlying swarm/research model\n\n"
-            "💡 *Tip:* If Groq free tier is exhausted, switch the PA model to **6** (Gemini 1.5 Flash) or **7** (Gemini 2.5 Pro) for infinite capacity!"
+            "• `/model <1-8>` - Change the main Personal Assistant model\n"
+            "• `/model swarm <1-8>` - Change the underlying swarm/research model\n\n"
+            "💡 *Tip:* If Groq free tier is exhausted, switch your PA to **6** (Gemini 2.5 Flash) or **7** (GPT-4o Mini) for infinite capacity!"
         )
         await update.message.reply_text(menu, parse_mode="Markdown")
         return
@@ -641,8 +647,9 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "3": "mixtral-8x7b-32768",
         "4": "gemma2-9b-it",
         "5": "deepseek-r1-distill-llama-70b",
-        "6": "gemini-1.5-flash",
-        "7": "gemini-2.5-pro"
+        "6": "gemini-2.5-flash",
+        "7": "gpt-4o-mini",
+        "8": "gpt-4o"
     }
 
     selected_model = model_map.get(choice)
