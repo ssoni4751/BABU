@@ -103,45 +103,51 @@ def search_profile(query: str) -> str:
     if not USER_PROFILE:
         return ""
     
-    q = query.lower().strip()
+    cleaned = clean_search_query(query)
+    q = cleaned.lower().strip()
     results = []
     
     # 1. Search L2: Family Graph
     family = USER_PROFILE.get("family_graph", {})
     for relation, details in family.items():
+        relation_clean = relation.lower().replace("_", " ")
         if isinstance(details, dict):
             for member_key, member_val in details.items():
-                member_str = str(member_val).lower()
-                if q in member_key.lower() or q in member_str:
+                member_key_clean = member_key.lower().replace("_", " ")
+                # Check if the relationship key (e.g. "father", "maternal_uncle_1") is mentioned in the query
+                # or if the query search term is inside the key/value
+                if member_key_clean in q or q in member_key_clean or any(word in q for word in member_key_clean.split()) or q in str(member_val).lower():
                     results.append(f"• Family Connection ({relation.replace('_', ' ').title()} - {member_key.replace('_', ' ').title()}): {member_val}")
         elif isinstance(details, list):
             for item in details:
-                if q in str(item).lower():
+                if q in str(item).lower() or any(word in str(item).lower() for word in q.split() if len(word) > 3):
                     results.append(f"• Family connection ({relation.replace('_', ' ').title()}): {item}")
         else:
-            if q in relation.lower() or q in str(details).lower():
+            if relation_clean in q or q in relation_clean or q in str(details).lower():
                 results.append(f"• Family connection ({relation.replace('_', ' ').title()}): {details}")
                 
     # 2. Search L3: Legacy & Autobiographical Memory
     edu_career = USER_PROFILE.get("education_and_career", {})
     for edu in edu_career.get("education", []):
         edu_str = str(edu)
-        if q in edu_str.lower():
+        if q in edu_str.lower() or any(word in edu_str.lower() for word in q.split() if len(word) > 3):
             results.append(f"• Education Record: {edu}")
             
     for emp in edu_career.get("employment_history", []):
         emp_str = str(emp)
-        if q in emp_str.lower():
+        if q in emp_str.lower() or any(word in emp_str.lower() for word in q.split() if len(word) > 3):
             results.append(f"• Employment Record: {emp}")
             
     journey = USER_PROFILE.get("mindset_and_journey", {})
     for category, details in journey.items():
+        category_clean = category.lower().replace("_", " ")
         if isinstance(details, dict):
             for k, v in details.items():
-                if q in k.lower() or q in str(v).lower():
+                k_clean = k.lower().replace("_", " ")
+                if k_clean in q or category_clean in q or q in k_clean or q in str(v).lower() or any(word in str(v).lower() for word in q.split() if len(word) > 3):
                     results.append(f"• Background History ({category.replace('_', ' ').title()} - {k.replace('_', ' ').title()}): {v}")
         else:
-            if q in category.lower() or q in str(details).lower():
+            if category_clean in q or q in category_clean or q in str(details).lower() or any(word in str(details).lower() for word in q.split() if len(word) > 3):
                 results.append(f"• Background History ({category.replace('_', ' ').title()}): {details}")
                 
     if results:
@@ -375,7 +381,10 @@ def intent_router(state: AriaState):
     search_keywords = [
         "search the web", "search for", "look up", "google for", "web search",
         "latest updates", "news about", "ipl", "schedule for", "final date",
-        "when is", "what is the date", "who is", "how many", "where is"
+        "when is", "what is the date", "who is", "how many", "where is",
+        "what's", "what is", "who are", "tell me about", "do you know", 
+        "father", "mother", "brother", "sister", "grandfather", "grandmother",
+        "education", "job", "career", "history", "school", "college"
     ]
     cleaned_q = query.lower()
     if any(kw in cleaned_q for kw in search_keywords):
