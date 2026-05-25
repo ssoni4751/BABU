@@ -57,6 +57,43 @@ def build_llm(model_name: str, temp: float):
 llm_pa   = build_llm(CURRENT_PA_MODEL,   0.2)
 llm_dept = build_llm(CURRENT_DEPT_MODEL, 0.7)
 
+USER_PROFILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "user_profile.json")
+
+def load_user_profile() -> dict:
+    if os.path.exists(USER_PROFILE_PATH):
+        try:
+            with open(USER_PROFILE_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"[PROFILE LOAD ERROR] {e}", flush=True)
+    return {}
+
+USER_PROFILE = load_user_profile()
+
+def get_user_profile_text() -> str:
+    if not USER_PROFILE:
+        return ""
+    
+    details = USER_PROFILE.get("personal_details", {})
+    journey = USER_PROFILE.get("life_journey", "")
+    prefs = USER_PROFILE.get("preferences", {})
+    
+    lines = ["[USER PROFILE & CONTEXT]"]
+    if details:
+        lines.append("Personal Details:")
+        for k, v in details.items():
+            if v and not str(v).startswith("["):
+                lines.append(f"  • {k.replace('_', ' ').title()}: {v}")
+    if journey and not str(journey).startswith("["):
+        lines.append(f"Life Journey & Background: {journey}")
+    if prefs:
+        lines.append("Preferences:")
+        for k, v in prefs.items():
+            if v and not str(v).startswith("["):
+                lines.append(f"  • {k.replace('_', ' ').title()}: {v}")
+            
+    return "\n".join(lines)
+
 # ── Knowledge base ─────────────────────────────────────────────────────────
 
 KNOWLEDGE_BASE = {
@@ -167,9 +204,12 @@ If NO action is requested, reply with exactly: NO_ACTION"""
 
 
 def detect_action(message: str, history_text: str = "") -> Optional[dict]:
-    """Use LLM to detect if message contains an automation request, resolving context via history."""
+    """Use LLM to detect if message contains an automation request, resolving context via history and user profile."""
     try:
         content = ""
+        profile_text = get_user_profile_text()
+        if profile_text:
+            content += f"{profile_text}\n\n"
         if history_text:
             content += f"[Recent Conversation History]\n{history_text}\n\n"
         content += f"User's Current Message: {message}"
@@ -362,10 +402,13 @@ def research_dept(state: AriaState):
     agent_tokens = []
 
     def run_agent(name: str, role: str, extra_context: str = "") -> str:
+        profile_text = get_user_profile_text()
         system = (
             f"You are part of the ARIA Research Swarm. Role — {name}: {role}\n\n"
             f"You have access to these tools:\n{shared_ctx}"
         )
+        if profile_text:
+            system += f"\n\n{profile_text}"
         user_prompt = f"Principal's Query: {query}"
         if extra_context:
             user_prompt += f"\n\n--- Prior Research ---\n{extra_context}"
@@ -427,6 +470,8 @@ def pa_node(state: AriaState):
         "create a calendar event, log to sheets, etc., confirm it was done (or explain what happened)."
     )
 
+    profile_text = get_user_profile_text()
+    profile_ctx = f"\n\nUser Profile Context:\n{profile_text}" if profile_text else ""
     manifesto = (
         f"YOU ARE ARIA — Personal Intelligence System. Gear: [{gear}]\n\n"
         f"Rules:\n"
@@ -434,6 +479,7 @@ def pa_node(state: AriaState):
         f"2. {style}\n"
         f"3. Use conversation history for context but don't repeat it verbatim."
         f"{google_ctx}"
+        f"{profile_ctx}"
     )
 
     parts = []
@@ -665,8 +711,64 @@ def tg_session(update: Update) -> str:
     return f"tg_{update.message.from_user.id}"
 
 
+def transcribe_audio(file_path: str) -> str:
+    """Use Groq's whisper-large-v3 model to transcribe audio files directly."""
+    try:
+        from groq import Groq
+        groq_key = os.environ.get("GROQ_API_KEY")
+        if not groq_key:
+            return "[Error: GROQ_API_KEY is not configured]"
+        
+        client = Groq(api_key=groq_key)
+        with open(file_path, "rb") as file:
+            transcription = client.audio.transcriptions.create(
+                file=(os.path.basename(file_path), file.read()),
+                model="whisper-large-v3",
+                response_format="text"
+            )
+        return transcription.strip()
+    except Exception as e:
+        print(f"[TRANSCRIPTION ERROR] {e}", flush=True)
+        return f"[Error transcribing audio: {e}]"
+
+
 async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # 1. Check if the message is a voice note
+    if update.message.voice:
+        print(f"[TG VOICE] Received voice note from {update.message.from_user.id}", flush=True)
+        await update.message.chat.send_action("record_voice")
+        
+        try:
+            tg_file = await context.bot.get_file(update.message.voice.file_id)
+            import tempfile
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".ogg") as tmp:
+                temp_path = tmp.name
+            
+            await tg_file.download_to_drive(temp_path)
+            transcribed_text = await asyncio.to_thread(transcribe_audio, temp_path)
+            
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+                
+            if not transcribed_text or transcribed_text.startswith("[Error"):
+                await update.message.reply_text(f"⚠️ Voice transcription failed:\n{transcribed_text}")
+                return
+                
+            print(f"[TG VOICE OK] Transcribed: '{transcribed_text}'", flush=True)
+            await update.message.reply_text(f"🎤 *[Voice Command]*: \"{transcribed_text}\"", parse_mode="Markdown")
+            await run_aria(update, transcribed_text, tg_session(update))
+            
+        except Exception as e:
+            traceback.print_exc(file=sys.stdout)
+            await update.message.reply_text(f"⚠️ Voice processing error: {e}")
+        return
+
+    # 2. Standard text processing
     msg = update.message.text
+    if not msg:
+        return
     print(f"[TG MSG] {update.message.from_user.id}: {msg[:80]}", flush=True)
     await run_aria(update, msg, tg_session(update))
 
@@ -797,5 +899,5 @@ if __name__ == "__main__":
     bot.add_handler(CommandHandler("clear",  cmd_clear))
     bot.add_handler(CommandHandler("help",   cmd_help))
     bot.add_handler(CommandHandler("model",  cmd_model))
-    bot.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), on_message))
+    bot.add_handler(MessageHandler((filters.TEXT | filters.VOICE) & (~filters.COMMAND), on_message))
     bot.run_polling(drop_pending_updates=True)
