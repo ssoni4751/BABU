@@ -83,8 +83,27 @@ KNOWLEDGE_BASE = {
     ),
 }
 
+def clean_search_query(query: str) -> str:
+    """Strip Telegram commands and conversational greetings to produce a high-quality search query."""
+    # 1. Strip command prefixes like /sprint, /launch, /walk, !sprint, !launch, !walk
+    cleaned = re.sub(r'^(?:/[a-zA-Z]+|![a-zA-Z]+)\s*', '', query, flags=re.IGNORECASE)
+    cleaned = cleaned.strip()
+    
+    # 2. Strip conversational introductions/fillers
+    patterns = [
+        r'^(?:hi|hello|hey|yo|greetings|good\s+morning|good\s+afternoon|good\s+evening)\b[,!\s]*',
+        r'^(?:please|kindly|could\s+you\s+please|can\s+you\s+tell\s+me|do\s+you\s+know)\b[,!\s]*',
+        r'^(?:tell\s+me|find\s+out|search\s+for|look\s+up)\b[,!\s]*'
+    ]
+    for pattern in patterns:
+        cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE).strip()
+        
+    return cleaned if cleaned else query
+
+
 def search_knowledge(query: str) -> str:
-    q = query.lower()
+    cleaned = clean_search_query(query)
+    q = cleaned.lower()
     hits = [v for k, v in KNOWLEDGE_BASE.items() if k in q or any(w in q for w in k.split())]
     return "\n".join(hits) if hits else ""
 
@@ -92,10 +111,11 @@ def search_knowledge(query: str) -> str:
 # ── Web search ─────────────────────────────────────────────────────────────
 
 def web_search(query: str, max_results: int = 4) -> str:
+    cleaned = clean_search_query(query)
     try:
         from ddgs import DDGS
         with DDGS() as ddgs:
-            results = list(ddgs.text(query, max_results=max_results))
+            results = list(ddgs.text(cleaned, max_results=max_results))
         if not results:
             return "No results found."
         lines = []
@@ -119,11 +139,12 @@ MAKE_ACTIONS = {
     "copy_photos_to_drive": "Copy photos/videos from Google Photos to Google Drive",
     "copy_contacts_to_drive": "Fetch Google Contacts and write them to a Google Sheet in Google Drive",
     "search_sheet":     "Search for a query or name inside a specific Google Sheet (e.g. Contacts)",
+    "search_image":     "Search the web for an image of a given topic and return it",
 }
 
 ACTION_DETECTION_PROMPT = """Analyze the user message and decide if it requests an automation action.
 
-Supported actions: send_email, create_event, log_to_sheet, create_doc, send_slack, create_task, copy_photos_to_drive, copy_contacts_to_drive, search_sheet
+Supported actions: send_email, create_event, log_to_sheet, create_doc, send_slack, create_task, copy_photos_to_drive, copy_contacts_to_drive, search_sheet, search_image
 
 If an action is requested, reply with a JSON object ONLY (no other text):
 {
@@ -138,6 +159,7 @@ If an action is requested, reply with a JSON object ONLY (no other text):
     // For copy_photos_to_drive: "category" (either 'DOCUMENTS' for ID cards/docs or 'VIDEO' for videos), "folder_name" (folder where files should be copied in Google Drive)
     // For copy_contacts_to_drive: "sheet_name" (name of Google Sheet to save contacts, e.g. "Contacts")
     // For search_sheet: "sheet_name" (name of Google Sheet to search, e.g. "Contacts"), "query" (term or name to search for, e.g. "Mama Jalaun")
+    // For search_image: "query" (image topic or description, e.g. "cute puppy")
   }
 }
 
