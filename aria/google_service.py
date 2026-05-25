@@ -646,22 +646,33 @@ def search_google_sheet(sheet_name: str, query: str) -> tuple[bool, str]:
 
 
 def search_duckduckgo_image(query: str) -> tuple[bool, str]:
-    """Search DuckDuckGo for an image and return a tagged result for Telegram."""
-    try:
-        from ddgs import DDGS
-        print(f"[IMAGE SEARCH] Searching for images of '{query}'...", flush=True)
-        with DDGS() as ddgs:
-            results = list(ddgs.images(query, max_results=3))
-        if not results:
-            return False, f"No images found for '{query}'."
-
-        # Extract first image
-        img_url = results[0]["image"]
-        title = results[0].get("title", f"Image of {query}")
-        return True, f"[IMAGE] url={img_url} caption={title}"
-    except Exception as e:
-        print(f"[IMAGE SEARCH ERROR] {e}", flush=True)
-        return False, f"Failed to search for image: {e}"
+    """Search DuckDuckGo for an image and return a tagged result for Telegram with retries."""
+    import time
+    from ddgs import DDGS
+    
+    max_retries = 3
+    delay = 1.0
+    
+    print(f"[IMAGE SEARCH] Searching for images of '{query}'...", flush=True)
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            with DDGS() as ddgs:
+                results = list(ddgs.images(query, max_results=3))
+            if results:
+                img_url = results[0]["image"]
+                title = results[0].get("title", f"Image of {query}")
+                print(f"[IMAGE SEARCH SUCCESS] Attempt {attempt}: Found {len(results)} images.", flush=True)
+                return True, f"[IMAGE] url={img_url} caption={title}"
+            else:
+                print(f"[IMAGE SEARCH] Attempt {attempt}: No results found.", flush=True)
+        except Exception as e:
+            print(f"[IMAGE SEARCH ERROR] Attempt {attempt} failed: {e}", flush=True)
+            if attempt == max_retries:
+                return False, f"Failed to search for image: {e} after {max_retries} attempts."
+            time.sleep(delay * attempt)
+            
+    return False, f"No images found for '{query}'."
 
 
 # ── Central Execution Router ─────────────────────────────────────────────────

@@ -166,12 +166,17 @@ If an action is requested, reply with a JSON object ONLY (no other text):
 If NO action is requested, reply with exactly: NO_ACTION"""
 
 
-def detect_action(message: str) -> Optional[dict]:
-    """Use LLM to detect if message contains an automation request."""
+def detect_action(message: str, history_text: str = "") -> Optional[dict]:
+    """Use LLM to detect if message contains an automation request, resolving context via history."""
     try:
+        content = ""
+        if history_text:
+            content += f"[Recent Conversation History]\n{history_text}\n\n"
+        content += f"User's Current Message: {message}"
+        
         res = llm_dept.invoke([
             SystemMessage(content=ACTION_DETECTION_PROMPT),
-            HumanMessage(content=message),
+            HumanMessage(content=content),
         ])
         text = res.content.strip()
         if text == "NO_ACTION" or not text.startswith("{"):
@@ -316,10 +321,11 @@ LAUNCH_ROUND_2 = [
 
 def action_node(state: AriaState):
     """Detect and execute Google Workspace API actions directly before research runs."""
-    query      = state["user_query"]
-    session_id = state.get("session_id", "default")
+    query        = state["user_query"]
+    history_text = state.get("history_text", "")
+    session_id   = state.get("session_id", "default")
 
-    action_data = detect_action(query)
+    action_data = detect_action(query, history_text)
     if not action_data or "action" not in action_data:
         return {"action_result": ""}
 
