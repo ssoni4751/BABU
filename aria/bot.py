@@ -532,6 +532,14 @@ def pa_node(state: AriaState):
     history       = state.get("history_text", "")
     action_result = state.get("action_result", "")
 
+    # Dynamic L2/L3 profile retrieval fallback for the WALK gear:
+    # If this is WALK gear and there's no research, query search_profile to fetch matching personal details!
+    # This completely avoids running the 3-agent swarm (saving 2,500+ tokens) for simple personal queries.
+    if gear == "WALK" and not research:
+        profile_ctx = search_profile(state["user_query"])
+        if profile_ctx and "[Local User Profile Matches]" in profile_ctx:
+            research = profile_ctx
+
     if gear == "LAUNCH":
         style = (
             "Always open with [LAUNCH] on its own line.\n"
