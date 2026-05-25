@@ -71,28 +71,82 @@ def load_user_profile() -> dict:
 USER_PROFILE = load_user_profile()
 
 def get_user_profile_text() -> str:
+    """Return L1 Daily Profile Context (Core identity details for conversational awareness)."""
     if not USER_PROFILE:
         return ""
     
     details = USER_PROFILE.get("personal_details", {})
-    journey = USER_PROFILE.get("life_journey", "")
+    business = USER_PROFILE.get("business_context", {})
     prefs = USER_PROFILE.get("preferences", {})
     
+    name = details.get("full_name", "") or details.get("primary_nickname", "")
+    nickname = details.get("primary_nickname", "")
+    
     lines = ["[USER PROFILE & CONTEXT]"]
-    if details:
-        lines.append("Personal Details:")
-        for k, v in details.items():
-            if v and not str(v).startswith("["):
-                lines.append(f"  • {k.replace('_', ' ').title()}: {v}")
-    if journey and not str(journey).startswith("["):
-        lines.append(f"Life Journey & Background: {journey}")
+    if name:
+        lines.append(f"  • User Name: {name} (Nickname: {nickname})" if nickname else f"  • User Name: {name}")
+    if details.get("personal_email"):
+        lines.append(f"  • Personal Email: {details.get('personal_email')}")
+    if details.get("official_email"):
+        lines.append(f"  • Official Email: {details.get('official_email')}")
+    if business:
+        lines.append(f"  • Business: {business.get('business_name', '')} ({business.get('classification', '')})")
     if prefs:
-        lines.append("Preferences:")
-        for k, v in prefs.items():
-            if v and not str(v).startswith("["):
-                lines.append(f"  • {k.replace('_', ' ').title()}: {v}")
-            
+        lines.append(f"  • Timezone: {prefs.get('timezone', 'Asia/Kolkata')}")
+        lines.append(f"  • Communication Style: {prefs.get('communication_style', 'Logical and warm')}")
+        
     return "\n".join(lines)
+
+
+def search_profile(query: str) -> str:
+    """Perform a local directory search on L2 (Family Graph) and L3 (Legacy Memory) to retrieve specific context."""
+    if not USER_PROFILE:
+        return ""
+    
+    q = query.lower().strip()
+    results = []
+    
+    # 1. Search L2: Family Graph
+    family = USER_PROFILE.get("family_graph", {})
+    for relation, details in family.items():
+        if isinstance(details, dict):
+            for member_key, member_val in details.items():
+                member_str = str(member_val).lower()
+                if q in member_key.lower() or q in member_str:
+                    results.append(f"• Family Connection ({relation.replace('_', ' ').title()} - {member_key.replace('_', ' ').title()}): {member_val}")
+        elif isinstance(details, list):
+            for item in details:
+                if q in str(item).lower():
+                    results.append(f"• Family connection ({relation.replace('_', ' ').title()}): {item}")
+        else:
+            if q in relation.lower() or q in str(details).lower():
+                results.append(f"• Family connection ({relation.replace('_', ' ').title()}): {details}")
+                
+    # 2. Search L3: Legacy & Autobiographical Memory
+    edu_career = USER_PROFILE.get("education_and_career", {})
+    for edu in edu_career.get("education", []):
+        edu_str = str(edu)
+        if q in edu_str.lower():
+            results.append(f"• Education Record: {edu}")
+            
+    for emp in edu_career.get("employment_history", []):
+        emp_str = str(emp)
+        if q in emp_str.lower():
+            results.append(f"• Employment Record: {emp}")
+            
+    journey = USER_PROFILE.get("mindset_and_journey", {})
+    for category, details in journey.items():
+        if isinstance(details, dict):
+            for k, v in details.items():
+                if q in k.lower() or q in str(v).lower():
+                    results.append(f"• Background History ({category.replace('_', ' ').title()} - {k.replace('_', ' ').title()}): {v}")
+        else:
+            if q in category.lower() or q in str(details).lower():
+                results.append(f"• Background History ({category.replace('_', ' ').title()}): {details}")
+                
+    if results:
+        return "[Local User Profile Matches]\n" + "\n".join(results)
+    return ""
 
 # ── Knowledge base ─────────────────────────────────────────────────────────
 
@@ -360,7 +414,7 @@ LAUNCH_ROUND_2 = [
 
 
 def action_node(state: AriaState):
-    """Detect and execute Google Workspace API actions directly before research runs."""
+    """Detect and execute Google Workspace API actions directly before research runs, resolving placeholders programmatically."""
     query        = state["user_query"]
     history_text = state.get("history_text", "")
     session_id   = state.get("session_id", "default")
@@ -371,8 +425,28 @@ def action_node(state: AriaState):
 
     action = action_data["action"]
     params = action_data.get("params", {})
-    print(f"[GOOGLE] Detected action={action} params={params}", flush=True)
-    ok, msg = execute_google_action(action, params)
+    
+    # Programmatic resolution of L1 private contact details from user_profile.json
+    details = USER_PROFILE.get("personal_details", {})
+    placeholder_map = {
+        "my_official_email": details.get("official_email", ""),
+        "my_personal_email": details.get("personal_email", ""),
+        "my_mobile": details.get("mobile_number", ""),
+        "my_mobile_number": details.get("mobile_number", ""),
+        "my_name": details.get("full_name", ""),
+        "my_address": details.get("residential_address", {}).get("address", "") if isinstance(details.get("residential_address"), dict) else details.get("residential_address", "")
+    }
+    
+    resolved_params = {}
+    for k, v in params.items():
+        val_str = str(v).strip()
+        if val_str in placeholder_map and placeholder_map[val_str]:
+            resolved_params[k] = placeholder_map[val_str]
+        else:
+            resolved_params[k] = v
+
+    print(f"[GOOGLE] Detected action={action} params={resolved_params}", flush=True)
+    ok, msg = execute_google_action(action, resolved_params)
     print(f"[GOOGLE] Result: {msg}", flush=True)
     return {"action_result": msg}
 
@@ -387,9 +461,13 @@ def research_dept(state: AriaState):
     print(f"[SEARCH] {query[:60]}", flush=True)
     search_ctx = web_search(query)
     kb_ctx     = search_knowledge(query)
+    profile_ctx = search_profile(query)
+    
     shared_ctx = ""
     if kb_ctx:
         shared_ctx += f"[ARIA Knowledge Base]\n{kb_ctx}\n\n"
+    if profile_ctx:
+        shared_ctx += f"[User Personal Profile Matches (Context)]\n{profile_ctx}\n\n"
     if search_ctx:
         shared_ctx += f"[Live Web Search Results]\n{search_ctx}"
 
