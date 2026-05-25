@@ -105,6 +105,49 @@ def search_profile(query: str) -> str:
     
     cleaned = clean_search_query(query)
     q = cleaned.lower().strip()
+    
+    # Programmatic Me/Myself/I override:
+    # If the query is a general question asking about themselves, load the ENTIRE profile history and context!
+    personal_pronouns = {"myself", "who am i", "my journey", "my background", "tell me about me", "my profile", "my biography", "my bio", "who is talk", "who is speak"}
+    if any(p in q for p in personal_pronouns):
+        results = []
+        
+        # Load L1 Daily Details
+        details = USER_PROFILE.get("personal_details", {})
+        if details:
+            results.append("Personal Details:")
+            for k, v in details.items():
+                if v and not str(v).startswith("["):
+                    results.append(f"  • {k.replace('_', ' ').title()}: {v}")
+                    
+        # Load L2 Family Graph Summary
+        family = USER_PROFILE.get("family_graph", {})
+        if family:
+            results.append("Family structure:")
+            for rel, d in family.items():
+                if isinstance(d, dict):
+                    members = ", ".join(f"{k.replace('_', ' ').title()}: {v}" for k, v in d.items() if v and not str(v).startswith("["))
+                    if members:
+                        results.append(f"  • {rel.replace('_', ' ').title()}: {members}")
+                        
+        # Load L3 Legacy Autobiographical History & Journey
+        journey = USER_PROFILE.get("mindset_and_journey", {})
+        for cat, det in journey.items():
+            results.append(f"{cat.replace('_', ' ').title()} Background:")
+            if isinstance(det, dict):
+                for k, v in det.items():
+                    results.append(f"  • {k.replace('_', ' ').title()}: {v}")
+            else:
+                results.append(f"  • {det}")
+                
+        edu_career = USER_PROFILE.get("education_and_career", {})
+        for edu in edu_career.get("education", []):
+            results.append(f"  • Education Record: {edu}")
+        for emp in edu_career.get("employment_history", []):
+            results.append(f"  • Employment Record: {emp}")
+            
+        return "[Local User Profile (Full Personal Directory Loaded)]\n" + "\n".join(results)
+
     results = []
     
     # Simple stop-words list to filter out conversational noise
