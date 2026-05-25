@@ -184,6 +184,45 @@ def add_to_history(session_id: str, user_msg: str, aria_msg: str) -> None:
         _histories[session_id].append(("aria", aria_msg))
 
 
+def extract_tokens(res) -> dict:
+    """Safely extract prompt, completion, and total tokens from an LLM response."""
+    usage = {"prompt": 0, "completion": 0, "total": 0}
+    if not res:
+        return usage
+        
+    # 1. Try unified usage_metadata field (Standard in newer LangChain)
+    usage_meta = getattr(res, "usage_metadata", None)
+    if usage_meta:
+        usage["prompt"] = usage_meta.get("input_tokens", 0) or usage_meta.get("prompt_tokens", 0) or 0
+        usage["completion"] = usage_meta.get("output_tokens", 0) or usage_meta.get("completion_tokens", 0) or 0
+        usage["total"] = usage_meta.get("total_tokens", 0) or (usage["prompt"] + usage["completion"])
+        return usage
+
+    # 2. Try response_metadata -> token_usage (OpenAI / Groq)
+    metadata = getattr(res, "response_metadata", {})
+    token_usage = metadata.get("token_usage")
+    if token_usage:
+        usage["prompt"] = token_usage.get("prompt_tokens", 0)
+        usage["completion"] = token_usage.get("completion_tokens", 0)
+        usage["total"] = token_usage.get("total_tokens", 0)
+        return usage
+
+    return usage
+
+
+def add_tokens(existing: dict, new: dict) -> dict:
+    """LangGraph reducer to sum up cumulative token usage across swarm nodes."""
+    if not existing:
+        existing = {"prompt": 0, "completion": 0, "total": 0}
+    if not new:
+        return existing
+    return {
+        "prompt": existing.get("prompt", 0) + new.get("prompt", 0),
+        "completion": existing.get("completion", 0) + new.get("completion", 0),
+        "total": existing.get("total", 0) + new.get("total", 0)
+    }
+
+
 # ── LangGraph state ────────────────────────────────────────────────────────
 
 class AriaState(TypedDict):
@@ -195,6 +234,7 @@ class AriaState(TypedDict):
     session_id:     str
     search_results: str
     action_result:  str   # result of Make.com webhook if triggered
+    tokens:         Annotated[dict, add_tokens]
 
 
 # ── Nodes ──────────────────────────────────────────────────────────────────
@@ -203,11 +243,11 @@ def intent_router(state: AriaState):
     query = state["messages"][-1].content
     for cmd in ("/launch", "!launch"):
         if cmd in query.lower():
-            return {"gear": "LAUNCH", "user_query": query, "research_data": [], "search_results": "", "action_result": ""}
+            return {"gear": "LAUNCH", "user_query": query, "research_data": [], "search_results": "", "action_result": "", "tokens": {"prompt": 0, "completion": 0, "total": 0}}
     if "/sprint" in query.lower():
-        return {"gear": "SPRINT", "user_query": query, "research_data": [], "search_results": "", "action_result": ""}
+        return {"gear": "SPRINT", "user_query": query, "research_data": [], "search_results": "", "action_result": "", "tokens": {"prompt": 0, "completion": 0, "total": 0}}
     if "/walk" in query.lower():
-        return {"gear": "WALK",   "user_query": query, "research_data": [], "search_results": "", "action_result": ""}
+        return {"gear": "WALK",   "user_query": query, "research_data": [], "search_results": "", "action_result": "", "tokens": {"prompt": 0, "completion": 0, "total": 0}}
 
     routing_prompt = (
         "Classify this query into exactly one tier:\n"
@@ -219,7 +259,7 @@ def intent_router(state: AriaState):
     res = llm_dept.invoke([HumanMessage(content=f"{routing_prompt}\n\nQuery: {query}")])
     raw = res.content.upper()
     gear = "LAUNCH" if "LAUNCH" in raw else ("SPRINT" if "SPRINT" in raw else "WALK")
-    return {"gear": gear, "user_query": query, "research_data": [], "search_results": "", "action_result": ""}
+    return {"gear": gear, "user_query": query, "research_data": [], "search_results": "", "action_result": "", "tokens": extract_tokens(res)}
 
 
 SPRINT_AGENTS = [
@@ -263,7 +303,7 @@ def research_dept(state: AriaState):
     query = state["user_query"]
 
     if gear == "WALK":
-        return {"research_data": [], "search_results": ""}
+        return {"research_data": [], "search_results": "", "tokens": {"prompt": 0, "completion": 0, "total": 0}}
 
     print(f"[SEARCH] {query[:60]}", flush=True)
     search_ctx = web_search(query)
@@ -280,6 +320,8 @@ def research_dept(state: AriaState):
     )
     shared_ctx += google_tool_desc
 
+    agent_tokens = []
+
     def run_agent(name: str, role: str, extra_context: str = "") -> str:
         system = (
             f"You are part of the ARIA Research Swarm. Role — {name}: {role}\n\n"
@@ -289,16 +331,30 @@ def research_dept(state: AriaState):
         if extra_context:
             user_prompt += f"\n\n--- Prior Research ---\n{extra_context}"
         res = llm_dept.invoke([SystemMessage(content=system), HumanMessage(content=user_prompt)])
+        agent_tokens.append(extract_tokens(res))
         return f"[{name}] {res.content}"
 
     if gear == "SPRINT":
         reports = [run_agent(name, role) for name, role in SPRINT_AGENTS]
-        return {"research_data": reports, "search_results": search_ctx}
+        # Aggregate tokens
+        total_tokens = {"prompt": 0, "completion": 0, "total": 0}
+        for t in agent_tokens:
+            total_tokens["prompt"] += t["prompt"]
+            total_tokens["completion"] += t["completion"]
+            total_tokens["total"] += t["total"]
+        return {"research_data": reports, "search_results": search_ctx, "tokens": total_tokens}
 
     r1     = [run_agent(name, role) for name, role in LAUNCH_ROUND_1]
     r1_ctx = "\n\n".join(r1)
     r2     = [run_agent(name, role, extra_context=r1_ctx) for name, role in LAUNCH_ROUND_2]
-    return {"research_data": r1 + r2, "search_results": search_ctx}
+    
+    # Aggregate tokens
+    total_tokens = {"prompt": 0, "completion": 0, "total": 0}
+    for t in agent_tokens:
+        total_tokens["prompt"] += t["prompt"]
+        total_tokens["completion"] += t["completion"]
+        total_tokens["total"] += t["total"]
+    return {"research_data": r1 + r2, "search_results": search_ctx, "tokens": total_tokens}
 
 
 def pa_node(state: AriaState):
@@ -351,7 +407,7 @@ def pa_node(state: AriaState):
         parts.append(f"[Internal Research]\n{research}")
 
     response = llm_pa.invoke([SystemMessage(content=manifesto), HumanMessage(content="\n\n".join(parts))])
-    return {"messages": state["messages"] + [response]}
+    return {"messages": state["messages"] + [response], "tokens": extract_tokens(response)}
 
 
 # ── Graph ──────────────────────────────────────────────────────────────────
@@ -371,7 +427,7 @@ aria_brain = workflow.compile()
 
 # ── Core invoke helper ─────────────────────────────────────────────────────
 
-def invoke_aria(message: str, session_id: str = "default") -> tuple[str, str]:
+def invoke_aria(message: str, session_id: str = "default") -> tuple[str, str, dict]:
     history_text = get_history_text(session_id)
     output = aria_brain.invoke({
         "messages":       [HumanMessage(content=message)],
@@ -382,11 +438,13 @@ def invoke_aria(message: str, session_id: str = "default") -> tuple[str, str]:
         "session_id":     session_id,
         "search_results": "",
         "action_result":  "",
+        "tokens":         {"prompt": 0, "completion": 0, "total": 0}
     })
     reply = output["messages"][-1].content
     gear  = output.get("gear", "WALK")
+    tokens = output.get("tokens", {"prompt": 0, "completion": 0, "total": 0})
     add_to_history(session_id, message, reply)
-    return reply, gear
+    return reply, gear, tokens
 
 
 # ── Health / chat HTTP server ──────────────────────────────────────────────
@@ -487,8 +545,8 @@ class HealthHandler(BaseHTTPRequestHandler):
             if not msg:
                 raise ValueError("empty message")
             print(f"[WEB] session={sid[:16]} msg={msg[:80]}", flush=True)
-            reply, gear = invoke_aria(msg, sid)
-            print(f"[WEB OK] gear={gear} len={len(reply)}", flush=True)
+            reply, gear, tokens = invoke_aria(msg, sid)
+            print(f"[WEB OK] gear={gear} len={len(reply)} | Tokens: {tokens['total']}", flush=True)
             response = json.dumps({"reply": reply, "gear": gear}).encode()
             self.send_response(200)
             self.send_header("Content-Type",   "application/json")
@@ -531,8 +589,11 @@ async def run_aria(update: Update, msg: str, session_id: str):
 
     typing_task = asyncio.create_task(keep_typing())
     try:
-        reply, gear = await asyncio.to_thread(invoke_aria, msg, session_id)
-        print(f"[TG OK] gear={gear} len={len(reply)}", flush=True)
+        reply, gear, tokens = await asyncio.to_thread(invoke_aria, msg, session_id)
+        print(f"[TG OK] gear={gear} len={len(reply)} | Tokens: {tokens['total']} (Prompt: {tokens['prompt']}, Comp: {tokens['completion']})", flush=True)
+        # Append token usage footnote in Telegram
+        if tokens and tokens.get("total", 0) > 0:
+            reply += f"\n\n⚡ _[Tokens: {tokens['total']}]_"
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
         reply = f"⚠️ ARIA error: {e}"
