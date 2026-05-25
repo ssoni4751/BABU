@@ -7,6 +7,7 @@ import threading
 import traceback
 import urllib.request
 from collections import defaultdict, deque
+from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Annotated, List, Literal, Optional, TypedDict
 
@@ -19,6 +20,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from google_service import execute_google_action, is_google_configured
+from social_media import run_autonomous_social_post
 from langchain_groq import ChatGroq
 from langgraph.graph import END, StateGraph
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
@@ -836,9 +838,171 @@ def start_health_server():
     server.serve_forever()
 
 
+# ── Autonomous Social Media Scheduler & State ──────────────────────────────
+
+CHAT_ID_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chat_id.txt")
+LAST_POST_DATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_post_date.txt")
+
+def get_persisted_chat_id() -> Optional[int]:
+    """Load the user's Telegram chat ID from environment or local state file."""
+    env_id = os.environ.get("TELEGRAM_USER_CHAT_ID")
+    if env_id:
+        try:
+            return int(env_id)
+        except ValueError:
+            pass
+            
+    if os.path.exists(CHAT_ID_FILE):
+        try:
+            with open(CHAT_ID_FILE, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+                if content:
+                    return int(content)
+        except Exception:
+            pass
+    return None
+
+def persist_chat_id(chat_id: int):
+    """Save the user's Telegram chat ID to local state file."""
+    try:
+        with open(CHAT_ID_FILE, "w", encoding="utf-8") as f:
+            f.write(str(chat_id))
+    except Exception as e:
+        print(f"[CHAT_ID ERROR] Failed to write chat ID: {e}", flush=True)
+
+def get_last_post_date() -> str:
+    """Read the last success post date."""
+    if os.path.exists(LAST_POST_DATE_FILE):
+        try:
+            with open(LAST_POST_DATE_FILE, "r", encoding="utf-8") as f:
+                return f.read().strip()
+        except Exception:
+            pass
+    return ""
+
+def set_last_post_date(date_str: str):
+    """Write the last success post date."""
+    try:
+        with open(LAST_POST_DATE_FILE, "w", encoding="utf-8") as f:
+            f.write(date_str)
+    except Exception as e:
+        print(f"[SCHEDULER ERROR] Failed to write last post date: {e}", flush=True)
+
+async def scheduler_async_loop(application):
+    """Background async event loop for the daily post checking."""
+    print("[SCHEDULER] Autonomous social posting scheduler thread started.", flush=True)
+    ist_tz = timezone(timedelta(hours=5, minutes=30))
+    
+    while True:
+        try:
+            now_ist = datetime.now(timezone.utc).astimezone(ist_tz)
+            today_str = now_ist.strftime("%Y-%m-%d")
+            
+            # Trigger if it is 9:00 AM IST or later, and we haven't posted today yet
+            if now_ist.hour >= 9 and get_last_post_date() != today_str:
+                chat_id = get_persisted_chat_id()
+                if chat_id:
+                    print(f"[SCHEDULER] Triggering scheduled daily post for {today_str}...", flush=True)
+                    try:
+                        await application.bot.send_message(
+                            chat_id=chat_id,
+                            text="🤖 *Scheduled Marketing Swarm engaged!* Generating daily custom tech graphic and copywriting...",
+                            parse_mode="Markdown"
+                        )
+                    except Exception as err:
+                        print(f"[SCHEDULER ERROR] Failed to send starting notification: {err}", flush=True)
+
+                    # Run posting workflow in thread pool
+                    ok, msg, caption, img_path = await asyncio.to_thread(run_autonomous_social_post)
+                    
+                    if ok:
+                        set_last_post_date(today_str)
+                        print(f"[SCHEDULER SUCCESS] {msg}", flush=True)
+                        try:
+                            with open(img_path, "rb") as photo_file:
+                                await application.bot.send_photo(
+                                    chat_id=chat_id,
+                                    photo=photo_file,
+                                    caption=f"✅ *Autonomous Daily Marketing Post Live!*\n\n{msg}\n\n📝 *Caption:* \n{caption}",
+                                    parse_mode="Markdown"
+                                )
+                        except Exception as err:
+                            print(f"[SCHEDULER ERROR] Failed to send success photo: {err}", flush=True)
+                    else:
+                        print(f"[SCHEDULER FAILED] {msg}", flush=True)
+                        if img_path and os.path.exists(img_path):
+                            set_last_post_date(today_str)  # Mark today as run to avoid loop failure spinning
+                            try:
+                                with open(img_path, "rb") as photo_file:
+                                    await application.bot.send_photo(
+                                        chat_id=chat_id,
+                                        photo=photo_file,
+                                        caption=f"⚠️ *Scheduled Marketing Graphic Generated (Not Posted)*\n\nReason: {msg}\n\n📝 *Caption:* \n{caption}\n\n💡 _Tip: Configure FACEBOOK_PAGE_ID and FACEBOOK_PAGE_ACCESS_TOKEN on Render!_",
+                                        parse_mode="Markdown"
+                                    )
+                            except Exception as err:
+                                print(f"[SCHEDULER ERROR] Failed to send fallback photo: {err}", flush=True)
+                        else:
+                            try:
+                                await application.bot.send_message(
+                                    chat_id=chat_id,
+                                    text=f"❌ *Scheduled Marketing Swarm failed:*\n{msg}",
+                                    parse_mode="Markdown"
+                                )
+                            except Exception as err:
+                                print(f"[SCHEDULER ERROR] Failed to send failure notification: {err}", flush=True)
+                else:
+                    print("[SCHEDULER] It's time to post, but no Telegram chat ID is registered yet. Waiting for user interaction...", flush=True)
+            
+        except Exception as e:
+            print(f"[SCHEDULER ERROR] Exception in loop: {e}", flush=True)
+            traceback.print_exc(file=sys.stdout)
+            
+        # Wake up and check every 15 minutes (900 seconds)
+        await asyncio.sleep(900)
+
+def start_social_scheduler(application):
+    """Start the background thread for autonomous social media posting."""
+    def run_loop():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(scheduler_async_loop(application))
+        
+    t = threading.Thread(target=run_loop, daemon=True)
+    t.start()
+
+async def cmd_postnow(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Force immediately generating and posting today's marketing post."""
+    await update.message.reply_text("🤖 *Starting autonomous marketing swarm...* Generating custom tech/business graphic and copy...", parse_mode="Markdown")
+    try:
+        ok, msg, caption, img_path = await asyncio.to_thread(run_autonomous_social_post)
+        if ok:
+            with open(img_path, "rb") as photo_file:
+                await update.message.reply_photo(
+                    photo=photo_file, 
+                    caption=f"✅ *Successfully posted to Facebook Page!*\n\n{msg}\n\n📝 *Caption:* \n{caption}",
+                    parse_mode="Markdown"
+                )
+        else:
+            if img_path and os.path.exists(img_path):
+                with open(img_path, "rb") as photo_file:
+                    await update.message.reply_photo(
+                        photo=photo_file,
+                        caption=f"⚠️ *Marketing Graphic Generated (Not Posted)*\n\nReason: {msg}\n\n📝 *Caption:* \n{caption}\n\n💡 _Tip: Configure FACEBOOK_PAGE_ID and FACEBOOK_PAGE_ACCESS_TOKEN in Render settings to enable auto-posting!_",
+                        parse_mode="Markdown"
+                    )
+            else:
+                await update.message.reply_text(f"❌ *Failed to generate marketing post:*\n{msg}", parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ *Error running marketing swarm:*\n{e}", parse_mode="Markdown")
+
+
 # ── Telegram handlers ──────────────────────────────────────────────────────
 
 async def run_aria(update: Update, msg: str, session_id: str):
+    if update and update.effective_chat:
+        persist_chat_id(update.effective_chat.id)
+        
     stop_typing = asyncio.Event()
 
     async def keep_typing():
@@ -979,6 +1143,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /walk <msg> — Quick direct reply\n"
         "• /sprint <question> — 3-agent swarm + web search\n"
         "• /launch <question> — 6-agent deep swarm + web search\n\n"
+        "*Marketing Department:*\n"
+        "• /postnow — Instantly generate and post custom daily tech graphic & copy to Facebook Page\n\n"
         "*Extras:*\n"
         "• /clear — Reset conversation memory\n"
         f"• /help — Show this menu{google_line}\n\n"
@@ -1060,11 +1226,16 @@ if __name__ == "__main__":
     google_status = f"Google Workspace ({'active' if is_google_configured() else 'NOT configured'})"
     print(f"--- ARIA IS LIVE | Memory | Web Search | Knowledge Base | {google_status} | WALK + SPRINT + LAUNCH ---", flush=True)
     bot = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    
+    # Start autonomous social media manager scheduler
+    start_social_scheduler(bot)
+    
     bot.add_handler(CommandHandler("walk",   cmd_walk))
     bot.add_handler(CommandHandler("sprint", cmd_sprint))
     bot.add_handler(CommandHandler("launch", cmd_launch))
     bot.add_handler(CommandHandler("clear",  cmd_clear))
     bot.add_handler(CommandHandler("help",   cmd_help))
     bot.add_handler(CommandHandler("model",  cmd_model))
+    bot.add_handler(CommandHandler("postnow", cmd_postnow))
     bot.add_handler(MessageHandler((filters.TEXT | filters.VOICE) & (~filters.COMMAND), on_message))
     bot.run_polling(drop_pending_updates=True)
