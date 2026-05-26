@@ -731,6 +731,50 @@ def search_duckduckgo_image(query: str) -> tuple[bool, str]:
     return False, f"No images found for '{query}'."
 
 
+def upload_file_to_drive(file_path: str, folder_name: str = "ARIA Reports") -> tuple[bool, str]:
+    """Uploads a local file directly to a specified folder in the user's Google Drive."""
+    creds = get_google_creds()
+    if not creds:
+        return False, "Google Workspace authentication not configured."
+
+    if not os.path.exists(file_path):
+        return False, f"Local file not found at: {file_path}"
+
+    try:
+        from googleapiclient.discovery import build
+        from googleapiclient.http import MediaFileUpload
+        
+        drive_service = build("drive", "v3", credentials=creds)
+        
+        # 1. Get or create folder
+        folder_id = get_drive_folder_id(drive_service, folder_name)
+        
+        # 2. Upload file
+        filename = os.path.basename(file_path)
+        media = MediaFileUpload(
+            file_path, 
+            mimetype="application/pdf" if filename.endswith(".pdf") else "application/octet-stream", 
+            resumable=True
+        )
+        
+        file_metadata = {
+            "name": filename,
+            "parents": [folder_id]
+        }
+        
+        print(f"[DRIVE] Uploading {filename} to folder '{folder_name}'...", flush=True)
+        uploaded_file = drive_service.files().create(body=file_metadata, media_body=media, fields="id, name, webViewLink").execute()
+        
+        file_id = uploaded_file.get("id")
+        view_link = uploaded_file.get("webViewLink", "")
+        print(f"[DRIVE SUCCESS] Uploaded file ID: {file_id}. View Link: {view_link}", flush=True)
+        return True, f"✅ Successfully uploaded '{filename}' to Google Drive folder '{folder_name}'! View Link: {view_link}"
+        
+    except Exception as e:
+        print(f"[DRIVE ERROR] Upload failed: {e}", flush=True)
+        return False, f"Failed to upload file to Google Drive: {e}"
+
+
 # ── Central Execution Router ─────────────────────────────────────────────────
 
 def execute_google_action(action: str, params: dict) -> tuple[bool, str]:
@@ -790,6 +834,13 @@ def execute_google_action(action: str, params: dict) -> tuple[bool, str]:
         if not query:
             return False, "Missing 'query' parameter to search image."
         return search_duckduckgo_image(query)
+
+    elif action == "upload_to_drive":
+        file_path = params.get("file_path", "")
+        folder_name = params.get("folder_name", "ARIA Reports")
+        if not file_path:
+            return False, "Missing 'file_path' parameter to upload."
+        return upload_file_to_drive(file_path, folder_name)
 
     else:
         return False, f"Action `{action}` is not natively supported in direct Google Workspace integration."

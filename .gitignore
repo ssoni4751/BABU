@@ -63,3 +63,6 @@ token.json
 *.db
 aria/memory/aria_checkpoint.db
 temp/
+
+# Compiled Output Artifacts
+*.pdf
