@@ -313,13 +313,17 @@ MAKE_ACTIONS = {
     "search_image":     "Search the web for an image of a given topic and return it",
 }
 
-ACTION_DETECTION_PROMPT = """Detect if the user message requests an automation action.
-Actions: send_email, create_event, log_to_sheet, create_doc, send_slack, create_task, copy_photos_to_drive, copy_contacts_to_drive, search_sheet, search_image
-
-If action found, reply JSON ONLY:
-{"action":"<name>","params":{"to","subject","body"|"title","date","time","duration","description"|"sheet_name","data"|"title","content"|"channel","message"|"title","due_date","notes"|"category","folder_name"|"sheet_name"|"sheet_name","query"|"query"}}
-
-No action: reply NO_ACTION"""
+ACTION_DETECTION_PROMPT = (
+    "Detect if the user message requests an automation action.\n"
+    "Actions: send_email, create_event, log_to_sheet, create_doc, send_slack, "
+    "create_task, copy_photos_to_drive, copy_contacts_to_drive, search_sheet, search_image\n\n"
+    "If action found, reply with JSON ONLY containing 'action' and 'params' keys.\n"
+    "Params by action: send_email(to,subject,body), create_event(title,date,time,duration,description), "
+    "log_to_sheet(sheet_name,data), create_doc(title,content), send_slack(channel,message), "
+    "create_task(title,due_date,notes), copy_photos_to_drive(category,folder_name), "
+    "copy_contacts_to_drive(sheet_name), search_sheet(sheet_name,query), search_image(query)\n\n"
+    "If NO action: reply exactly NO_ACTION"
+)
 
 
 ACTION_TRIGGER_WORDS = {
@@ -908,7 +912,7 @@ async def scheduler_async_loop(application):
                                 await application.bot.send_photo(
                                     chat_id=chat_id,
                                     photo=photo_file,
-                                    caption=f"✅ *Autonomous Daily Marketing Post Live!*\n\n{msg}\n\n📝 *Caption:* \n{caption}",
+                                    caption=f"✅ *Autonomous Daily Marketing Post Live!*\n\n{msg}\n\n📝 *Caption:*\n{escape_markdown(caption)}",
                                     parse_mode="Markdown"
                                 )
                         except Exception as err:
@@ -916,13 +920,13 @@ async def scheduler_async_loop(application):
                     else:
                         print(f"[SCHEDULER FAILED] {msg}", flush=True)
                         if img_path and os.path.exists(img_path):
-                            set_last_post_date(today_str)  # Mark today as run to avoid loop failure spinning
+                            set_last_post_date(today_str)
                             try:
                                 with open(img_path, "rb") as photo_file:
                                     await application.bot.send_photo(
                                         chat_id=chat_id,
                                         photo=photo_file,
-                                        caption=f"⚠️ *Scheduled Marketing Graphic Generated (Not Posted)*\n\nReason: {msg}\n\n📝 *Caption:* \n{caption}\n\n💡 _Tip: Configure FACEBOOK_PAGE_ID and FACEBOOK_PAGE_ACCESS_TOKEN on Render!_",
+                                        caption=f"⚠️ *Scheduled Marketing Graphic Generated (Not Posted)*\n\nReason: {msg}\n\n📝 *Caption:*\n{escape_markdown(caption)}\n\n💡 _Tip: Configure FACEBOOK_PAGE_ID and FACEBOOK_PAGE_ACCESS_TOKEN on Render!_",
                                         parse_mode="Markdown"
                                     )
                             except Exception as err:
@@ -956,16 +960,22 @@ def start_social_scheduler(application):
     t = threading.Thread(target=run_loop, daemon=True)
     t.start()
 
+def escape_markdown(text: str) -> str:
+    """Escape special Telegram Markdown v1 characters in dynamic/AI-generated content."""
+    return re.sub(r'([_*`\[])', r'\\\1', str(text))
+
+
 async def cmd_postnow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Force immediately generating and posting today's marketing post."""
     await update.message.reply_text("🤖 *Starting autonomous marketing swarm...* Generating custom tech/business graphic and copy...", parse_mode="Markdown")
     try:
         ok, msg, caption, img_path = await asyncio.to_thread(run_autonomous_social_post)
+        safe_caption = escape_markdown(caption)
         if ok:
             with open(img_path, "rb") as photo_file:
                 await update.message.reply_photo(
-                    photo=photo_file, 
-                    caption=f"✅ *Successfully posted to Facebook Page!*\n\n{msg}\n\n📝 *Caption:* \n{caption}",
+                    photo=photo_file,
+                    caption=f"✅ *Successfully posted to Facebook Page!*\n\n{msg}\n\n📝 *Caption:*\n{safe_caption}",
                     parse_mode="Markdown"
                 )
         else:
@@ -973,7 +983,7 @@ async def cmd_postnow(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 with open(img_path, "rb") as photo_file:
                     await update.message.reply_photo(
                         photo=photo_file,
-                        caption=f"⚠️ *Marketing Graphic Generated (Not Posted)*\n\nReason: {msg}\n\n📝 *Caption:* \n{caption}\n\n💡 _Tip: Configure FACEBOOK_PAGE_ID and FACEBOOK_PAGE_ACCESS_TOKEN in Render settings to enable auto-posting!_",
+                        caption=f"⚠️ *Marketing Graphic Generated (Not Posted)*\n\nReason: {msg}\n\n📝 *Caption:*\n{safe_caption}\n\n💡 _Tip: Configure FACEBOOK_PAGE_ID and FACEBOOK_PAGE_ACCESS_TOKEN in Render settings!_",
                         parse_mode="Markdown"
                     )
             else:
