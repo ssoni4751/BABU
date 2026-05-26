@@ -58,3 +58,8 @@ __pycache__/
 .env
 credentials.json
 token.json
+
+# Databases & Local Memory
+*.db
+aria/memory/aria_checkpoint.db
+temp/
