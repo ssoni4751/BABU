@@ -960,9 +960,10 @@ def start_social_scheduler(application):
     t = threading.Thread(target=run_loop, daemon=True)
     t.start()
 
+
 def escape_markdown(text: str) -> str:
-    """Escape special Telegram Markdown v1 characters in dynamic/AI-generated content."""
-    return re.sub(r'([_*`\[])', r'\\\1', str(text))
+    """HARD FIX: Strip risky characters instead of escaping them to prevent Telegram parse errors."""
+    return re.sub(r'([_*`\[\]])', '', str(text))
 
 
 async def cmd_postnow(update: Update, context: ContextTypes.DEFAULT_TYPE):
