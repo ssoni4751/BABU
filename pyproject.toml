@@ -11,4 +11,8 @@ dependencies = [
     "langgraph>=1.2.1",
     "python-telegram-bot>=22.7",
     "ddgs>=9.0.0",
+    "google-api-python-client>=2.129.0",
+    "google-auth-oauthlib>=1.2.0",
+    "google-auth-httplib2>=0.2.0",
+    "langchain-openai>=0.1.1",
 ]

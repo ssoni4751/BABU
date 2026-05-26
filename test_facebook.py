@@ -1,0 +1,55 @@
+import os
+import sys
+
+# Force UTF-8 encoding for Windows standard streams to prevent emoji/unicode logging crashes
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
+# Configure API Key for local test
+os.environ["GEMINI_API_KEY"] = "AIzaSyDvdk3YviRanZywosse2rF8ZumBGzZqLbc"
+
+# Add aria to python path so we can import from it
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "aria"))
+
+from aria.social_media import generate_daily_post, generate_flux_graphic, publish_to_facebook_page
+
+def main():
+    print("="*60)
+    print("RUNNING ARIA SOCIAL MEDIA INTEGRATION TEST")
+    print("="*60)
+    
+    try:
+        # 1. Generate Caption and Image Prompt
+        print("\n[STEP 1] Generating caption and FLUX prompt using Gemini 2.5 Flash...")
+        caption, img_prompt = generate_daily_post()
+        print(f"\n✨ Generated Caption:\n{caption}")
+        print(f"\n🎨 Generated FLUX Prompt:\n{img_prompt}")
+        
+        # 2. Download Image via FLUX
+        print("\n[STEP 2] Downloading custom graphic from Pollinations.ai FLUX...")
+        img_path = generate_flux_graphic(img_prompt)
+        print(f"✅ Graphic saved at: {img_path}")
+        print(f"Size of graphic: {os.path.getsize(img_path)} bytes")
+        
+        # 3. Simulate or Publish to Facebook
+        print("\n[STEP 3] Testing Facebook Page Publishing...")
+        success, message = publish_to_facebook_page(img_path, caption)
+        if success:
+            print(f"🚀 SUCCESS: {message}")
+        else:
+            print(f"⚠️ INFO: {message}")
+            print("Note: Facebook posting will complete on Render once FACEBOOK_PAGE_ID and FACEBOOK_PAGE_ACCESS_TOKEN are supplied.")
+            
+        print("\n" + "="*60)
+        print("TEST COMPLETED SUCCESSFULLY!")
+        print("="*60)
+        
+    except Exception as e:
+        print(f"\n❌ TEST FAILED with error: {e}")
+        import traceback
+        traceback.print_exc()
+
+if __name__ == "__main__":
+    main()

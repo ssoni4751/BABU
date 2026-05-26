@@ -47,3 +47,19 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Environment & Secrets
+.env
+credentials.json
+token.json
+
+# Databases & Local Memory
+*.db
+aria/memory/aria_checkpoint.db
+temp/
