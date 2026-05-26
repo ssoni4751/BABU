@@ -19,16 +19,53 @@ Structure your output as a clean JSON object ONLY, with exactly two keys (no mar
 
 Reply with raw JSON ONLY."""
 
+def fetch_india_tech_trends() -> str:
+    """Fetch current technology trends and digital news/scams in India using DuckDuckGo."""
+    print("[SOCIAL] Fetching real-time India tech trends from DuckDuckGo...", flush=True)
+    query = "latest technology news India cybersecurity digital scams 2026"
+    try:
+        from ddgs import DDGS
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=3))
+        if not results:
+            return "No real-time trends found."
+        lines = []
+        for r in results:
+            lines.append(f"• {r['title']}\n  {r['body']}\n  Source: {r['href']}")
+        raw_text = "\n\n".join(lines)
+        
+        # Compress it using memory.py's compress_context_payload to fit in the LLM context perfectly
+        from memory import compress_context_payload
+        compressed = compress_context_payload(raw_text, "India tech trends news")
+        return compressed
+    except Exception as e:
+        print(f"[SOCIAL TRENDS ERROR] Failed to fetch live trends: {e}", flush=True)
+        return "Could not fetch real-time trends due to network error."
+
+
 def generate_daily_post() -> tuple[str, str]:
-    """Use Gemini 2.5 Flash to generate a caption and matching graphic prompt."""
+    """Use Gemini 2.5 Flash to generate a caption and matching graphic prompt incorporating real-time India tech trends."""
     gemini_key = os.environ.get("GEMINI_API_KEY")
     if not gemini_key:
         raise ValueError("GEMINI_API_KEY is not configured in the environment.")
         
+    # Fetch real-time trends
+    trends_context = fetch_india_tech_trends()
+    print(f"[SOCIAL] Integrated Tech Trends Context:\n{trends_context}", flush=True)
+    
     print("[SOCIAL] Generating daily post caption and prompt via Gemini...", flush=True)
     
     llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=gemini_key, temperature=0.7)
-    res = llm.invoke([SystemMessage(content=DAILY_POST_PROMPT), HumanMessage(content="Generate today's scheduled post.")])
+    
+    user_prompt = "Generate today's scheduled post."
+    if trends_context and "Could not fetch" not in trends_context and "No real-time trends" not in trends_context:
+        user_prompt += (
+            f"\n\nHere is some real-time digital news/cybersecurity trend context in India:\n"
+            f"-----------\n{trends_context}\n-----------\n\n"
+            f"IMPORTANT: Please draft a daily tech tip or advice post that naturally addresses or draws inspiration from the real-time Indian tech/security trends above. Ensure it connects seamlessly to the tech services offered by 'Anshu Computers Orai'!"
+        )
+        
+    res = llm.invoke([SystemMessage(content=DAILY_POST_PROMPT), HumanMessage(content=user_prompt)])
     
     text = res.content.strip()
     
@@ -112,11 +149,45 @@ def publish_to_facebook_page(image_path: str, caption: str) -> tuple[bool, str]:
 
 
 def run_autonomous_social_post() -> tuple[bool, str, str, str]:
-    """Unified wrapper that runs the entire generation and publishing flow."""
+    """Unified wrapper that runs the entire generation and publishing flow, auditing metrics."""
+    from memory import append_to_profile_ledger, log_execution_failure
+    
+    caption, img_prompt = "", ""
+    img_path = ""
     try:
         caption, img_prompt = generate_daily_post()
         img_path = generate_flux_graphic(img_prompt)
         ok, msg = publish_to_facebook_page(img_path, caption)
+        
+        # Log work progress atomically to profile
+        append_to_profile_ledger("work_summaries", {
+            "task_name": "Daily FB Marketing Post",
+            "status": "SUCCESS" if ok else "FAILED",
+            "details": f"Message: {msg} | Graphic Prompt: {img_prompt[:80]}..."
+        })
+        
+        if not ok:
+            # Log failure to the Epistemic Immune System
+            log_execution_failure(
+                domain="social_media.facebook_publisher",
+                method=f"publish_to_facebook_page(img_path, caption) with Page ID {os.environ.get('FACEBOOK_PAGE_ID')}",
+                exception_msg=msg
+            )
+            
         return ok, msg, caption, img_path
     except Exception as e:
-        return False, f"Autonomous workflow failed: {e}", "", ""
+        error_msg = str(e)
+        print(f"[SOCIAL CRITICAL ERROR] {error_msg}", flush=True)
+        
+        append_to_profile_ledger("work_summaries", {
+            "task_name": "Daily FB Marketing Post",
+            "status": "CRITICAL_ERROR",
+            "details": error_msg
+        })
+        
+        log_execution_failure(
+            domain="social_media.autonomous_social_post",
+            method="run_autonomous_social_post() full pipeline execution",
+            exception_msg=error_msg
+        )
+        return False, f"Autonomous workflow failed: {error_msg}", caption, img_path

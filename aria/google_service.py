@@ -84,6 +84,40 @@ def is_google_configured() -> bool:
     return os.path.exists(TOKEN_PATH) or os.path.exists(CREDENTIALS_PATH)
 
 
+def validate_google_token_health(bot_token: str = None, chat_id: int = None) -> bool:
+    """Check if the Google OAuth token is active and valid, sending a Telegram warning on failure."""
+    try:
+        creds = get_google_creds()
+        if creds and creds.valid:
+            return True
+    except Exception as e:
+        print(f"[TOKEN WATCHDOG ERROR] OAuth token is invalid or expired: {e}", flush=True)
+        
+    tg_token = bot_token or os.environ.get("TELEGRAM_BOT_TOKEN")
+    tg_chat = chat_id or os.environ.get("TELEGRAM_USER_CHAT_ID")
+    
+    if tg_token and tg_chat:
+        try:
+            import urllib.request
+            import urllib.parse
+            message = (
+                "⚠️ *ARIA Google Workspace Alert!*\n\n"
+                "Your Google Workspace OAuth Token has expired or is invalid, and could not be auto-refreshed.\n\n"
+                "💡 *Action Required*:\n"
+                "Please run `.venv\\Scripts\\python authenticate.py` on your host machine to re-authorize Google Workspace services!"
+            )
+            encoded_msg = urllib.parse.quote(message)
+            url = f"https://api.telegram.org/bot{tg_token}/sendMessage?chat_id={tg_chat}&text={encoded_msg}&parse_mode=Markdown"
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=10) as response:
+                response.read()
+            print("[TOKEN WATCHDOG] Proactive alert sent to Telegram chat.", flush=True)
+        except Exception as err:
+            print(f"[TOKEN WATCHDOG ERROR] Failed to send Telegram alert: {err}", flush=True)
+            
+    return False
+
+
 # ── Action Helper functions ──────────────────────────────────────────────────
 
 def send_gmail(to: str, subject: str, body: str) -> tuple[bool, str]:
@@ -277,6 +311,21 @@ def log_to_sheet(sheet_name: str, data: dict) -> tuple[bool, str]:
     except Exception as e:
         print(f"[SHEETS ERROR] {e}", flush=True)
         return False, f"Failed to log data to Google Sheets: {e}"
+
+
+def log_telemetry(session_id: str, gear: str, tokens: dict, success: bool, query: str = "") -> tuple[bool, str]:
+    """Logs execution, token metrics, and status to a master 'ARIA_Telemetry' Google Sheet."""
+    telemetry_data = {
+        "Session ID": session_id,
+        "Gear": gear,
+        "Success": "SUCCESS" if success else "FAILED",
+        "Prompt Tokens": tokens.get("prompt", 0),
+        "Completion Tokens": tokens.get("completion", 0),
+        "Total Tokens": tokens.get("total", 0),
+        "Query Preview": query[:120] if query else ""
+    }
+    print(f"[TELEMETRY] Logging execution data to sheet: {telemetry_data}", flush=True)
+    return log_to_sheet("ARIA_Telemetry", telemetry_data)
 
 
 def create_doc(title: str, content: str) -> tuple[bool, str]:

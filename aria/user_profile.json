@@ -115,5 +115,33 @@
       "timezone": "Asia/Kolkata",
       "communication_style": "Logical, analytical, warm, and highly action-oriented. Values independent cognition over ritualistic conformity."
     }
+  },
+  "dynamic_memory_ledger": {
+    "chat_summaries": [
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-26T07:34:09.061492+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-26T07:35:24.655391+00:00"
+      }
+    ],
+    "work_summaries": [
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A highly detailed, modern, and visually stunning square graphic for FLUX model. ...",
+        "timestamp": "2026-05-26T07:36:05.292993+00:00"
+      }
+    ]
   }
 }

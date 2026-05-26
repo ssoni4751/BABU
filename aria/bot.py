@@ -42,7 +42,7 @@ CURRENT_PA_MODEL   = "llama-3.3-70b-versatile"
 CURRENT_DEPT_MODEL = "llama-3.1-8b-instant"
 
 def build_llm(model_name: str, temp: float):
-    """Dynamically construct ChatGroq, ChatGoogleGenerativeAI, or ChatOpenAI based on model name."""
+    """Dynamically construct ChatGroq, ChatGoogleGenerativeAI, or ChatOpenAI with automatic Gemini fallback."""
     if model_name.startswith("gemini-"):
         if not GEMINI_KEY:
             raise ValueError("GEMINI_API_KEY is not configured in environment variables.")
@@ -54,7 +54,16 @@ def build_llm(model_name: str, temp: float):
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(model=model_name, temperature=temp, api_key=OPENAI_KEY)
     else:
-        return ChatGroq(model=model_name, temperature=temp)
+        main_llm = ChatGroq(model=model_name, temperature=temp)
+        if GEMINI_KEY:
+            try:
+                from langchain_google_genai import ChatGoogleGenerativeAI
+                fallback_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=temp, google_api_key=GEMINI_KEY)
+                return main_llm.with_fallbacks(fallbacks=[fallback_llm])
+            except Exception as e:
+                print(f"[LLM BUILD WARNING] Could not bind Gemini fallback: {e}", flush=True)
+                return main_llm
+        return main_llm
 
 llm_pa   = build_llm(CURRENT_PA_MODEL,   0.2)
 llm_dept = build_llm(CURRENT_DEPT_MODEL, 0.7)
@@ -541,18 +550,42 @@ def research_dept(state: AriaState):
     if gear == "WALK":
         return {"research_data": [], "search_results": "", "tokens": {"prompt": 0, "completion": 0, "total": 0}}
 
-    print(f"[SEARCH] {query[:60]}", flush=True)
-    search_ctx = web_search(query)
-    kb_ctx     = search_knowledge(query)
-    profile_ctx = search_profile(query)
+    # ── Magnitude & Domain Triage ──
+    q = query.lower()
+    personal_keywords = {"my father", "my mother", "my brother", "my sibling", "my parents", "myself", "who am i", "my background", "my education", "my career", "my school", "my job"}
+    is_personal = any(kw in q for kw in personal_keywords)
     
+    search_keywords = {"search the web", "search for", "google for", "latest updates", "news about", "ipl", "weather in", "when is", "what is the date"}
+    is_general_search = any(kw in q for kw in search_keywords)
+    
+    search_ctx = ""
+    profile_ctx = ""
+    kb_ctx = ""
+    
+    if is_personal:
+        print("[TRIAGE] Routing to Personal Scoped Memory (Profile lookup only).", flush=True)
+        profile_ctx = search_profile(query)
+    elif is_general_search:
+        print("[TRIAGE] Routing to General Scoped Memory (Web search only).", flush=True)
+        search_ctx = web_search(query)
+    else:
+        print("[TRIAGE] Routing to Multi-Domain Research Memory.", flush=True)
+        search_ctx = web_search(query)
+        kb_ctx     = search_knowledge(query)
+        profile_ctx = search_profile(query)
+
+    # ── Staged Context Compression Gateway ──
+    from memory import compress_context_payload
+    compressed_search = compress_context_payload(search_ctx, "web search results")
+    compressed_profile = compress_context_payload(profile_ctx, "personal profile details")
+
     shared_ctx = ""
     if kb_ctx:
         shared_ctx += f"[ARIA Knowledge Base]\n{kb_ctx}\n\n"
-    if profile_ctx:
-        shared_ctx += f"[User Personal Profile Matches (Context)]\n{profile_ctx}\n\n"
-    if search_ctx:
-        shared_ctx += f"[Live Web Search Results]\n{search_ctx}"
+    if compressed_profile:
+        shared_ctx += f"[User Personal Profile Matches (Distilled)]\n{compressed_profile}\n\n"
+    if compressed_search:
+        shared_ctx += f"[Live Web Search Results (Distilled)]\n{compressed_search}"
 
     google_tool_desc = (
         "\n\n[Google Workspace Automation Tools available]\n"
@@ -563,11 +596,23 @@ def research_dept(state: AriaState):
     agent_tokens = []
 
     def run_agent(name: str, role: str, extra_context: str = "") -> str:
+        # Introduce a staggered jitter delay to smooth out API spikes on free-tier limits
+        import time
+        if agent_tokens:
+            print(f"[SWARM JITTER] Staggering agent {name} (sleeping 1.2s)...", flush=True)
+            time.sleep(1.2)
+            
+        # Retrieve logged anti-pattern failures to enforce anti-pattern rules (Failure Ledger)
+        from memory import get_anti_pattern_rules
+        anti_patterns = get_anti_pattern_rules(f"swarm_agent.{name.lower()}")
+        
         profile_text = get_user_profile_text()
         system = (
             f"You are part of the ARIA Research Swarm. Role — {name}: {role}\n\n"
             f"You have access to these tools:\n{shared_ctx}"
         )
+        if anti_patterns:
+            system += f"\n\n{anti_patterns}"
         if profile_text:
             system += f"\n\n{profile_text}"
         user_prompt = f"Principal's Query: {query}"
@@ -676,6 +721,21 @@ def pa_node(state: AriaState):
 
 # ── Graph ──────────────────────────────────────────────────────────────────
 
+# Setup durable SQLite session checkpointer
+try:
+    from langgraph.checkpoint.sqlite import SqliteSaver
+    import sqlite3
+    
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory", "aria_checkpoint.db")
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    conn = sqlite3.connect(db_path, check_same_thread=False)
+    memory_checkpointer = SqliteSaver(conn)
+    print(f"[SQLITE SESSIONS] Durable session state checker initialized at: {db_path}", flush=True)
+except Exception as e:
+    print(f"[SQLITE SESSIONS WARNING] SQLite checkpointer failed: {e}. Using in-memory fallback.", flush=True)
+    from langgraph.checkpoint.memory import MemorySaver
+    memory_checkpointer = MemorySaver()
+
 workflow = StateGraph(AriaState)
 workflow.add_node("router",   intent_router)
 workflow.add_node("action",   action_node)
@@ -686,13 +746,42 @@ workflow.add_edge("router",   "action")
 workflow.add_edge("action",   "research")
 workflow.add_edge("research", "pa")
 workflow.add_edge("pa",       END)
-aria_brain = workflow.compile()
+aria_brain = workflow.compile(checkpointer=memory_checkpointer)
 
 
 # ── Core invoke helper ─────────────────────────────────────────────────────
 
 def invoke_aria(message: str, session_id: str = "default") -> tuple[str, str, dict]:
     history_text = get_history_text(session_id)
+    
+    # Rolling Context Summarizer Check
+    # If the history text exceeds ~3,000 tokens (~12,000 characters), compress it!
+    if len(history_text) > 12000:
+        print(f"[MEMORY COMPRESSION] Session '{session_id}' exceeds token budget. Summarizing...", flush=True)
+        try:
+            from memory import compress_context_payload, append_to_profile_ledger
+            distilled_summary = compress_context_payload(history_text, f"conversation session {session_id}")
+            
+            # Commit compressed summary to dynamic ledger under chat_summaries
+            append_to_profile_ledger("chat_summaries", {
+                "session_topic": f"Auto-archived conversation history for session {session_id}",
+                "key_takeaways": distilled_summary,
+                "action_items": ["Autosaved context to prevent token degradation"]
+            })
+            
+            # Clear active memory list for this session to flush context
+            with _memory_lock:
+                _histories[session_id].clear()
+                
+            # Re-read history_text (it will now be empty)
+            history_text = ""
+            print(f"[MEMORY COMPRESSION] Session '{session_id}' memory flushed cleanly.", flush=True)
+        except Exception as e:
+            print(f"[MEMORY COMPRESSION ERROR] Failed to compress session history: {e}", flush=True)
+            
+    # LangGraph checkpointer session configuration
+    config = {"configurable": {"thread_id": session_id}}
+    
     output = aria_brain.invoke({
         "messages":       [HumanMessage(content=message)],
         "gear":           "WALK",
@@ -703,11 +792,23 @@ def invoke_aria(message: str, session_id: str = "default") -> tuple[str, str, di
         "search_results": "",
         "action_result":  "",
         "tokens":         {"prompt": 0, "completion": 0, "total": 0}
-    })
+    }, config=config)
     reply = output["messages"][-1].content
     gear  = output.get("gear", "WALK")
     tokens = output.get("tokens", {"prompt": 0, "completion": 0, "total": 0})
     add_to_history(session_id, message, reply)
+    
+    # Asynchronously log telemetry to Google Sheets without blocking the reply speed
+    try:
+        from google_service import log_telemetry
+        threading.Thread(
+            target=log_telemetry, 
+            args=(session_id, gear, tokens, True, message), 
+            daemon=True
+        ).start()
+    except Exception as te:
+        print(f"[TELEMETRY WARNING] Could not queue telemetry log: {te}", flush=True)
+        
     return reply, gear, tokens
 
 
@@ -903,6 +1004,14 @@ async def scheduler_async_loop(application):
                 chat_id = get_persisted_chat_id()
                 if chat_id:
                     print(f"[SCHEDULER] Triggering scheduled daily post for {today_str}...", flush=True)
+                    
+                    # Check Google token health proactively
+                    try:
+                        from google_service import validate_google_token_health
+                        validate_google_token_health(TELEGRAM_TOKEN, chat_id)
+                    except Exception as he:
+                        print(f"[SCHEDULER ERROR] Failed to run token health watchdog: {he}", flush=True)
+                        
                     try:
                         await application.bot.send_message(
                             chat_id=chat_id,
