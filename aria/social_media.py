@@ -13,7 +13,7 @@ DAILY_POST_PROMPT = """You are ARIA's automated Social Media Manager. Your job i
 
 Structure your output as a clean JSON object ONLY, with exactly two keys (no markdown code blocks like ```json):
 {
-  "caption": "An engaging, warm, yet professional post caption. Provide a practical daily tech tip, hardware care advice, internet security tip, or productivity advice. Use emojis and professional hashtags (e.g. #AnshuComputersOrai #OraiTech #DailyTechTip). Reference 'Anshu Computers Orai' naturally as the shop ready to help clients with these issues.",
+  "caption": "An engaging, warm, yet professional post caption. Provide a practical daily tech tip, hardware care advice, internet security tip, or productivity advice. Use emojis and professional hashtags (e.g. #AnshuComputersOrai #OraiTech #DailyTechTip). Reference 'Anshu Computers Orai' naturally as the shop ready to help clients with these issues. IMPORTANT: USE PLAIN TEXT ONLY. DO NOT use any markdown formatting, asterisks (*), underscores (_), or bolding.",
   "image_prompt": "A highly detailed, modern, and visually stunning square graphic prompt for a text-to-image generator (FLUX model). The graphic should represent the tip. Specify clean, premium aesthetics, high contrast, vibrant harmonious colors, and a clean bold sans-serif text banner centered inside the image representing the core concept (e.g., 'SECURE YOUR WIFI' or 'BOOST PC SPEED' in crisp readable typography)."
 }
 
@@ -79,6 +79,9 @@ def generate_daily_post() -> tuple[str, str]:
     caption = data.get("caption", "Boost your digital productivity today! Visit Anshu Computers Orai for all tech assistance.")
     image_prompt = data.get("image_prompt", "Sleek modern office desk with high-tech computer monitor showing text 'TECH TIPS' in clean typography, professional lighting, 4k resolution")
     
+    # HARD FIX: Strip out all formatting characters that crash Telegram V1 Markdown parser
+    caption = caption.replace("*", "").replace("_", "").replace("`", "")
+    
     return caption, image_prompt
 
 
@@ -86,7 +89,7 @@ def generate_flux_graphic(prompt: str) -> str:
     """Generate an image from prompt using Pollinations.ai FLUX model and return local file path."""
     try:
         encoded_prompt = urllib.parse.quote(prompt)
-        url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?model=flux&width=1080&height=1080&nologo=true"
+        url = f"[https://image.pollinations.ai/prompt/](https://image.pollinations.ai/prompt/){encoded_prompt}?model=flux&width=1080&height=1080&nologo=true"
         print(f"[FLUX] Requesting image for prompt: '{prompt}'...", flush=True)
         
         req = urllib.request.Request(
@@ -123,7 +126,7 @@ def publish_to_facebook_page(image_path: str, caption: str) -> tuple[bool, str]:
     if not page_id or not page_token:
         return False, "Missing FACEBOOK_PAGE_ID or FACEBOOK_PAGE_ACCESS_TOKEN in environment variables."
         
-    url = f"https://graph.facebook.com/v19.0/{page_id}/photos"
+    url = f"[https://graph.facebook.com/v19.0/](https://graph.facebook.com/v19.0/){page_id}/photos"
     
     try:
         with open(image_path, "rb") as img_file:
