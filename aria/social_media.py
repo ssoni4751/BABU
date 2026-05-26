@@ -6,7 +6,7 @@ import urllib.request
 import urllib.parse
 import tempfile
 import requests
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
 
 DAILY_POST_PROMPT = """You are ARIA's automated Social Media Manager. Your job is to write a highly engaging daily social media post for 'Anshu Computers Orai' (a computer services and digital assistance shop run by Shubham Swarnkar, nickname Anshu, in Kaushal Market, Orai, Jalaun, Uttar Pradesh).
@@ -44,18 +44,19 @@ def fetch_india_tech_trends() -> str:
 
 
 def generate_daily_post() -> tuple[str, str]:
-    """Use Gemini 2.5 Flash to generate a caption and matching graphic prompt incorporating real-time India tech trends."""
-    gemini_key = os.environ.get("GEMINI_API_KEY")
-    if not gemini_key:
-        raise ValueError("GEMINI_API_KEY is not configured in the environment.")
+    """Use Groq (Llama 3.1 8B) to generate a caption and matching graphic prompt incorporating real-time India tech trends."""
+    groq_key = os.environ.get("GROQ_API_KEY")
+    if not groq_key:
+        raise ValueError("GROQ_API_KEY is not configured in the environment.")
         
     # Fetch real-time trends
     trends_context = fetch_india_tech_trends()
     print(f"[SOCIAL] Integrated Tech Trends Context:\n{trends_context}", flush=True)
     
-    print("[SOCIAL] Generating daily post caption and prompt via Gemini...", flush=True)
+    print("[SOCIAL] Generating daily post caption and prompt via Groq...", flush=True)
     
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=gemini_key, temperature=0.7)
+    # Swapped Gemini for Groq's fast and reliable 8B model
+    llm = ChatGroq(model="llama-3.1-8b-instant", api_key=groq_key, temperature=0.7)
     
     user_prompt = "Generate today's scheduled post."
     if trends_context and "Could not fetch" not in trends_context and "No real-time trends" not in trends_context:
