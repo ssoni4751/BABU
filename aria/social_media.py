@@ -174,6 +174,8 @@ def run_autonomous_social_post() -> tuple[bool, str, str, str]:
                 exception_msg=msg
             )
             
+        import gc
+        gc.collect()
         return ok, msg, caption, img_path
     except Exception as e:
         error_msg = str(e)
@@ -190,4 +192,6 @@ def run_autonomous_social_post() -> tuple[bool, str, str, str]:
             method="run_autonomous_social_post() full pipeline execution",
             exception_msg=error_msg
         )
+        import gc
+        gc.collect()
         return False, f"Autonomous workflow failed: {error_msg}", caption, img_path

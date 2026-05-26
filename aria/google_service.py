@@ -8,7 +8,6 @@ from email.mime.text import MIMEText
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
 
 # Unified scopes for ARIA Google Workspace actions
 SCOPES = [
@@ -127,6 +126,7 @@ def send_gmail(to: str, subject: str, body: str) -> tuple[bool, str]:
         return False, "Google Workspace authentication not configured."
 
     try:
+        from googleapiclient.discovery import build
         service = build("gmail", "v1", credentials=creds)
         message = MIMEText(body)
         message["to"] = to
@@ -151,6 +151,7 @@ def create_calendar_event(title: str, date: str, time: str, duration: str = "1 h
         return False, "Google Workspace authentication not configured."
 
     try:
+        from googleapiclient.discovery import build
         service = build("calendar", "v3", credentials=creds)
 
         # 1. Parse date and time to produce start ISO string
@@ -245,6 +246,7 @@ def log_to_sheet(sheet_name: str, data: dict) -> tuple[bool, str]:
         return False, "Google Workspace authentication not configured."
 
     try:
+        from googleapiclient.discovery import build
         drive_service = build("drive", "v3", credentials=creds)
         sheets_service = build("sheets", "v4", credentials=creds)
 
@@ -335,6 +337,7 @@ def create_doc(title: str, content: str) -> tuple[bool, str]:
         return False, "Google Workspace authentication not configured."
 
     try:
+        from googleapiclient.discovery import build
         docs_service = build("docs", "v1", credentials=creds)
 
         # 1. Create a blank document
@@ -403,6 +406,7 @@ def create_google_task(title: str, due_date: str = "", notes: str = "") -> tuple
         return False, "Google Workspace authentication not configured."
 
     try:
+        from googleapiclient.discovery import build
         service = build("tasks", "v1", credentials=creds)
         task = {
             "title": title,
@@ -447,6 +451,7 @@ def copy_google_photos_to_drive(category: str, folder_name: str) -> tuple[bool, 
         return False, "Google Workspace authentication not configured."
 
     try:
+        from googleapiclient.discovery import build
         drive_service = build("drive", "v3", credentials=creds)
         
         # 1. Ensure target folder in Drive exists
@@ -555,6 +560,7 @@ def copy_google_contacts_to_drive(sheet_name: str = "Contacts") -> tuple[bool, s
         return False, "Google Workspace authentication not configured."
 
     try:
+        from googleapiclient.discovery import build
         people_service = build("people", "v1", credentials=creds)
         drive_service = build("drive", "v3", credentials=creds)
         sheets_service = build("sheets", "v4", credentials=creds)
@@ -641,6 +647,7 @@ def search_google_sheet(sheet_name: str, query: str) -> tuple[bool, str]:
         return False, "Google Workspace authentication not configured."
 
     try:
+        from googleapiclient.discovery import build
         drive_service = build("drive", "v3", credentials=creds)
         sheets_service = build("sheets", "v4", credentials=creds)
 

@@ -620,6 +620,11 @@ def research_dept(state: AriaState):
             user_prompt += f"\n\n--- Prior Research ---\n{extra_context}"
         res = llm_dept.invoke([SystemMessage(content=system), HumanMessage(content=user_prompt)])
         agent_tokens.append(extract_tokens(res))
+        
+        # Force garbage collection to keep memory profile exceptionally low
+        import gc
+        gc.collect()
+        
         return f"[{name}] {res.content}"
 
     if gear == "SPRINT":
@@ -809,6 +814,10 @@ def invoke_aria(message: str, session_id: str = "default") -> tuple[str, str, di
     except Exception as te:
         print(f"[TELEMETRY WARNING] Could not queue telemetry log: {te}", flush=True)
         
+    # Force complete garbage collection to clean up LangGraph state memory objects
+    import gc
+    gc.collect()
+    
     return reply, gear, tokens
 
 
