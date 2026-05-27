@@ -436,45 +436,133 @@ class AriaState(TypedDict):
     search_results: str
     action_result:  str   # result of Make.com webhook if triggered
     tokens:         Annotated[dict, add_tokens]
+    detected_action: Optional[dict]
+    active_goal:    Optional[dict]
 
 
 # ── Nodes ──────────────────────────────────────────────────────────────────
 
+UNIFIED_ROUTER_PROMPT = (
+    "You are ARIA's Consolidated Orchestrator and Gatekeeper.\n"
+    "Your job is to analyze the user's current message and recent history, classify the target execution tier (gear), "
+    "and detect if they are requesting an automation tool action.\n\n"
+    "Execution Tiers (gear):\n"
+    "- LAUNCH: Deeply complex, strategic, multi-part questions requiring full 6-agent deep swarm research and ultimate synthesis.\n"
+    "- SPRINT: Factual, analytical, search-based, or research questions asking for facts, dates, news, or looking up info.\n"
+    "- WALK: Casual chat, greetings, simple conversational replies, or direct action requests (like sending email, creating calendar event, writing a doc, logging to sheet).\n\n"
+    "Available Automation Actions (action_type):\n"
+    "- send_email: Send an email via Gmail. Params: to, subject, body\n"
+    "- create_event: Create a Google Calendar event. Params: title, date, time, duration, description\n"
+    "- log_to_sheet: Log data to a Google Sheet. Params: sheet_name, data\n"
+    "- create_doc: Create a Google Doc. Params: title, content\n"
+    "- send_slack: Send a Slack message. Params: channel, message\n"
+    "- create_task: Create a task. Params: title, due_date, notes\n"
+    "- copy_photos_to_drive: Copy Google Photos to Drive. Params: category, folder_name\n"
+    "- copy_contacts_to_drive: Write Google Contacts to Sheet in Drive. Params: sheet_name\n"
+    "- search_sheet: Search a query in a specific Sheet. Params: sheet_name, query\n"
+    "- search_image: Search web for an image. Params: query\n\n"
+    "If the action requires research data to generate its content (for example, writing an email summarizing some fresh news, or creating a doc about a researched topic), set the respective parameter value to exactly \"[NEEDS_RESEARCH_CONTEXT]\". This informs the downstream pipeline to resolve this parameter using crawled facts.\n\n"
+    "Provide your analysis as a clean JSON object ONLY, with exactly this format (do NOT wrap in markdown code blocks, just return raw JSON):\n"
+    "{\n"
+    "  \"gear\": \"LAUNCH\" or \"SPRINT\" or \"WALK\",\n"
+    "  \"requires_action\": true or false,\n"
+    "  \"action\": \"action_type_name_or_null\",\n"
+    "  \"params\": { ...param_keys_and_values... }\n"
+    "}"
+)
+
+
 def intent_router(state: AriaState):
     query = state["messages"][-1].content
+    history_text = state.get("history_text", "")
+    
+    # Fast path for manual tier commands
+    manual_gear = None
     for cmd in ("/launch", "!launch"):
         if cmd in query.lower():
-            return {"gear": "LAUNCH", "user_query": query, "research_data": [], "search_results": "", "action_result": "", "tokens": {"prompt": 0, "completion": 0, "total": 0}}
+            manual_gear = "LAUNCH"
     if "/sprint" in query.lower():
-        return {"gear": "SPRINT", "user_query": query, "research_data": [], "search_results": "", "action_result": "", "tokens": {"prompt": 0, "completion": 0, "total": 0}}
+        manual_gear = "SPRINT"
     if "/walk" in query.lower():
-        return {"gear": "WALK",   "user_query": query, "research_data": [], "search_results": "", "action_result": "", "tokens": {"prompt": 0, "completion": 0, "total": 0}}
-
-    # Programmatic search/research routing upgrade:
-    # If the user asks for a web search or requests factual timelines/schedules, upgrade to SPRINT
-    search_keywords = [
-        "search the web", "search for", "look up", "google for", "web search",
-        "latest updates", "news about", "ipl", "schedule for", "final date",
-        "when is", "what is the date", "who is", "how many", "where is",
-        "what's", "what is", "who are", "tell me about", "do you know", 
-        "father", "mother", "brother", "sister", "grandfather", "grandmother",
-        "education", "job", "career", "history", "school", "college"
-    ]
+        manual_gear = "WALK"
+        
     cleaned_q = query.lower()
-    if any(kw in cleaned_q for kw in search_keywords):
-        return {"gear": "SPRINT", "user_query": query, "research_data": [], "search_results": "", "action_result": "", "tokens": {"prompt": 0, "completion": 0, "total": 0}}
-
-    routing_prompt = (
-        "Classify this query into exactly one tier:\n"
-        "- LAUNCH: multi-part, deeply complex, strategic, requires comprehensive analysis\n"
-        "- SPRINT: factual, analytical, search, or research questions (asking for facts, dates, news, web lookups)\n"
-        "- WALK: casual chat, greetings, simple conversational replies, or direct action requests (sending email, calendar creation, logging to sheets)\n"
-        "Reply with just one word: LAUNCH, SPRINT, or WALK."
-    )
-    res = llm_dept.invoke([HumanMessage(content=f"{routing_prompt}\n\nQuery: {query}")])
-    raw = res.content.upper()
-    gear = "LAUNCH" if "LAUNCH" in raw else ("SPRINT" if "SPRINT" in raw else "WALK")
-    return {"gear": gear, "user_query": query, "research_data": [], "search_results": "", "action_result": "", "tokens": extract_tokens(res)}
+    
+    # Build prompt content
+    content = ""
+    profile_text = get_user_profile_text()
+    if profile_text:
+        content += f"User Profile Context:\n{profile_text}\n\n"
+    if history_text:
+        content += f"[Recent Conversation History]\n{history_text}\n\n"
+    content += f"User's Current Message: {query}"
+    
+    try:
+        res = llm_dept.invoke([
+            SystemMessage(content=UNIFIED_ROUTER_PROMPT),
+            HumanMessage(content=content)
+        ])
+        text = res.content.strip()
+        
+        # Parse JSON from response
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+        if match:
+            data = json.loads(match.group())
+        else:
+            data = json.loads(text)
+            
+        gear = data.get("gear", "WALK")
+        if manual_gear:
+            gear = manual_gear
+            
+        requires_action = data.get("requires_action", False)
+        detected_action = None
+        if requires_action and data.get("action"):
+            detected_action = {
+                "action": data["action"],
+                "params": data.get("params", {})
+            }
+            
+        # Programmatic SPRINT upgrade override if not already SPRINT/LAUNCH
+        if gear == "WALK":
+            search_keywords = [
+                "search the web", "search for", "look up", "google for", "web search",
+                "latest updates", "news about", "ipl", "schedule for", "final date",
+                "when is", "what is the date", "who is", "how many", "where is",
+                "what's", "what is", "who are", "tell me about", "do you know", 
+                "father", "mother", "brother", "sister", "grandfather", "grandmother",
+                "education", "job", "career", "history", "school", "college"
+            ]
+            if any(kw in cleaned_q for kw in search_keywords):
+                gear = "SPRINT"
+                
+            # If parameters are marked [NEEDS_RESEARCH_CONTEXT], upgrade to SPRINT to compile research!
+            if detected_action:
+                params_vals = [str(v) for v in detected_action.get("params", {}).values()]
+                if any("[NEEDS_RESEARCH_CONTEXT]" in v for v in params_vals):
+                    gear = "SPRINT"
+                    
+        return {
+            "gear": gear,
+            "user_query": query,
+            "research_data": [],
+            "search_results": "",
+            "action_result": "",
+            "detected_action": detected_action,
+            "tokens": extract_tokens(res)
+        }
+    except Exception as e:
+        print(f"[ROUTER ERROR] Failed unified routing: {e}. Falling back to default.", flush=True)
+        fallback_gear = manual_gear if manual_gear else "WALK"
+        return {
+            "gear": fallback_gear,
+            "user_query": query,
+            "research_data": [],
+            "search_results": "",
+            "action_result": "",
+            "detected_action": None,
+            "tokens": {"prompt": 0, "completion": 0, "total": 0}
+        }
 
 
 SPRINT_AGENTS = [
@@ -497,18 +585,21 @@ LAUNCH_ROUND_2 = [
 
 
 def action_node(state: AriaState):
-    """Detect and execute Google Workspace API actions directly before research runs, resolving placeholders programmatically."""
-    query        = state["user_query"]
-    history_text = state.get("history_text", "")
-    session_id   = state.get("session_id", "default")
-
-    action_data = detect_action(query, history_text)
+    """Execute Google Workspace API actions after research runs, resolving research placeholders programmatically."""
+    action_data = state.get("detected_action")
     if not action_data or "action" not in action_data:
         return {"action_result": ""}
 
     action = action_data["action"]
     params = action_data.get("params", {})
     
+    # Grab compiled research context if any parameter needs it
+    research_text = ""
+    if state.get("research_data"):
+        research_text += "Research Reports:\n" + "\n\n".join(state["research_data"]) + "\n\n"
+    if state.get("search_results"):
+        research_text += "Live Web Search Results:\n" + state["search_results"]
+        
     # Programmatic resolution of L1 private contact details from user_profile.json
     details = USER_PROFILE.get("personal_details", {})
     placeholder_map = {
@@ -523,15 +614,64 @@ def action_node(state: AriaState):
     resolved_params = {}
     for k, v in params.items():
         val_str = str(v).strip()
+        # Resolve user profile placeholders
         if val_str in placeholder_map and placeholder_map[val_str]:
             resolved_params[k] = placeholder_map[val_str]
+        # Resolve research context placeholders
+        elif "[NEEDS_RESEARCH_CONTEXT]" in val_str:
+            resolved_params[k] = val_str.replace("[NEEDS_RESEARCH_CONTEXT]", research_text.strip() if research_text else "(No research context found)")
         else:
             resolved_params[k] = v
 
-    print(f"[GOOGLE] Detected action={action} params={resolved_params}", flush=True)
+    print(f"[GOOGLE] Executing reordered action={action} params={resolved_params}", flush=True)
     ok, msg = execute_google_action(action, resolved_params)
-    print(f"[GOOGLE] Result: {msg}", flush=True)
+    print(f"[GOOGLE] Result: {ok} - {msg}", flush=True)
     return {"action_result": msg}
+
+
+def task_manager_node(state: AriaState):
+    """Verify research reports and state legitimacy before authorizing tool execution."""
+    detected = state.get("detected_action")
+    active_goal = state.get("active_goal")
+    
+    if not active_goal:
+        active_goal = {
+            "goal_id": "goal_" + datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S"),
+            "canonical_instruction": state["user_query"],
+            "status": "NEW",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+    if not detected:
+        print("[TASK MANAGER] No tool action detected. Bypassing validation.", flush=True)
+        active_goal["status"] = "COMPLETED"
+        return {"active_goal": active_goal}
+        
+    print(f"[TASK MANAGER] Auditing pending action: {detected['action']}...", flush=True)
+    
+    # Validate context-informed parameters
+    params = detected.get("params", {})
+    has_placeholder = any("[NEEDS_RESEARCH_CONTEXT]" in str(v) for v in params.values())
+    
+    if has_placeholder:
+        # Check if research successfully compiled reports
+        has_research = len(state.get("research_data", [])) > 0 or len(state.get("search_results", "").strip()) > 0
+        if not has_research:
+            print("[TASK MANAGER WARNING] Action requires research context, but research_data is empty! Blocking execution.", flush=True)
+            active_goal["status"] = "BLOCKED"
+            return {
+                "detected_action": None,
+                "active_goal": active_goal,
+                "action_result": "❌ Action blocked by Task Manager: Missing required research context."
+            }
+        else:
+            print("[TASK MANAGER SUCCESS] Research context validated. Authorizing action.", flush=True)
+            active_goal["status"] = "VERIFIED"
+    else:
+        print("[TASK MANAGER SUCCESS] Action requires no research context. Authorizing directly.", flush=True)
+        active_goal["status"] = "VERIFIED"
+        
+    return {"active_goal": active_goal}
 
 
 def research_dept(state: AriaState):
@@ -667,15 +807,17 @@ def pa_node(state: AriaState):
 # ── Graph ──────────────────────────────────────────────────────────────────
 
 workflow = StateGraph(AriaState)
-workflow.add_node("router",   intent_router)
-workflow.add_node("action",   action_node)
-workflow.add_node("research", research_dept)
-workflow.add_node("pa",       pa_node)
+workflow.add_node("router",       intent_router)
+workflow.add_node("research",     research_dept)
+workflow.add_node("task_manager", task_manager_node)
+workflow.add_node("action",       action_node)
+workflow.add_node("pa",           pa_node)
 workflow.set_entry_point("router")
-workflow.add_edge("router",   "action")
-workflow.add_edge("action",   "research")
-workflow.add_edge("research", "pa")
-workflow.add_edge("pa",       END)
+workflow.add_edge("router",       "research")
+workflow.add_edge("research",     "task_manager")
+workflow.add_edge("task_manager", "action")
+workflow.add_edge("action",       "pa")
+workflow.add_edge("pa",           END)
 aria_brain = workflow.compile()
 
 
@@ -692,6 +834,8 @@ def invoke_aria(message: str, session_id: str = "default") -> tuple[str, str, di
         "session_id":     session_id,
         "search_results": "",
         "action_result":  "",
+        "detected_action": None,
+        "active_goal":    None,
         "tokens":         {"prompt": 0, "completion": 0, "total": 0}
     })
     reply = output["messages"][-1].content

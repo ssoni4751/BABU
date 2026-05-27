@@ -105,29 +105,37 @@ def log_execution_failure(domain: str, method: str, exception_msg: str) -> bool:
         from langchain_google_genai import ChatGoogleGenerativeAI
         from langchain_core.messages import SystemMessage, HumanMessage
         
-        # Call Gemini 2.5 Flash for high-capacity, free failure distillation
-        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=GEMINI_KEY, temperature=0.2)
-        res = llm.invoke([
-            SystemMessage(content="You are ARIA's self-correcting Epistemic Immune System. Distill system errors into highly actionable execution constraints."),
-            HumanMessage(content=analysis_prompt)
-        ])
+        observed = exception_msg
+        rule = f"CRITICAL DIRECTION: Avoid using methodology {method} under domain {domain} to prevent exception: {exception_msg}"
         
-        text = res.content.strip()
-        # Clean markdown code blocks if the model wrapped it
-        if text.startswith("```"):
-            text = text.split("```")[1]
-            if text.startswith("json"):
-                text = text[4:]
-        text = text.strip()
-        
-        data = json.loads(text)
+        try:
+            # Call Gemini 2.5 Flash for high-capacity, free failure distillation
+            llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=GEMINI_KEY, temperature=0.2)
+            res = llm.invoke([
+                SystemMessage(content="You are ARIA's self-correcting Epistemic Immune System. Distill system errors into highly actionable execution constraints."),
+                HumanMessage(content=analysis_prompt)
+            ])
+            
+            text = res.content.strip()
+            # Clean markdown code blocks if the model wrapped it
+            if text.startswith("```"):
+                text = text.split("```")[1]
+                if text.startswith("json"):
+                    text = text[4:]
+            text = text.strip()
+            
+            data = json.loads(text)
+            observed = data.get("observed_consequence", exception_msg)
+            rule = data.get("active_anti_pattern_rule", rule)
+        except Exception as gemini_err:
+            print(f"[IMMUNE SYSTEM WARNING] Gemini synthesis failed: {gemini_err}. Falling back to rule-based anti-pattern generator.", flush=True)
         
         failure_entry = {
             "failure_signature": f"{domain.upper()}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
             "domain": domain,
             "attempted_methodology": method,
-            "observed_consequence": data.get("observed_consequence", exception_msg),
-            "active_anti_pattern_rule": data.get("active_anti_pattern_rule", f"Avoid using {method} due to error: {exception_msg}"),
+            "observed_consequence": observed,
+            "active_anti_pattern_rule": rule,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
