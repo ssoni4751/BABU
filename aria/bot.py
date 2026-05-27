@@ -499,8 +499,14 @@ def intent_router(state: AriaState):
     content += f"User's Current Message: {query}"
     
     try:
+        from memory import get_anti_pattern_rules
+        router_rules = get_anti_pattern_rules("router")
+        system_prompt = UNIFIED_ROUTER_PROMPT
+        if router_rules:
+            system_prompt += "\n\n" + router_rules
+            
         res = llm_dept.invoke([
-            SystemMessage(content=UNIFIED_ROUTER_PROMPT),
+            SystemMessage(content=system_prompt),
             HumanMessage(content=content)
         ])
         text = res.content.strip()
@@ -680,6 +686,32 @@ def task_manager_node(state: AriaState):
         
     print(f"[TASK MANAGER] Auditing pending action: {detected['action']}...", flush=True)
     
+    action_name = detected["action"]
+    tool_domain = f"action.{action_name}"
+    # Fallback to general publisher domain if it is the Facebook publisher
+    if action_name == "facebook_publish" or "facebook" in action_name:
+        tool_domain = "social_media.facebook_publisher"
+        
+    from memory import get_anti_pattern_rules
+    tool_rules = get_anti_pattern_rules(tool_domain)
+    
+    if tool_rules:
+        print(f"[TASK MANAGER] Auditing constraints for {tool_domain}:\n{tool_rules}", flush=True)
+        # If a persistent credential or OAuth block is logged, bypass execution to protect token limits
+        if any(word in tool_rules.lower() for word in ["expired", "invalid", "malformed", "bypassed", "quota"]):
+            print(f"[TASK MANAGER WARNING] Proactively bypassing '{action_name}' due to persistent historical failure.", flush=True)
+            active_goal["status"] = "BYPASSED"
+            
+            duration = round(time.time() - tm_start, 2)
+            tracker = state.get("execution_tracker") or {}
+            tracker["task_manager_duration"] = duration
+            return {
+                "detected_action": None,
+                "active_goal": active_goal,
+                "action_result": f"⚠️ Action bypassed by Task Manager due to persistent historical failures:\n{tool_rules}",
+                "execution_tracker": tracker
+            }
+    
     # Validate context-informed parameters
     params = detected.get("params", {})
     has_placeholder = any("[NEEDS_RESEARCH_CONTEXT]" in str(v) for v in params.values())
@@ -826,11 +858,16 @@ def pa_node(state: AriaState):
     google_tools = ", ".join(MAKE_ACTIONS.keys())
     google_ctx = f"\n\nGoogle Workspace active [{google_tools}]. Confirm any triggered actions clearly."
 
+    from memory import get_anti_pattern_rules
+    pa_rules = get_anti_pattern_rules("pa")
+    
     manifesto = (
         f"ARIA [{gear}]. Never reveal internal agents. {style}"
         f" Use history for context, never repeat it verbatim."
         f"{google_ctx}{profile_ctx}"
     )
+    if pa_rules:
+        manifesto += "\n\n" + pa_rules
 
     parts = []
     if history:
