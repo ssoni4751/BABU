@@ -27,7 +27,7 @@ except ImportError:
     from social_media import run_autonomous_social_post
 from langchain_groq import ChatGroq
 from langgraph.graph import END, StateGraph
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
@@ -107,6 +107,69 @@ def get_user_profile_text() -> str:
         lines.append(f"  â€¢ Communication Style: {prefs.get('communication_style', 'Logical and warm')}")
         
     return "\n".join(lines)
+
+
+def get_profile_fact_answer(query: str) -> str:
+    """Deterministic profile answers for high-frequency identity questions."""
+    if not USER_PROFILE:
+        return ""
+
+    q = (query or "").lower()
+    details = USER_PROFILE.get("personal_details", {})
+    business = USER_PROFILE.get("business_context", {})
+    family = USER_PROFILE.get("family_graph", {})
+
+    full_name = details.get("full_name", "") or details.get("primary_nickname", "")
+    nickname = details.get("primary_nickname", "")
+
+    if any(k in q for k in ("who am i", "my name", "who i am", "who am i?")):
+        if full_name and nickname:
+            return f"You are {full_name}, also known as {nickname}."
+        if full_name:
+            return f"You are {full_name}."
+        return ""
+
+    if any(k in q for k in ("where i work", "where do i work", "my work", "where i am working")):
+        business_name = business.get("business_name", "")
+        classification = business.get("classification", "")
+        if business_name and classification:
+            return f"You work at {business_name} ({classification})."
+        if business_name:
+            return f"You work at {business_name}."
+        return ""
+
+    if "father" in q:
+        for relation, data in family.items():
+            rel = relation.lower().replace("_", " ")
+            if "father" in rel and not isinstance(data, (dict, list)):
+                return f"Your father's name is {data}."
+            if isinstance(data, dict):
+                for key, value in data.items():
+                    k = key.lower().replace("_", " ")
+                    if "father" in k:
+                        return f"Your father's name is {value}."
+                    if "father" in rel and value:
+                        return f"Your father's name is {value}."
+        return ""
+
+    return ""
+
+
+def is_action_status_query(query: str) -> bool:
+    q = (query or "").lower()
+    markers = (
+        "did you send",
+        "have you sent",
+        "was it sent",
+        "is it sent",
+        "action triggered",
+        "triggered action",
+        "mail sent",
+        "email sent",
+        "did you create",
+        "was it created",
+    )
+    return any(m in q for m in markers)
 
 
 def search_profile(query: str) -> str:
@@ -322,6 +385,35 @@ MAKE_ACTIONS = {
     "search_image":     "Search the web for an image of a given topic and return it",
 }
 
+
+def _normalize_action_name(raw_action) -> str:
+    """Reduce arbitrary action payloads to one supported action name."""
+    if raw_action is None:
+        return ""
+    if isinstance(raw_action, list):
+        raw_action = raw_action[0] if raw_action else ""
+    action_text = str(raw_action).strip().lower()
+    if not action_text:
+        return ""
+
+    # Handle payloads like "[send_email, create_doc]" or "send_email,create_doc"
+    action_text = action_text.strip("[](){}")
+    first = re.split(r"[,\s|;/]+", action_text)[0].strip()
+    return first if first in MAKE_ACTIONS else ""
+
+
+def sanitize_single_action_payload(payload: Optional[dict]) -> Optional[dict]:
+    """Ensure at most one valid action proceeds per request."""
+    if not payload or not isinstance(payload, dict):
+        return None
+    action_name = _normalize_action_name(payload.get("action"))
+    if not action_name:
+        return None
+    params = payload.get("params", {})
+    if not isinstance(params, dict):
+        params = {}
+    return {"action": action_name, "params": params}
+
 ACTION_DETECTION_PROMPT = (
     "Detect if the user message requests an automation action.\n"
     "Actions: send_email, create_event, log_to_sheet, create_doc, send_slack, "
@@ -449,6 +541,21 @@ class AriaState(TypedDict):
     execution_tracker: dict
     compressed_research: str
     routing_metadata: dict
+    pending_action_notice: str
+
+
+_pending_actions_lock = threading.Lock()
+_pending_actions: dict[str, dict] = {}
+
+
+def _is_approval_message(text: str) -> bool:
+    t = (text or "").strip().lower()
+    return t in {"1", "yes", "approve", "approved", "ok", "confirm", "proceed"}
+
+
+def _is_reject_message(text: str) -> bool:
+    t = (text or "").strip().lower()
+    return t in {"0", "2", "no", "cancel", "reject", "stop"}
 
 
 # â”€â”€ Nodes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -457,6 +564,7 @@ def intent_router(state: AriaState):
     query = state["messages"][-1].content
     history_text = state.get("history_text", "")
     lowered = query.lower().strip()
+    session_id = state.get("session_id", "default")
 
     manual_gear = "WALK"
     if lowered.startswith("/sprint") or lowered.startswith("!sprint"):
@@ -466,7 +574,37 @@ def intent_router(state: AriaState):
     elif lowered.startswith("/walk") or lowered.startswith("!walk"):
         manual_gear = "WALK"
 
-    detected_action = detect_action(query, history_text)
+    detected_action = None
+    pending_action_notice = ""
+
+    with _pending_actions_lock:
+        pending = _pending_actions.get(session_id)
+
+    if pending and _is_approval_message(query):
+        detected_action = pending
+        with _pending_actions_lock:
+            _pending_actions.pop(session_id, None)
+    elif pending and _is_reject_message(query):
+        with _pending_actions_lock:
+            _pending_actions.pop(session_id, None)
+        pending_action_notice = "Pending action cancelled."
+    elif pending:
+        pending_action_notice = "You already have a pending action approval. Reply with '1' / 'approve' to execute, or '0' / 'cancel' to discard."
+    else:
+        detected_action = sanitize_single_action_payload(detect_action(query, history_text))
+        if detected_action:
+            with _pending_actions_lock:
+                _pending_actions[session_id] = detected_action
+            action_name = detected_action.get("action", "unknown_action")
+            params = detected_action.get("params", {})
+            preview = ", ".join(f"{k}={v}" for k, v in params.items()) if params else "no parameters"
+            pending_action_notice = (
+                f"Action authorization required.\n\n"
+                f"Proposed action: {action_name}\n"
+                f"Params: {preview}\n\n"
+                "Reply with '1' / 'approve' to execute, or '0' / 'cancel' to reject."
+            )
+            detected_action = None
 
     try:
         try:
@@ -503,6 +641,7 @@ def intent_router(state: AriaState):
             "mode": "command_only",
             "reason": "walk_default" if manual_gear == "WALK" else "explicit_command",
         },
+        "pending_action_notice": pending_action_notice,
         "tokens": {"prompt": 0, "completion": 0, "total": 0}
     }
 
@@ -546,28 +685,7 @@ def action_node(state: AriaState):
     if state.get("search_results"):
         research_text += "Live Web Search Results:\n" + state["search_results"]
         
-    # Programmatic resolution of L1 private contact details from user_profile.json
-    details = USER_PROFILE.get("personal_details", {})
-    placeholder_map = {
-        "my_official_email": details.get("official_email", ""),
-        "my_personal_email": details.get("personal_email", ""),
-        "my_mobile": details.get("mobile_number", ""),
-        "my_mobile_number": details.get("mobile_number", ""),
-        "my_name": details.get("full_name", ""),
-        "my_address": details.get("residential_address", {}).get("address", "") if isinstance(details.get("residential_address"), dict) else details.get("residential_address", "")
-    }
-    
-    resolved_params = {}
-    for k, v in params.items():
-        val_str = str(v).strip()
-        # Resolve user profile placeholders
-        if val_str in placeholder_map and placeholder_map[val_str]:
-            resolved_params[k] = placeholder_map[val_str]
-        # Resolve research context placeholders
-        elif "[NEEDS_RESEARCH_CONTEXT]" in val_str:
-            resolved_params[k] = val_str.replace("[NEEDS_RESEARCH_CONTEXT]", research_text.strip() if research_text else "(No research context found)")
-        else:
-            resolved_params[k] = v
+    resolved_params = resolve_action_params(params, research_text=research_text)
 
     print(f"[GOOGLE] Executing reordered action={action} params={resolved_params}", flush=True)
     ok, msg = execute_google_action(action, resolved_params)
@@ -579,11 +697,36 @@ def action_node(state: AriaState):
     return {"action_result": msg, "execution_tracker": tracker}
 
 
+def resolve_action_params(params: dict, research_text: str = "") -> dict:
+    """Resolve profile placeholders and optional research placeholders."""
+    details = USER_PROFILE.get("personal_details", {})
+    placeholder_map = {
+        "my_official_email": details.get("official_email", ""),
+        "my_personal_email": details.get("personal_email", ""),
+        "my_mobile": details.get("mobile_number", ""),
+        "my_mobile_number": details.get("mobile_number", ""),
+        "my_name": details.get("full_name", ""),
+        "my_address": details.get("residential_address", {}).get("address", "") if isinstance(details.get("residential_address"), dict) else details.get("residential_address", "")
+    }
+
+    resolved_params = {}
+    for k, v in (params or {}).items():
+        val_str = str(v).strip()
+        if val_str in placeholder_map and placeholder_map[val_str]:
+            resolved_params[k] = placeholder_map[val_str]
+        elif "[NEEDS_RESEARCH_CONTEXT]" in val_str:
+            resolved_params[k] = val_str.replace("[NEEDS_RESEARCH_CONTEXT]", research_text.strip() if research_text else "(No research context found)")
+        else:
+            resolved_params[k] = v
+    return resolved_params
+
+
 def task_manager_node(state: AriaState):
     """Verify research reports and state legitimacy before authorizing tool execution."""
     import time
     tm_start = time.time()
     detected = state.get("detected_action")
+    detected = sanitize_single_action_payload(detected)
     active_goal = state.get("active_goal")
     
     if not active_goal:
@@ -606,6 +749,17 @@ def task_manager_node(state: AriaState):
     print(f"[TASK MANAGER] Auditing pending action: {detected['action']}...", flush=True)
     
     action_name = detected["action"]
+    if action_name not in MAKE_ACTIONS:
+        active_goal["status"] = "BLOCKED"
+        duration = round(time.time() - tm_start, 2)
+        tracker = state.get("execution_tracker") or {}
+        tracker["task_manager_duration"] = duration
+        return {
+            "detected_action": None,
+            "active_goal": active_goal,
+            "action_result": f"Action blocked: unsupported action '{action_name}'.",
+            "execution_tracker": tracker
+        }
     tool_domain = f"action.{action_name}"
     # Fallback to general publisher domain if it is the Facebook publisher
     if action_name == "facebook_publish" or "facebook" in action_name:
@@ -784,6 +938,35 @@ def pa_node(state: AriaState):
     research      = state.get("compressed_research") or "\n\n".join(state["research_data"])
     history       = state.get("history_text", "")
     action_result = state.get("action_result", "")
+    user_query    = state["user_query"]
+    pending_action_notice = state.get("pending_action_notice", "")
+
+    if pending_action_notice:
+        response = AIMessage(content=pending_action_notice)
+        return {"messages": state["messages"] + [response], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
+
+    # Hard guard: if no action was executed this turn, never claim execution.
+    if not action_result and is_action_status_query(user_query):
+        response_text = "No action was executed in this turn."
+        tracker = state.get("execution_tracker", {})
+        if tracker and "start_time" in tracker:
+            import time
+            tot = round(time.time() - tracker["start_time"], 2)
+            response_text += f"\n\nSwarm profile: Research {tracker.get('research_duration', 0.0)}s | Audit {tracker.get('task_manager_duration', 0.0)}s | Action {tracker.get('action_duration', 0.0)}s | Total {tot}s"
+        response = AIMessage(content=response_text)
+        return {"messages": state["messages"] + [response], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
+
+    # Deterministic short-circuit for basic profile facts in WALK mode.
+    if gear == "WALK" and not action_result:
+        direct_fact = get_profile_fact_answer(user_query)
+        if direct_fact:
+            tracker = state.get("execution_tracker", {})
+            if tracker and "start_time" in tracker:
+                import time
+                tot = round(time.time() - tracker["start_time"], 2)
+                direct_fact += f"\n\nSwarm profile: Research {tracker.get('research_duration', 0.0)}s | Audit {tracker.get('task_manager_duration', 0.0)}s | Action {tracker.get('action_duration', 0.0)}s | Total {tot}s"
+            response = AIMessage(content=direct_fact)
+            return {"messages": state["messages"] + [response], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
 
     # Dynamic L2/L3 profile retrieval fallback for the WALK gear:
     # If this is WALK gear and there's no research, query search_profile to fetch matching personal details!
@@ -796,7 +979,7 @@ def pa_node(state: AriaState):
     if gear == "LAUNCH":
         style = "[LAUNCH]\nStructured briefing: ## headers. Cover overview, findings, risks, outlook. End with one concrete recommendation. Dense and precise."
     elif gear == "SPRINT":
-        style = "[SPRINT]\nSynthesize concisely â€” lead with insight, not summary."
+        style = "[SPRINT]\nSynthesize concisely - lead with insight, not summary."
     else:
         style = "[WALK]\nBrief, warm, direct. Max two short paragraphs. Confirm any automation action clearly."
 
@@ -819,6 +1002,8 @@ def pa_node(state: AriaState):
         f" Use history for context, never repeat it verbatim."
         f"{google_ctx}{profile_ctx}"
     )
+    if not action_result:
+        manifesto += "\n\nCRITICAL: Do not claim any action was executed/sent/created in this turn unless [Automation Result] is explicitly present."
     if pa_rules:
         manifesto += "\n\n" + pa_rules
 
@@ -911,6 +1096,7 @@ def invoke_aria(message: str, session_id: str = "default") -> tuple[str, str, di
         "active_goal":    None,
         "compressed_research": "",
         "routing_metadata": {},
+        "pending_action_notice": "",
         "tokens":         {"prompt": 0, "completion": 0, "total": 0}
     })
     reply = output["messages"][-1].content
@@ -1105,6 +1291,14 @@ def get_post_keyboard() -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(keyboard)
 
+
+def get_action_approval_keyboard(session_id: str) -> InlineKeyboardMarkup:
+    keyboard = [[
+        InlineKeyboardButton("Approve", callback_data=f"action_approve|{session_id}"),
+        InlineKeyboardButton("Cancel", callback_data=f"action_cancel|{session_id}")
+    ]]
+    return InlineKeyboardMarkup(keyboard)
+
 async def generate_and_send_preview(chat_id: int, bot, custom_topic: str = None, reply_to_message_id: int = None):
     """Generate a high-fidelity social media draft and send it to the user for approval."""
     try:
@@ -1286,6 +1480,12 @@ async def run_aria(update: Update, msg: str, session_id: str):
         stop_typing.set()
         typing_task.cancel()
 
+    with _pending_actions_lock:
+        has_pending = session_id in _pending_actions
+    if has_pending and "Action authorization required." in reply:
+        await update.message.reply_text(reply, reply_markup=get_action_approval_keyboard(session_id))
+        return
+
     # Check for [IMAGE] tag to reply with a photo
     match = re.search(r'\[IMAGE\]\s*url=([^\s\n]+)(?:\s+caption=(.+))?', reply, re.DOTALL)
     if match:
@@ -1376,8 +1576,34 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message.text
     if not msg:
         return
+    session_id = tg_session(update)
+
+    with _pending_actions_lock:
+        pending = _pending_actions.get(session_id)
+
+    if pending and _is_approval_message(msg):
+        with _pending_actions_lock:
+            pending = _pending_actions.pop(session_id, None)
+        if pending:
+            action = pending.get("action", "")
+            params = resolve_action_params(pending.get("params", {}), research_text="")
+            ok, result_msg = await asyncio.to_thread(execute_google_action, action, params)
+            status = "Action executed successfully." if ok else "Action execution failed."
+            await update.message.reply_text(f"{status}\n\n{result_msg}")
+            return
+
+    if pending and _is_reject_message(msg):
+        with _pending_actions_lock:
+            _pending_actions.pop(session_id, None)
+        await update.message.reply_text("Pending action cancelled.")
+        return
+
+    if pending and not msg.startswith("/"):
+        await update.message.reply_text("You have a pending action approval. Reply with '1' / 'approve' to execute, or '0' / 'cancel' to discard.")
+        return
+
     print(f"[TG MSG] {update.message.from_user.id}: {msg[:80]}", flush=True)
-    await run_aria(update, msg, tg_session(update))
+    await run_aria(update, msg, session_id)
 
 
 async def cmd_walk(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1523,6 +1749,27 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     chat_id = query.message.chat_id
     data = query.data
+
+    if data.startswith("action_approve|"):
+        session_id = data.split("|", 1)[1].strip()
+        with _pending_actions_lock:
+            pending = _pending_actions.pop(session_id, None)
+        if not pending:
+            await query.edit_message_text("No pending action found to approve.")
+            return
+        action = pending.get("action", "")
+        params = resolve_action_params(pending.get("params", {}), research_text="")
+        ok, result_msg = await asyncio.to_thread(execute_google_action, action, params)
+        status = "Action executed successfully." if ok else "Action execution failed."
+        await query.edit_message_text(f"{status}\n\n{result_msg}")
+        return
+
+    if data.startswith("action_cancel|"):
+        session_id = data.split("|", 1)[1].strip()
+        with _pending_actions_lock:
+            _pending_actions.pop(session_id, None)
+        await query.edit_message_text("Pending action cancelled.")
+        return
     
     if data == "post_approve":
         draft = PENDING_POSTS.get(chat_id)
