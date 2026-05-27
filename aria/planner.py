@@ -52,7 +52,15 @@ PLANNER_SYSTEM_PROMPT: str = (
     "- Tasks with no dependencies get depends_on: []\n"
     "- The LAST task should synthesize/deliver the final result\n"
     "- For action requests (send email, create event, etc.), create an "
-    "'execution' department task\n"
+    "'execution' department task.\n"
+    "  CRITICAL: If department is 'execution', you MUST specify 'action' and 'params' in that task's JSON object!\n"
+    "  Valid actions & parameters:\n"
+    "    * send_email(to, subject, body)\n"
+    "    * create_event(title, date, time, duration, description)\n"
+    "    * log_to_sheet(sheet_name, data)\n"
+    "    * create_doc(title, content)\n"
+    "    * search_sheet(sheet_name, query)\n"
+    "  In 'params', use the placeholder '[NEEDS_RESEARCH_CONTEXT]' for parameters that depend on upstream findings (e.g. content: '[NEEDS_RESEARCH_CONTEXT]' or body: '[NEEDS_RESEARCH_CONTEXT]').\n"
     "- Keep tasks atomic — one clear objective each\n"
     "- Minimum 2 tasks for SPRINT, 3-6 for LAUNCH\n"
     "\n"
@@ -60,9 +68,11 @@ PLANNER_SYSTEM_PROMPT: str = (
     "{\n"
     '  "goal": "brief goal description",\n'
     '  "tasks": [\n'
-    '    {"task_id": "T1", "objective": "...", "department": "...", '
+    '    {"task_id": "T1", "objective": "...", "department": "research", '
     '"depends_on": [], "priority": 1},\n'
-    "    ...\n"
+    '    {"task_id": "T2", "objective": "...", "department": "execution", '
+    '"depends_on": ["T1"], "priority": 2, "action": "send_email", '
+    '"params": {"to": "user@example.com", "subject": "Report", "body": "[NEEDS_RESEARCH_CONTEXT]"}}\n'
     "  ]\n"
     "}"
 )
@@ -230,6 +240,12 @@ def plan_goal(
         # Determine initial state
         state = TaskState.READY if not depends_on else TaskState.PENDING
 
+        # Extract action and params if present in planner JSON
+        task_context = {}
+        if "action" in t:
+            task_context["action"] = t["action"]
+            task_context["params"] = t.get("params", {})
+
         tasks.append(
             TaskDTO(
                 task_id=task_id,
@@ -238,6 +254,7 @@ def plan_goal(
                 depends_on=depends_on,
                 priority=priority,
                 state=state,
+                context=task_context,
             )
         )
         seen_ids.add(task_id)
