@@ -245,8 +245,15 @@ class ExecutionHead(DepartmentHead):
                 print(f"[DEPT:{self.name}] {msg}", flush=True)
                 return msg
 
-        # ── Resolve profile placeholders ─────────────────────────────────
-        resolved_params = self._resolve_params(params)
+        # Collect upstream results to resolve research context
+        upstream_list = task.context.get("upstream_results", [])
+        upstream_texts = []
+        for ur in upstream_list:
+            upstream_texts.append(f"Task {ur['task_id']} Result:\n{ur['result']}")
+        upstream_text = "\n\n".join(upstream_texts) if upstream_texts else ""
+
+        # ── Resolve profile and research placeholders ─────────────────────
+        resolved_params = self._resolve_params(params, upstream_text)
 
         print(
             f"[DEPT:{self.name}] Executing action={action} "
@@ -273,8 +280,8 @@ class ExecutionHead(DepartmentHead):
     # ── placeholder resolution (mirrors bot.py resolve_action_params) ────
 
     @staticmethod
-    def _resolve_params(params: dict) -> dict:
-        """Replace profile placeholders (``my_official_email``, etc.)."""
+    def _resolve_params(params: dict, research_text: str = "") -> dict:
+        """Replace profile placeholders (``my_official_email``, etc.) and upstream findings."""
         profile = _load_profile()
         details = profile.get("personal_details", {})
 
@@ -298,6 +305,8 @@ class ExecutionHead(DepartmentHead):
             val_str = str(value).strip()
             if val_str in placeholder_map and placeholder_map[val_str]:
                 resolved[key] = placeholder_map[val_str]
+            elif "[NEEDS_RESEARCH_CONTEXT]" in val_str:
+                resolved[key] = val_str.replace("[NEEDS_RESEARCH_CONTEXT]", research_text.strip() if research_text else "(No research/analysis context found)")
             else:
                 resolved[key] = value
         return resolved
