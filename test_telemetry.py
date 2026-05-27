@@ -30,8 +30,8 @@ def run_telemetry_tests():
     print("\n✅ TEST 1 PASSED: Real-time tech trends layer is operational.")
     
     # Test 2: Dynamic Copywriting Ingestion
-    print("\n[TEST 2] Testing Dynamic Copywriting Ingestion via Gemini...")
-    caption, img_prompt = generate_daily_post()
+    print("\n[TEST 2] Testing Dynamic Copywriting Ingestion via Groq...")
+    caption, img_prompt, card_title, card_tips = generate_daily_post()
     print(f"\n✨ Dynamic Trend-Aware Caption:\n{caption}")
     print(f"\n🎨 Matching Image Prompt:\n{img_prompt}")
     assert len(caption) > 0, "Caption generation failed!"

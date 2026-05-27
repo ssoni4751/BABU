@@ -43,12 +43,15 @@ CURRENT_PA_MODEL   = "llama-3.3-70b-versatile"
 CURRENT_DEPT_MODEL = "llama-3.1-8b-instant"
 
 def build_llm(model_name: str, temp: float):
-    """Dynamically construct ChatGroq, ChatGoogleGenerativeAI, or ChatOpenAI based on model name."""
+    """Dynamically construct ChatGroq, ChatGoogleGenerativeAI, or ChatOpenAI based on model name, redirecting Gemini to Groq."""
     if model_name.startswith("gemini-"):
-        if not GEMINI_KEY:
-            raise ValueError("GEMINI_API_KEY is not configured in environment variables.")
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        return ChatGoogleGenerativeAI(model=model_name, temperature=temp, google_api_key=GEMINI_KEY)
+        # Map Gemini requests to high-to-low Groq equivalents due to invalid user keys
+        if "pro" in model_name:
+            fallback_model = "llama-3.3-70b-versatile"  # High-quality Groq
+        else:
+            fallback_model = "llama-3.1-8b-instant"     # High-speed Groq
+        print(f"[LLM REDIRECT] Redirecting Gemini request '{model_name}' to Groq '{fallback_model}' due to invalid keys.", flush=True)
+        return ChatGroq(model=fallback_model, temperature=temp)
     elif model_name.startswith("gpt-"):
         if not OPENAI_KEY:
             raise ValueError("OPENAI_API_KEY is not configured in environment variables.")
@@ -1452,13 +1455,13 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "3️⃣ `mixtral-8x7b-32768` (Mixtral 8x7B - Great Balance)\n"
             "4️⃣ `gemma2-9b-it` (Gemma 2 9B - Fast & Smart)\n"
             "5️⃣ `deepseek-r1-distill-llama-70b` (DeepSeek R1 - Deep Reasoning)\n"
-            "6️⃣ `gemini-2.5-flash` (Gemini 2.5 Flash - Best Free Capacity!)\n"
+            "6️⃣ `gemini-2.5-flash` (Gemini 2.5 Flash - Routes to Llama on Groq)\n"
             "7️⃣ `gpt-4o-mini` (GPT-4o Mini - Fast & Cheap OpenAI)\n"
             "8️⃣ `gpt-4o` (GPT-4o - Flagship OpenAI Intelligence)\n\n"
             "*How to Switch:*\n"
             "• `/model <1-8>` - Change the main Personal Assistant model\n"
             "• `/model swarm <1-8>` - Change the underlying swarm/research model\n\n"
-            "💡 *Tip:* If Groq free tier is exhausted, switch your PA to **6** (Gemini 2.5 Flash) or **7** (GPT-4o Mini) for infinite capacity!"
+            "💡 *Tip:* If you encounter rate limits, switch models or let ARIA's task manager auto-throttle and balance reasoning!"
         )
         await update.message.reply_text(menu, parse_mode="Markdown")
         return

@@ -23,7 +23,7 @@ PROFILE_LOCK = threading.Lock()
 FAILURES_LOCK = threading.Lock()
 
 # Load Keys
-GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
+GROQ_KEY = os.environ.get("GROQ_API_KEY", "")
 
 def append_to_profile_ledger(category: str, entry_data: dict) -> bool:
     """
@@ -78,11 +78,11 @@ def append_to_profile_ledger(category: str, entry_data: dict) -> bool:
 def log_execution_failure(domain: str, method: str, exception_msg: str) -> bool:
     """
     Auto-Immune Failure Logger. Captures a caught exception, automatically
-    uses Gemini 2.5 Flash to synthesize a strict anti-pattern rule, and
+    uses Groq to synthesize a strict anti-pattern rule, and
     appends it directly to failures.json in under 1 second.
     """
-    if not GEMINI_KEY:
-        print("[IMMUNE SYSTEM ERROR] GEMINI_API_KEY not configured. Bypassing failure logging.", flush=True)
+    if not GROQ_KEY:
+        print("[IMMUNE SYSTEM ERROR] GROQ_API_KEY not configured. Bypassing failure logging.", flush=True)
         return False
         
     print(f"[IMMUNE SYSTEM] Activating diagnostic pass for domain '{domain}'...", flush=True)
@@ -102,15 +102,15 @@ def log_execution_failure(domain: str, method: str, exception_msg: str) -> bool:
     )
     
     try:
-        from langchain_google_genai import ChatGoogleGenerativeAI
+        from langchain_groq import ChatGroq
         from langchain_core.messages import SystemMessage, HumanMessage
         
         observed = exception_msg
         rule = f"CRITICAL DIRECTION: Avoid using methodology {method} under domain {domain} to prevent exception: {exception_msg}"
         
         try:
-            # Call Gemini 2.5 Flash for high-capacity, free failure distillation
-            llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=GEMINI_KEY, temperature=0.2)
+            # Call Groq's high-quality llama-3.3-70b-versatile for failures analysis
+            llm = ChatGroq(model="llama-3.3-70b-versatile", api_key=GROQ_KEY, temperature=0.2)
             res = llm.invoke([
                 SystemMessage(content="You are ARIA's self-correcting Epistemic Immune System. Distill system errors into highly actionable execution constraints."),
                 HumanMessage(content=analysis_prompt)
@@ -127,8 +127,8 @@ def log_execution_failure(domain: str, method: str, exception_msg: str) -> bool:
             data = json.loads(text)
             observed = data.get("observed_consequence", exception_msg)
             rule = data.get("active_anti_pattern_rule", rule)
-        except Exception as gemini_err:
-            print(f"[IMMUNE SYSTEM WARNING] Gemini synthesis failed: {gemini_err}. Falling back to rule-based anti-pattern generator.", flush=True)
+        except Exception as groq_err:
+            print(f"[IMMUNE SYSTEM WARNING] Groq failure analysis failed: {groq_err}. Falling back to rule-based anti-pattern generator.", flush=True)
         
         failure_entry = {
             "failure_signature": f"{domain.upper()}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
@@ -194,15 +194,14 @@ def get_anti_pattern_rules(domain: str) -> str:
 
 def compress_context_payload(raw_text: str, context_topic: str = "general data") -> str:
     """
-    Core Staged Compression Gateway. Condenses large, granular text blocks 
-    (e.g., raw ddg searches) into highly concentrated briefs using Gemini 2.5 Flash,
-    preserving Groq limits and protecting downstream agents' token bounds.
+    Core Staged Context Compression. Condenses granular text blocks 
+    using Groq's high-speed llama-3.1-8b-instant, protecting downstream agent bounds.
     """
     if not raw_text or not raw_text.strip():
         return ""
         
-    if not GEMINI_KEY:
-        print("[COMPRESSOR WARNING] GEMINI_API_KEY not configured. Bypassing compression.", flush=True)
+    if not GROQ_KEY:
+        print("[COMPRESSOR WARNING] GROQ_API_KEY not configured. Bypassing compression.", flush=True)
         return raw_text
         
     print(f"[COMPRESSOR] Distilling {len(raw_text)} characters of raw {context_topic}...", flush=True)
@@ -216,10 +215,10 @@ def compress_context_payload(raw_text: str, context_topic: str = "general data")
     )
     
     try:
-        from langchain_google_genai import ChatGoogleGenerativeAI
+        from langchain_groq import ChatGroq
         from langchain_core.messages import SystemMessage, HumanMessage
         
-        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=GEMINI_KEY, temperature=0.1)
+        llm = ChatGroq(model="llama-3.1-8b-instant", api_key=GROQ_KEY, temperature=0.1)
         res = llm.invoke([
             SystemMessage(content="You are ARIA's high-speed context compressor. Distill bulk raw data into high-density operational briefs. Be extremely concise."),
             HumanMessage(content=compression_prompt)
