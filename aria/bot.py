@@ -492,8 +492,10 @@ def intent_router(state: AriaState):
         
     cleaned_q = query.lower()
     
-    # Build prompt content
-    content = ""
+    # Build prompt content with live temporal awareness
+    from datetime import datetime, timezone
+    now_str = datetime.now(timezone.utc).strftime("%A, %d %B %Y, %H:%M UTC")
+    content = f"[Current Date & Time] {now_str}\n\n"
     profile_text = get_user_profile_text()
     if profile_text:
         content += f"User Profile Context:\n{profile_text}\n\n"
@@ -764,7 +766,10 @@ def research_dept(state: AriaState):
     kb_ctx     = search_knowledge(query)
     profile_ctx = search_profile(query)
     
-    shared_ctx = ""
+    # Inject live temporal awareness for all research agents
+    from datetime import datetime, timezone
+    now_str = datetime.now(timezone.utc).strftime("%A, %d %B %Y, %H:%M UTC")
+    shared_ctx = f"[Current Date & Time] {now_str}\n\n"
     if kb_ctx:
         shared_ctx += f"[ARIA Knowledge Base]\n{kb_ctx}\n\n"
     if profile_ctx:
@@ -864,8 +869,11 @@ def pa_node(state: AriaState):
     from memory import get_anti_pattern_rules
     pa_rules = get_anti_pattern_rules("pa")
     
+    # Inject live temporal awareness for PA synthesis
+    from datetime import datetime, timezone
+    now_str = datetime.now(timezone.utc).strftime("%A, %d %B %Y, %H:%M UTC")
     manifesto = (
-        f"ARIA [{gear}]. Never reveal internal agents. {style}"
+        f"ARIA [{gear}]. Current date/time: {now_str}. Never reveal internal agents. {style}"
         f" Use history for context, never repeat it verbatim."
         f"{google_ctx}{profile_ctx}"
     )
