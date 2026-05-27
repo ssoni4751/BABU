@@ -630,7 +630,7 @@ def task_manager_node(state: AriaState):
             return {
                 "detected_action": None,
                 "active_goal": active_goal,
-                "action_result": f"âš ï¸ Action bypassed by Task Manager due to persistent historical failures:\n{tool_rules}",
+                "action_result": f"Action bypassed by Task Manager due to persistent historical failures:\n{tool_rules}",
                 "execution_tracker": tracker
             }
     
@@ -651,7 +651,7 @@ def task_manager_node(state: AriaState):
             return {
                 "detected_action": None,
                 "active_goal": active_goal,
-                "action_result": "âŒ Action blocked by Task Manager: Missing required research context.",
+                "action_result": "Action blocked by Task Manager: Missing required research context.",
                 "execution_tracker": tracker
             }
         else:
@@ -850,7 +850,7 @@ def pa_node(state: AriaState):
         r = tracker.get("research_duration", 0.0)
         tm = tracker.get("task_manager_duration", 0.0)
         a = tracker.get("action_duration", 0.0)
-        telemetry_footnote = f"\n\nâ±ï¸ _Swarm profile: Research {r}s | Audit {tm}s | Action {a}s | Total {tot}s_"
+        telemetry_footnote = f"\n\nSwarm profile: Research {r}s | Audit {tm}s | Action {a}s | Total {tot}s"
         response.content += telemetry_footnote
                 
     token_stats = extract_tokens(response)
@@ -1096,11 +1096,11 @@ def get_post_keyboard() -> InlineKeyboardMarkup:
     """Generate the interactive control panel for social post reviews."""
     keyboard = [
         [
-            InlineKeyboardButton("âœ… Approve & Publish", callback_data="post_approve"),
-            InlineKeyboardButton("ðŸ”„ Change Topic", callback_data="post_change_topic"),
+            InlineKeyboardButton("Approve & Publish", callback_data="post_approve"),
+            InlineKeyboardButton("Change Topic", callback_data="post_change_topic"),
         ],
         [
-            InlineKeyboardButton("âŒ Cancel Post", callback_data="post_cancel")
+            InlineKeyboardButton("Cancel Post", callback_data="post_cancel")
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -1121,9 +1121,9 @@ async def generate_and_send_preview(chat_id: int, bot, custom_topic: str = None,
         # Send the image preview with interactive keyboard
         with open(draft["image_path"], "rb") as photo_file:
             caption_text = (
-                f"ðŸ” *ARIA Marketing Department â€” Post Preview*\n\n"
-                f"ðŸ“ *Proposed Caption:*\n{escape_markdown(draft['caption'])}\n\n"
-                f"ðŸŽ¨ *FLUX Prompt:* \"{escape_markdown(draft['image_prompt'])}\"\n\n"
+                f"ARIA Marketing Department - Post Preview\n\n"
+                f"Proposed Caption:\n{escape_markdown(draft['caption'])}\n\n"
+                f"FLUX Prompt: \"{escape_markdown(draft['image_prompt'])}\"\n\n"
                 f"Please review the graphic and caption below. Click Approve to publish directly to Facebook."
             )
             
@@ -1132,7 +1132,6 @@ async def generate_and_send_preview(chat_id: int, bot, custom_topic: str = None,
                 photo=photo_file,
                 caption=caption_text,
                 reply_markup=get_post_keyboard(),
-                parse_mode="Markdown",
                 reply_to_message_id=reply_to_message_id
             )
             
@@ -1141,8 +1140,7 @@ async def generate_and_send_preview(chat_id: int, bot, custom_topic: str = None,
         try:
             await bot.send_message(
                 chat_id=chat_id,
-                text=f"âŒ *Failed to generate post preview:*\n{escape_markdown(str(e))}",
-                parse_mode="Markdown",
+                text=f"Failed to generate post preview:\n{escape_markdown(str(e))}",
                 reply_to_message_id=reply_to_message_id
             )
         except Exception as msg_err:
@@ -1214,8 +1212,7 @@ async def scheduler_async_loop(application):
                     try:
                         await application.bot.send_message(
                             chat_id=chat_id,
-                            text="ðŸ¤– *Scheduled Marketing Swarm engaged!* Generating daily custom tech graphic and copywriting...",
-                            parse_mode="Markdown"
+                            text="Scheduled Marketing Swarm engaged. Generating daily custom tech graphic and copywriting..."
                         )
                     except Exception as err:
                         print(f"[SCHEDULER ERROR] Failed to send starting notification: {err}", flush=True)
@@ -1254,7 +1251,7 @@ async def cmd_postnow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     custom_topic = " ".join(context.args) if context.args else None
     topic_str = f" for topic: '{custom_topic}'" if custom_topic else ""
-    await update.message.reply_text(f"ðŸ¤– *Generating marketing swarm preview{topic_str}...* This takes about 15-20 seconds...", parse_mode="Markdown")
+    await update.message.reply_text(f"Generating marketing swarm preview{topic_str}... This takes about 15-20 seconds.")
     
     await generate_and_send_preview(chat_id, context.bot, custom_topic=custom_topic, reply_to_message_id=update.message.message_id)
 
@@ -1281,10 +1278,10 @@ async def run_aria(update: Update, msg: str, session_id: str):
         print(f"[TG OK] gear={gear} len={len(reply)} | Tokens: {tokens['total']} (Prompt: {tokens['prompt']}, Comp: {tokens['completion']})", flush=True)
         # Append token usage footnote in Telegram
         if tokens and tokens.get("total", 0) > 0:
-            reply += f"\n\nâš¡ _[Tokens: {tokens['total']}]_"
+            reply += f"\n\n[Tokens: {tokens['total']}]"
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
-        reply = f"âš ï¸ ARIA error: {e}"
+        reply = f"ARIA error: {e}"
     finally:
         stop_typing.set()
         typing_task.cancel()
@@ -1335,11 +1332,11 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         WAITING_FOR_TOPIC.pop(chat_id, None)
         
         if topic.lower() == 'cancel':
-            await update.message.reply_text("âŒ *Topic change cancelled.*", parse_mode="Markdown")
+            await update.message.reply_text("Topic change cancelled.")
             return
             
         topic_str = f" for topic: '{topic}'"
-        await update.message.reply_text(f"ðŸ”„ *Topic received:* \"{topic}\".\nGenerating brand new graphic and caption preview... This takes about 15-20 seconds...", parse_mode="Markdown")
+        await update.message.reply_text(f"Topic received: \"{topic}\".\nGenerating a new graphic and caption preview. This takes about 15-20 seconds.")
         await generate_and_send_preview(chat_id, context.bot, custom_topic=topic, reply_to_message_id=update.message.message_id)
         return
 
@@ -1363,16 +1360,16 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
                 
             if not transcribed_text or transcribed_text.startswith("[Error"):
-                await update.message.reply_text(f"âš ï¸ Voice transcription failed:\n{transcribed_text}")
+                await update.message.reply_text(f"Voice transcription failed:\n{transcribed_text}")
                 return
                 
             print(f"[TG VOICE OK] Transcribed: '{transcribed_text}'", flush=True)
-            await update.message.reply_text(f"ðŸŽ¤ *[Voice Command]*: \"{transcribed_text}\"", parse_mode="Markdown")
+            await update.message.reply_text(f"[Voice Command]: \"{transcribed_text}\"")
             await run_aria(update, transcribed_text, tg_session(update))
             
         except Exception as e:
             traceback.print_exc(file=sys.stdout)
-            await update.message.reply_text(f"âš ï¸ Voice processing error: {e}")
+            await update.message.reply_text(f"Voice processing error: {e}")
         return
 
     # 2. Standard text processing
@@ -1404,33 +1401,32 @@ async def cmd_launch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not text:
         await update.message.reply_text("Usage: /launch <complex question>")
         return
-    await update.message.reply_text("ðŸš€ LAUNCH engaged â€” 6-agent deep swarm + web search. ~30sâ€¦")
+    await update.message.reply_text("LAUNCH engaged - 6-agent deep swarm + web search (~30s).")
     await run_aria(update, f"/launch {text}", tg_session(update))
 
 
 async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with _memory_lock:
         _histories[tg_session(update)].clear()
-    await update.message.reply_text("ðŸ—‘ Memory cleared. Fresh start.")
+    await update.message.reply_text("Memory cleared. Fresh start.")
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    google_line = "\nâ€¢ Send email, create calendar event, log to sheet â€” just ask naturally" if is_google_configured() else ""
+    google_line = "\n- Send email, create calendar event, log to sheet - just ask naturally" if is_google_configured() else ""
     await update.message.reply_text(
-        "ðŸ¤– *ARIA â€” Multi-Agent AI Assistant*\n\n"
-        "*Gears:*\n"
-        "â€¢ /walk <msg> â€” Quick direct reply\n"
-        "â€¢ /sprint <question> â€” 3-agent swarm + web search\n"
-        "â€¢ /launch <question> â€” 6-agent deep swarm + web search\n\n"
-        "*Marketing Department:*\n"
-        "â€¢ /postnow â€” Instantly generate and post custom daily tech graphic & copy to Facebook Page\n\n"
-        "*Extras:*\n"
-        "â€¢ /clear â€” Reset conversation memory\n"
-        "â€¢ /stats â€” Show runtime diagnostics\n"
-        f"â€¢ /help â€” Show this menu{google_line}\n\n"
-        "Or just send a message â€” ARIA routes automatically.\n"
+        "ARIA - Multi-Agent AI Assistant\n\n"
+        "Gears:\n"
+        "- /walk <msg> - Quick direct reply\n"
+        "- /sprint <question> - 3-agent swarm + web search\n"
+        "- /launch <question> - 6-agent deep swarm + web search\n\n"
+        "Marketing Department:\n"
+        "- /postnow - Instantly generate and post custom daily tech graphic & copy to Facebook Page\n\n"
+        "Extras:\n"
+        "- /clear - Reset conversation memory\n"
+        "- /stats - Show runtime diagnostics\n"
+        f"- /help - Show this menu{google_line}\n\n"
+        "Or just send a message - ARIA routes automatically.\n"
         "I remember your conversation and search the web for research queries.",
-        parse_mode="Markdown",
     )
 
 
@@ -1463,22 +1459,22 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if not args:
         menu = (
-            "ðŸ¤– *ARIA Model Settings*\n\n"
-            f"â€¢ *Current PA (Assistant) Model:* `{CURRENT_PA_MODEL}`\n"
-            f"â€¢ *Current Swarm (Research) Model:* `{CURRENT_DEPT_MODEL}`\n\n"
+            "ARIA Model Settings\n\n"
+            f"- Current PA (Assistant) Model: `{CURRENT_PA_MODEL}`\n"
+            f"- Current Swarm (Research) Model: `{CURRENT_DEPT_MODEL}`\n\n"
             "*Available Models to Switch:*\n"
-            "1ï¸âƒ£ `llama-3.3-70b-versatile` (Llama 3.3 - Best Quality)\n"
-            "2ï¸âƒ£ `llama-3.1-8b-instant` (Llama 3.1 8B - Fastest / Best Limits)\n"
-            "3ï¸âƒ£ `mixtral-8x7b-32768` (Mixtral 8x7B - Great Balance)\n"
-            "4ï¸âƒ£ `gemma2-9b-it` (Gemma 2 9B - Fast & Smart)\n"
-            "5ï¸âƒ£ `deepseek-r1-distill-llama-70b` (DeepSeek R1 - Deep Reasoning)\n"
-            "6ï¸âƒ£ `gemini-2.5-flash` (Gemini 2.5 Flash - Routes to Llama on Groq)\n"
-            "7ï¸âƒ£ `gpt-4o-mini` (GPT-4o Mini - Fast & Cheap OpenAI)\n"
-            "8ï¸âƒ£ `gpt-4o` (GPT-4o - Flagship OpenAI Intelligence)\n\n"
+            "1. `llama-3.3-70b-versatile` (Llama 3.3 - Best Quality)\n"
+            "2. `llama-3.1-8b-instant` (Llama 3.1 8B - Fastest / Best Limits)\n"
+            "3. `mixtral-8x7b-32768` (Mixtral 8x7B - Great Balance)\n"
+            "4. `gemma2-9b-it` (Gemma 2 9B - Fast & Smart)\n"
+            "5. `deepseek-r1-distill-llama-70b` (DeepSeek R1 - Deep Reasoning)\n"
+            "6. `gemini-2.5-flash` (Gemini 2.5 Flash - Routes to Llama on Groq)\n"
+            "7. `gpt-4o-mini` (GPT-4o Mini - Fast & Cheap OpenAI)\n"
+            "8. `gpt-4o` (GPT-4o - Flagship OpenAI Intelligence)\n\n"
             "*How to Switch:*\n"
-            "â€¢ `/model <1-8>` - Change the main Personal Assistant model\n"
-            "â€¢ `/model swarm <1-8>` - Change the underlying swarm/research model\n\n"
-            "ðŸ’¡ *Tip:* If you encounter rate limits, switch models or let ARIA's task manager auto-throttle and balance reasoning!"
+            "- `/model <1-8>` - Change the main Personal Assistant model\n"
+            "- `/model swarm <1-8>` - Change the underlying swarm/research model\n\n"
+            "Tip: If you encounter rate limits, switch models or let ARIA task manager auto-throttle and balance reasoning."
         )
         await update.message.reply_text(menu, parse_mode="Markdown")
         return
@@ -1505,20 +1501,20 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if choice in [m for m in model_map.values()]:
             selected_model = choice
         else:
-            await update.message.reply_text("âŒ Invalid choice. Use `/model` to see the list of valid options.")
+            await update.message.reply_text("Invalid choice. Use `/model` to see valid options.")
             return
 
     try:
         if is_swarm:
             CURRENT_DEPT_MODEL = selected_model
             llm_dept = build_llm(CURRENT_DEPT_MODEL, 0.7)
-            await update.message.reply_text(f"âœ… Swarm/Research model switched to: `{CURRENT_DEPT_MODEL}`")
+            await update.message.reply_text(f"Swarm/Research model switched to: `{CURRENT_DEPT_MODEL}`")
         else:
             CURRENT_PA_MODEL = selected_model
             llm_pa = build_llm(CURRENT_PA_MODEL, 0.2)
-            await update.message.reply_text(f"âœ… Main Personal Assistant model switched to: `{CURRENT_PA_MODEL}`")
+            await update.message.reply_text(f"Main Personal Assistant model switched to: `{CURRENT_PA_MODEL}`")
     except Exception as e:
-        await update.message.reply_text(f"âŒ Failed to switch model: {e}")
+        await update.message.reply_text(f"Failed to switch model: {e}")
 
 
 async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1531,10 +1527,10 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "post_approve":
         draft = PENDING_POSTS.get(chat_id)
         if not draft:
-            await query.edit_message_caption(caption="âŒ *No pending post found to approve.* Please run /postnow to generate a new draft.", parse_mode="Markdown")
+            await query.edit_message_caption(caption="No pending post found to approve. Run /postnow to generate a new draft.")
             return
         
-        await query.edit_message_caption(caption="ðŸ“¤ *Publishing to Facebook Page... Please wait.*", parse_mode="Markdown")
+        await query.edit_message_caption(caption="Publishing to Facebook Page. Please wait.")
         
         try:
             from .social_media import publish_to_facebook_page
@@ -1567,24 +1563,22 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             WAITING_FOR_TOPIC.pop(chat_id, None)
             
             await query.edit_message_caption(
-                caption=f"âœ… *Successfully published to Facebook Page!*\n\n{msg}\n\nðŸ“ *Caption:*\n{escape_markdown(draft['caption'])}",
-                parse_mode="Markdown"
+                caption=f"Successfully published to Facebook Page.\n\n{msg}\n\nCaption:\n{escape_markdown(draft['caption'])}"
             )
         else:
             await query.edit_message_caption(
-                caption=f"âŒ *Failed to publish to Facebook:*\n{escape_markdown(msg)}\n\nðŸ“ *Caption:*\n{escape_markdown(draft['caption'])}\n\nðŸ’¡ _You can click Approve again to retry, Change Topic, or Cancel._",
-                parse_mode="Markdown",
+                caption=f"Failed to publish to Facebook:\n{escape_markdown(msg)}\n\nCaption:\n{escape_markdown(draft['caption'])}\n\nYou can click Approve again to retry, Change Topic, or Cancel.",
                 reply_markup=get_post_keyboard() # Keep keyboard active so they can try again or change topic!
             )
             
     elif data == "post_change_topic":
         WAITING_FOR_TOPIC[chat_id] = True
-        await query.message.reply_text("âœï¸ *Please reply directly to this chat with your new custom topic* (e.g. 'health and yoga', 'cybersecurity tips', or 'computer repair services') to regenerate the post:")
+        await query.message.reply_text("Please reply with your new custom topic (e.g. health and yoga, cybersecurity tips, computer repair services) to regenerate the post.")
         
     elif data == "post_cancel":
         PENDING_POSTS.pop(chat_id, None)
         WAITING_FOR_TOPIC.pop(chat_id, None)
-        await query.edit_message_caption(caption="âŒ *Post draft cancelled.*", parse_mode="Markdown")
+        await query.edit_message_caption(caption="Post draft cancelled.")
 
 
 # â”€â”€ Entry point â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
