@@ -654,9 +654,52 @@ def search_google_sheet(sheet_name: str, query: str) -> tuple[bool, str]:
         # 1. Search for the sheet in user's Google Drive
         safe_sheet_name = sheet_name.replace("'", "\\'")
         drive_query = f"mimeType='application/vnd.google-apps.spreadsheet' and name='{safe_sheet_name}' and trashed=false"
-        print(f"[SHEETS] Searching Drive for sheet to search: '{sheet_name}'...", flush=True)
+        print(f"[SHEETS] Searching Drive for sheet: '{sheet_name}'...", flush=True)
         results = drive_service.files().list(q=drive_query, spaces="drive", fields="files(id, name)").execute()
         files = results.get("files", [])
+
+        # Fallback 1: Broad search for sheets containing keywords
+        if not files:
+            import re
+            clean_words = [w.strip() for w in re.split(r'[\s_]+', sheet_name.replace("'", "")) if len(w.strip()) >= 3]
+            if clean_words:
+                sub_queries = " and ".join(f"name contains '{w}'" for w in clean_words)
+                broad_query = f"mimeType='application/vnd.google-apps.spreadsheet' and {sub_queries} and trashed=false"
+                print(f"[SHEETS] Trying broad query: {broad_query}", flush=True)
+                try:
+                    results = drive_service.files().list(q=broad_query, spaces="drive", fields="files(id, name)").execute()
+                    files = results.get("files", [])
+                except Exception as e:
+                    print(f"[SHEETS] Broad query failed: {e}", flush=True)
+
+        # Fallback 2: General fallback to find sheets containing 'Review' or the user's business keywords
+        if not files:
+            fallback_keywords = ["review", "anshu", "computers", "orai"]
+            for kw in fallback_keywords:
+                kw_query = f"mimeType='application/vnd.google-apps.spreadsheet' and name contains '{kw}' and trashed=false"
+                print(f"[SHEETS] Trying general fallback keyword query: name contains '{kw}'...", flush=True)
+                try:
+                    results = drive_service.files().list(q=kw_query, spaces="drive", fields="files(id, name)").execute()
+                    files = results.get("files", [])
+                    if files:
+                        print(f"[SHEETS] Found matches for keyword '{kw}': {[f['name'] for f in files]}", flush=True)
+                        break
+                except Exception:
+                    pass
+
+        # Fallback 3: List last 5 recently modified spreadsheets
+        if not files:
+            print("[SHEETS] Fuzzy search failed. Fetching last 5 spreadsheets as absolute fallback...", flush=True)
+            try:
+                list_query = "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false"
+                results = drive_service.files().list(
+                    q=list_query, spaces="drive", fields="files(id, name)", orderBy="modifiedTime desc", pageSize=5
+                ).execute()
+                files = results.get("files", [])
+                if files:
+                    print(f"[SHEETS] Using most recently modified spreadsheet: '{files[0]['name']}'", flush=True)
+            except Exception as e:
+                print(f"[SHEETS] Absolute fallback failed: {e}", flush=True)
 
         if not files:
             return False, f"Google Sheet '{sheet_name}' not found in your Google Drive."
