@@ -24,13 +24,14 @@ from social_media import run_autonomous_social_post
 from langchain_groq import ChatGroq
 from langgraph.graph import END, StateGraph
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     ContextTypes,
     MessageHandler,
     filters,
+    CallbackQueryHandler,
 )
 
 TELEGRAM_TOKEN  = os.environ["TELEGRAM_BOT_TOKEN"]
@@ -831,6 +832,82 @@ def start_health_server():
 
 CHAT_ID_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chat_id.txt")
 LAST_POST_DATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_post_date.txt")
+LAST_PREVIEW_DATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_preview_date.txt")
+
+# State Management for Social Post Previews
+PENDING_POSTS = {}      # Map of chat_id (int) -> draft dict
+WAITING_FOR_TOPIC = {}  # Map of chat_id (int) -> bool
+
+def get_last_preview_date() -> str:
+    """Read the last scheduled preview generation date."""
+    if os.path.exists(LAST_PREVIEW_DATE_FILE):
+        try:
+            with open(LAST_PREVIEW_DATE_FILE, "r", encoding="utf-8") as f:
+                return f.read().strip()
+        except Exception:
+            pass
+    return ""
+
+def set_last_preview_date(date_str: str):
+    """Write the last scheduled preview generation date."""
+    try:
+        with open(LAST_PREVIEW_DATE_FILE, "w", encoding="utf-8") as f:
+            f.write(date_str)
+    except Exception as e:
+        print(f"[SCHEDULER ERROR] Failed to write last preview date: {e}", flush=True)
+
+def get_post_keyboard() -> InlineKeyboardMarkup:
+    """Generate the interactive control panel for social post reviews."""
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ Approve & Publish", callback_data="post_approve"),
+            InlineKeyboardButton("🔄 Change Topic", callback_data="post_change_topic"),
+        ],
+        [
+            InlineKeyboardButton("❌ Cancel Post", callback_data="post_cancel")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+async def generate_and_send_preview(chat_id: int, bot, custom_topic: str = None, reply_to_message_id: int = None):
+    """Generate a high-fidelity social media draft and send it to the user for approval."""
+    try:
+        from social_media import generate_social_post_draft
+        draft = await asyncio.to_thread(generate_social_post_draft, custom_topic)
+        draft["custom_topic"] = custom_topic
+        
+        # Cache the draft
+        PENDING_POSTS[chat_id] = draft
+        
+        # Send the image preview with interactive keyboard
+        with open(draft["image_path"], "rb") as photo_file:
+            caption_text = (
+                f"🔍 *ARIA Marketing Department — Post Preview*\n\n"
+                f"📝 *Proposed Caption:*\n{escape_markdown(draft['caption'])}\n\n"
+                f"🎨 *FLUX Prompt:* \"{escape_markdown(draft['image_prompt'])}\"\n\n"
+                f"Please review the graphic and caption below. Click Approve to publish directly to Facebook."
+            )
+            
+            await bot.send_photo(
+                chat_id=chat_id,
+                photo=photo_file,
+                caption=caption_text,
+                reply_markup=get_post_keyboard(),
+                parse_mode="Markdown",
+                reply_to_message_id=reply_to_message_id
+            )
+            
+    except Exception as e:
+        traceback.print_exc(file=sys.stdout)
+        try:
+            await bot.send_message(
+                chat_id=chat_id,
+                text=f"❌ *Failed to generate post preview:*\n{escape_markdown(str(e))}",
+                parse_mode="Markdown",
+                reply_to_message_id=reply_to_message_id
+            )
+        except Exception as msg_err:
+            print(f"[PREVIEW ERROR] Failed to report error to chat {chat_id}: {msg_err}", flush=True)
 
 def get_persisted_chat_id() -> Optional[int]:
     """Load the user's Telegram chat ID from environment or local state file."""
@@ -887,11 +964,14 @@ async def scheduler_async_loop(application):
             now_ist = datetime.now(timezone.utc).astimezone(ist_tz)
             today_str = now_ist.strftime("%Y-%m-%d")
             
-            # Trigger if it is 9:00 AM IST or later, and we haven't posted today yet
-            if now_ist.hour >= 9 and get_last_post_date() != today_str:
+            # Trigger if it is 9:00 AM IST or later, and we haven't sent a preview today yet
+            if now_ist.hour >= 9 and get_last_preview_date() != today_str:
                 chat_id = get_persisted_chat_id()
                 if chat_id:
-                    print(f"[SCHEDULER] Triggering scheduled daily post for {today_str}...", flush=True)
+                    print(f"[SCHEDULER] Triggering scheduled daily post preview for {today_str}...", flush=True)
+                    # Mark that we generated/sent preview for today immediately to avoid duplicate runs
+                    set_last_preview_date(today_str)
+                    
                     try:
                         await application.bot.send_message(
                             chat_id=chat_id,
@@ -901,45 +981,7 @@ async def scheduler_async_loop(application):
                     except Exception as err:
                         print(f"[SCHEDULER ERROR] Failed to send starting notification: {err}", flush=True)
 
-                    # Run posting workflow in thread pool
-                    ok, msg, caption, img_path = await asyncio.to_thread(run_autonomous_social_post)
-                    
-                    if ok:
-                        set_last_post_date(today_str)
-                        print(f"[SCHEDULER SUCCESS] {msg}", flush=True)
-                        try:
-                            with open(img_path, "rb") as photo_file:
-                                await application.bot.send_photo(
-                                    chat_id=chat_id,
-                                    photo=photo_file,
-                                    caption=f"✅ *Autonomous Daily Marketing Post Live!*\n\n{msg}\n\n📝 *Caption:*\n{escape_markdown(caption)}",
-                                    parse_mode="Markdown"
-                                )
-                        except Exception as err:
-                            print(f"[SCHEDULER ERROR] Failed to send success photo: {err}", flush=True)
-                    else:
-                        print(f"[SCHEDULER FAILED] {msg}", flush=True)
-                        if img_path and os.path.exists(img_path):
-                            set_last_post_date(today_str)
-                            try:
-                                with open(img_path, "rb") as photo_file:
-                                    await application.bot.send_photo(
-                                        chat_id=chat_id,
-                                        photo=photo_file,
-                                        caption=f"⚠️ *Scheduled Marketing Graphic Generated (Not Posted)*\n\nReason: {msg}\n\n📝 *Caption:*\n{escape_markdown(caption)}\n\n💡 _Tip: Configure FACEBOOK_PAGE_ID and FACEBOOK_PAGE_ACCESS_TOKEN on Render!_",
-                                        parse_mode="Markdown"
-                                    )
-                            except Exception as err:
-                                print(f"[SCHEDULER ERROR] Failed to send fallback photo: {err}", flush=True)
-                        else:
-                            try:
-                                await application.bot.send_message(
-                                    chat_id=chat_id,
-                                    text=f"❌ *Scheduled Marketing Swarm failed:*\n{msg}",
-                                    parse_mode="Markdown"
-                                )
-                            except Exception as err:
-                                print(f"[SCHEDULER ERROR] Failed to send failure notification: {err}", flush=True)
+                    await generate_and_send_preview(chat_id, application.bot)
                 else:
                     print("[SCHEDULER] It's time to post, but no Telegram chat ID is registered yet. Waiting for user interaction...", flush=True)
             
@@ -967,30 +1009,15 @@ def escape_markdown(text: str) -> str:
 
 
 async def cmd_postnow(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Force immediately generating and posting today's marketing post."""
-    await update.message.reply_text("🤖 *Starting autonomous marketing swarm...* Generating custom tech/business graphic and copy...", parse_mode="Markdown")
-    try:
-        ok, msg, caption, img_path = await asyncio.to_thread(run_autonomous_social_post)
-        safe_caption = escape_markdown(caption)
-        if ok:
-            with open(img_path, "rb") as photo_file:
-                await update.message.reply_photo(
-                    photo=photo_file,
-                    caption=f"✅ *Successfully posted to Facebook Page!*\n\n{msg}\n\n📝 *Caption:*\n{safe_caption}",
-                    parse_mode="Markdown"
-                )
-        else:
-            if img_path and os.path.exists(img_path):
-                with open(img_path, "rb") as photo_file:
-                    await update.message.reply_photo(
-                        photo=photo_file,
-                        caption=f"⚠️ *Marketing Graphic Generated (Not Posted)*\n\nReason: {msg}\n\n📝 *Caption:*\n{safe_caption}\n\n💡 _Tip: Configure FACEBOOK_PAGE_ID and FACEBOOK_PAGE_ACCESS_TOKEN in Render settings!_",
-                        parse_mode="Markdown"
-                    )
-            else:
-                await update.message.reply_text(f"❌ *Failed to generate marketing post:*\n{msg}", parse_mode="Markdown")
-    except Exception as e:
-        await update.message.reply_text(f"❌ *Error running marketing swarm:*\n{e}", parse_mode="Markdown")
+    """Force immediately generating and sending today's marketing post preview."""
+    chat_id = update.effective_chat.id
+    persist_chat_id(chat_id)
+    
+    custom_topic = " ".join(context.args) if context.args else None
+    topic_str = f" for topic: '{custom_topic}'" if custom_topic else ""
+    await update.message.reply_text(f"🤖 *Generating marketing swarm preview{topic_str}...* This takes about 15-20 seconds...", parse_mode="Markdown")
+    
+    await generate_and_send_preview(chat_id, context.bot, custom_topic=custom_topic, reply_to_message_id=update.message.message_id)
 
 
 # ── Telegram handlers ──────────────────────────────────────────────────────
@@ -1060,6 +1087,23 @@ def transcribe_audio(file_path: str) -> str:
 
 
 async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    if WAITING_FOR_TOPIC.get(chat_id):
+        topic = update.message.text.strip() if update.message.text else ""
+        if not topic:
+            return
+        
+        WAITING_FOR_TOPIC.pop(chat_id, None)
+        
+        if topic.lower() == 'cancel':
+            await update.message.reply_text("❌ *Topic change cancelled.*", parse_mode="Markdown")
+            return
+            
+        topic_str = f" for topic: '{topic}'"
+        await update.message.reply_text(f"🔄 *Topic received:* \"{topic}\".\nGenerating brand new graphic and caption preview... This takes about 15-20 seconds...", parse_mode="Markdown")
+        await generate_and_send_preview(chat_id, context.bot, custom_topic=topic, reply_to_message_id=update.message.message_id)
+        return
+
     # 1. Check if the message is a voice note
     if update.message.voice:
         print(f"[TG VOICE] Received voice note from {update.message.from_user.id}", flush=True)
@@ -1214,6 +1258,66 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Failed to switch model: {e}")
 
 
+async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle callback button clicks (Approve, Change Topic, Cancel) for social post reviews."""
+    query = update.callback_query
+    await query.answer()
+    chat_id = query.message.chat_id
+    data = query.data
+    
+    if data == "post_approve":
+        draft = PENDING_POSTS.get(chat_id)
+        if not draft:
+            await query.edit_message_caption(caption="❌ *No pending post found to approve.* Please run /postnow to generate a new draft.", parse_mode="Markdown")
+            return
+        
+        await query.edit_message_caption(caption="📤 *Publishing to Facebook Page... Please wait.*", parse_mode="Markdown")
+        
+        from social_media import publish_to_facebook_page
+        ok, msg = await asyncio.to_thread(publish_to_facebook_page, draft["image_path"], draft["caption"])
+        
+        # Log work progress atomically to profile
+        try:
+            from memory import append_to_profile_ledger
+            append_to_profile_ledger("work_summaries", {
+                "task_name": "Daily FB Marketing Post",
+                "status": "SUCCESS" if ok else "FAILED",
+                "details": f"Message: {msg} | Topic: {draft.get('custom_topic')}"
+            })
+        except Exception as e:
+            print(f"[CALLBACK WARNING] Failed to write ledger: {e}", flush=True)
+            
+        if ok:
+            # Set last post date if it was scheduled or today
+            ist_tz = timezone(timedelta(hours=5, minutes=30))
+            today_str = datetime.now(timezone.utc).astimezone(ist_tz).strftime("%Y-%m-%d")
+            set_last_post_date(today_str)
+            
+            # Clean up pending states
+            PENDING_POSTS.pop(chat_id, None)
+            WAITING_FOR_TOPIC.pop(chat_id, None)
+            
+            await query.edit_message_caption(
+                caption=f"✅ *Successfully published to Facebook Page!*\n\n{msg}\n\n📝 *Caption:*\n{escape_markdown(draft['caption'])}",
+                parse_mode="Markdown"
+            )
+        else:
+            await query.edit_message_caption(
+                caption=f"❌ *Failed to publish to Facebook:*\n{escape_markdown(msg)}\n\n📝 *Caption:*\n{escape_markdown(draft['caption'])}\n\n💡 _You can click Approve again to retry, Change Topic, or Cancel._",
+                parse_mode="Markdown",
+                reply_markup=get_post_keyboard() # Keep keyboard active so they can try again or change topic!
+            )
+            
+    elif data == "post_change_topic":
+        WAITING_FOR_TOPIC[chat_id] = True
+        await query.message.reply_text("✍️ *Please reply directly to this chat with your new custom topic* (e.g. 'health and yoga', 'cybersecurity tips', or 'computer repair services') to regenerate the post:")
+        
+    elif data == "post_cancel":
+        PENDING_POSTS.pop(chat_id, None)
+        WAITING_FOR_TOPIC.pop(chat_id, None)
+        await query.edit_message_caption(caption="❌ *Post draft cancelled.*", parse_mode="Markdown")
+
+
 # ── Entry point ────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -1234,4 +1338,5 @@ if __name__ == "__main__":
     bot.add_handler(CommandHandler("model",  cmd_model))
     bot.add_handler(CommandHandler("postnow", cmd_postnow))
     bot.add_handler(MessageHandler((filters.TEXT | filters.VOICE) & (~filters.COMMAND), on_message))
+    bot.add_handler(CallbackQueryHandler(on_post_callback))
     bot.run_polling(drop_pending_updates=True)
