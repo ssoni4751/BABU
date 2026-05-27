@@ -129,7 +129,7 @@ def plan_goal(
     gear: str,
     history_text: str = "",
     profile_text: str = "",
-    model_name: str = "llama-3.3-70b-versatile",
+    model_name: str = "llama-3.1-8b-instant",
 ) -> GoalGraph:
     """Decompose *query* into a structured GoalGraph using a single LLM call.
 
@@ -144,7 +144,7 @@ def plan_goal(
     profile_text : str, optional
         User profile context to help the planner personalise tasks.
     model_name : str, optional
-        Groq model identifier. Defaults to ``llama-3.3-70b-versatile``.
+        Groq model identifier. Defaults to ``llama-3.1-8b-instant``.
 
     Returns
     -------
@@ -172,10 +172,14 @@ def plan_goal(
 
     user_content = "\n".join(user_content_parts)
 
+    target_model = model_name
+    if "70b" in target_model:
+        target_model = "llama-3.1-8b-instant"
+
     # Call LLM -------------------------------------------------------------
     try:
         llm = ChatGroq(
-            model=model_name,
+            model=target_model,
             temperature=0.1,
             api_key=os.environ.get("GROQ_API_KEY", ""),
         )

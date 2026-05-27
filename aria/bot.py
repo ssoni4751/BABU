@@ -44,26 +44,23 @@ GEMINI_KEY      = os.environ.get("GEMINI_API_KEY", "")
 OPENAI_KEY      = os.environ.get("OPENAI_API_KEY", "")
 API_CHAT_TOKEN  = os.environ.get("API_CHAT_TOKEN", "").strip()
 
-CURRENT_PA_MODEL   = "llama-3.3-70b-versatile"
+CURRENT_PA_MODEL   = "llama-3.1-8b-instant"
 CURRENT_DEPT_MODEL = "llama-3.1-8b-instant"
 
 def build_llm(model_name: str, temp: float):
-    """Dynamically construct ChatGroq, ChatGoogleGenerativeAI, or ChatOpenAI based on model name, redirecting Gemini to Groq."""
-    if model_name.startswith("gemini-"):
-        # Map Gemini requests to high-to-low Groq equivalents due to invalid user keys
-        if "pro" in model_name:
-            fallback_model = "llama-3.3-70b-versatile"  # High-quality Groq
-        else:
-            fallback_model = "llama-3.1-8b-instant"     # High-speed Groq
-        print(f"[LLM REDIRECT] Redirecting Gemini request '{model_name}' to Groq '{fallback_model}' due to invalid keys.", flush=True)
-        return ChatGroq(model=fallback_model, temperature=temp)
-    elif model_name.startswith("gpt-"):
+    """Dynamically construct ChatGroq, ChatGoogleGenerativeAI, or ChatOpenAI based on model name, redirecting Gemini and 70b to Groq 8b to prevent rate limits."""
+    target_model = model_name
+    if "70b" in target_model or target_model.startswith("gemini-"):
+        target_model = "llama-3.1-8b-instant"
+        print(f"[LLM REDIRECT] Mapping model '{model_name}' to 'llama-3.1-8b-instant' to bypass rate limits.", flush=True)
+
+    if model_name.startswith("gpt-"):
         if not OPENAI_KEY:
             raise ValueError("OPENAI_API_KEY is not configured in environment variables.")
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(model=model_name, temperature=temp, api_key=OPENAI_KEY)
     else:
-        return ChatGroq(model=model_name, temperature=temp)
+        return ChatGroq(model=target_model, temperature=temp)
 
 llm_pa   = build_llm(CURRENT_PA_MODEL,   0.2)
 llm_dept = build_llm(CURRENT_DEPT_MODEL, 0.7)
