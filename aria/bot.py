@@ -438,6 +438,7 @@ class AriaState(TypedDict):
     tokens:         Annotated[dict, add_tokens]
     detected_action: Optional[dict]
     active_goal:    Optional[dict]
+    execution_tracker: dict
 
 
 # ── Nodes ──────────────────────────────────────────────────────────────────
@@ -542,6 +543,13 @@ def intent_router(state: AriaState):
                 if any("[NEEDS_RESEARCH_CONTEXT]" in v for v in params_vals):
                     gear = "SPRINT"
                     
+        import time
+        tracker = state.get("execution_tracker") or {
+            "start_time": time.time(),
+            "research_duration": 0.0,
+            "task_manager_duration": 0.0,
+            "action_duration": 0.0
+        }
         return {
             "gear": gear,
             "user_query": query,
@@ -549,11 +557,19 @@ def intent_router(state: AriaState):
             "search_results": "",
             "action_result": "",
             "detected_action": detected_action,
+            "execution_tracker": tracker,
             "tokens": extract_tokens(res)
         }
     except Exception as e:
         print(f"[ROUTER ERROR] Failed unified routing: {e}. Falling back to default.", flush=True)
         fallback_gear = manual_gear if manual_gear else "WALK"
+        import time
+        tracker = state.get("execution_tracker") or {
+            "start_time": time.time(),
+            "research_duration": 0.0,
+            "task_manager_duration": 0.0,
+            "action_duration": 0.0
+        }
         return {
             "gear": fallback_gear,
             "user_query": query,
@@ -561,6 +577,7 @@ def intent_router(state: AriaState):
             "search_results": "",
             "action_result": "",
             "detected_action": None,
+            "execution_tracker": tracker,
             "tokens": {"prompt": 0, "completion": 0, "total": 0}
         }
 
@@ -586,9 +603,13 @@ LAUNCH_ROUND_2 = [
 
 def action_node(state: AriaState):
     """Execute Google Workspace API actions after research runs, resolving research placeholders programmatically."""
+    import time
+    action_start = time.time()
     action_data = state.get("detected_action")
     if not action_data or "action" not in action_data:
-        return {"action_result": ""}
+        tracker = state.get("execution_tracker") or {}
+        tracker["action_duration"] = 0.0
+        return {"action_result": "", "execution_tracker": tracker}
 
     action = action_data["action"]
     params = action_data.get("params", {})
@@ -626,11 +647,17 @@ def action_node(state: AriaState):
     print(f"[GOOGLE] Executing reordered action={action} params={resolved_params}", flush=True)
     ok, msg = execute_google_action(action, resolved_params)
     print(f"[GOOGLE] Result: {ok} - {msg}", flush=True)
-    return {"action_result": msg}
+    
+    duration = round(time.time() - action_start, 2)
+    tracker = state.get("execution_tracker") or {}
+    tracker["action_duration"] = duration
+    return {"action_result": msg, "execution_tracker": tracker}
 
 
 def task_manager_node(state: AriaState):
     """Verify research reports and state legitimacy before authorizing tool execution."""
+    import time
+    tm_start = time.time()
     detected = state.get("detected_action")
     active_goal = state.get("active_goal")
     
@@ -645,7 +672,11 @@ def task_manager_node(state: AriaState):
     if not detected:
         print("[TASK MANAGER] No tool action detected. Bypassing validation.", flush=True)
         active_goal["status"] = "COMPLETED"
-        return {"active_goal": active_goal}
+        
+        duration = round(time.time() - tm_start, 2)
+        tracker = state.get("execution_tracker") or {}
+        tracker["task_manager_duration"] = duration
+        return {"active_goal": active_goal, "execution_tracker": tracker}
         
     print(f"[TASK MANAGER] Auditing pending action: {detected['action']}...", flush=True)
     
@@ -659,10 +690,15 @@ def task_manager_node(state: AriaState):
         if not has_research:
             print("[TASK MANAGER WARNING] Action requires research context, but research_data is empty! Blocking execution.", flush=True)
             active_goal["status"] = "BLOCKED"
+            
+            duration = round(time.time() - tm_start, 2)
+            tracker = state.get("execution_tracker") or {}
+            tracker["task_manager_duration"] = duration
             return {
                 "detected_action": None,
                 "active_goal": active_goal,
-                "action_result": "❌ Action blocked by Task Manager: Missing required research context."
+                "action_result": "❌ Action blocked by Task Manager: Missing required research context.",
+                "execution_tracker": tracker
             }
         else:
             print("[TASK MANAGER SUCCESS] Research context validated. Authorizing action.", flush=True)
@@ -671,15 +707,22 @@ def task_manager_node(state: AriaState):
         print("[TASK MANAGER SUCCESS] Action requires no research context. Authorizing directly.", flush=True)
         active_goal["status"] = "VERIFIED"
         
-    return {"active_goal": active_goal}
+    duration = round(time.time() - tm_start, 2)
+    tracker = state.get("execution_tracker") or {}
+    tracker["task_manager_duration"] = duration
+    return {"active_goal": active_goal, "execution_tracker": tracker}
 
 
 def research_dept(state: AriaState):
+    import time
+    research_start = time.time()
     gear  = state["gear"]
     query = state["user_query"]
 
     if gear == "WALK":
-        return {"research_data": [], "search_results": "", "tokens": {"prompt": 0, "completion": 0, "total": 0}}
+        tracker = state.get("execution_tracker") or {}
+        tracker["research_duration"] = 0.0
+        return {"research_data": [], "search_results": "", "tokens": {"prompt": 0, "completion": 0, "total": 0}, "execution_tracker": tracker}
 
     print(f"[SEARCH] {query[:60]}", flush=True)
     search_ctx = web_search(query)
@@ -734,7 +777,11 @@ def research_dept(state: AriaState):
             total_tokens["prompt"] += t["prompt"]
             total_tokens["completion"] += t["completion"]
             total_tokens["total"] += t["total"]
-        return {"research_data": reports, "search_results": search_ctx, "tokens": total_tokens}
+        
+        duration = round(time.time() - research_start, 2)
+        tracker = state.get("execution_tracker") or {}
+        tracker["research_duration"] = duration
+        return {"research_data": reports, "search_results": search_ctx, "tokens": total_tokens, "execution_tracker": tracker}
 
     r1     = [run_agent(name, role) for name, role in LAUNCH_ROUND_1]
     r1_ctx = "\n\n".join(r1)
@@ -746,7 +793,11 @@ def research_dept(state: AriaState):
         total_tokens["prompt"] += t["prompt"]
         total_tokens["completion"] += t["completion"]
         total_tokens["total"] += t["total"]
-    return {"research_data": r1 + r2, "search_results": search_ctx, "tokens": total_tokens}
+        
+    duration = round(time.time() - research_start, 2)
+    tracker = state.get("execution_tracker") or {}
+    tracker["research_duration"] = duration
+    return {"research_data": r1 + r2, "search_results": search_ctx, "tokens": total_tokens, "execution_tracker": tracker}
 
 
 def pa_node(state: AriaState):
@@ -800,6 +851,17 @@ def pa_node(state: AriaState):
             match = re.search(r'(\[IMAGE\]\s*url=[^\s\n]+(?:\s+caption=[^\n]+)?)', action_result)
             if match:
                 response.content += "\n\n" + match.group(1)
+                
+    # ── Performance Telemetry Footnote ──
+    tracker = state.get("execution_tracker", {})
+    if tracker and "start_time" in tracker:
+        import time
+        tot = round(time.time() - tracker["start_time"], 2)
+        r = tracker.get("research_duration", 0.0)
+        tm = tracker.get("task_manager_duration", 0.0)
+        a = tracker.get("action_duration", 0.0)
+        telemetry_footnote = f"\n\n⏱️ _Swarm profile: Research {r}s | Audit {tm}s | Action {a}s | Total {tot}s_"
+        response.content += telemetry_footnote
                 
     return {"messages": state["messages"] + [response], "tokens": extract_tokens(response)}
 
