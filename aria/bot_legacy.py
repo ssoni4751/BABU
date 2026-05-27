@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import json
 import os
 import re
@@ -542,9 +542,6 @@ class AriaState(TypedDict):
     compressed_research: str
     routing_metadata: dict
     pending_action_notice: str
-    goal_graph:     Optional[dict]
-    execution_log:  list[dict]
-    final_brief:    str
 
 
 _pending_actions_lock = threading.Lock()
@@ -646,163 +643,6 @@ def intent_router(state: AriaState):
         },
         "pending_action_notice": pending_action_notice,
         "tokens": {"prompt": 0, "completion": 0, "total": 0}
-    }
-
-
-def route_after_router(state: AriaState) -> str:
-    notice = state.get("pending_action_notice", "")
-    if notice:
-        return "pending"
-    
-    gear = state["gear"]
-    detected_action = state.get("detected_action")
-    
-    if gear == "WALK":
-        if detected_action:
-            return "walk_action"
-        return "walk_direct"
-    
-    return "plan"
-
-
-def planner_node(state: AriaState):
-    """Decompose user goal into a structured GoalGraph."""
-    try:
-        from .planner import plan_goal, build_walk_graph, build_action_graph
-    except ImportError:
-        from planner import plan_goal, build_walk_graph, build_action_graph
-        
-    query = state["user_query"]
-    gear = state["gear"]
-    history_text = state.get("history_text", "")
-    profile_text = get_user_profile_text()
-    
-    print(f"[PLANNER NODE] Planning goal for query: '{query[:50]}' with gear: {gear}", flush=True)
-    
-    if gear == "WALK":
-        detected_action = state.get("detected_action")
-        if detected_action:
-            graph = build_action_graph(query, detected_action)
-        else:
-            graph = build_walk_graph(query)
-    else:
-        graph = plan_goal(query, gear, history_text, profile_text)
-        
-    return {"goal_graph": graph.to_dict()}
-
-
-def task_executor_node(state: AriaState):
-    """Executes the task DAG using TaskEngine and Department Heads."""
-    import time
-    try:
-        from .task_engine import TaskEngine, GoalGraph, TaskState
-        from .departments import get_department_head
-    except ImportError:
-        from task_engine import TaskEngine, GoalGraph, TaskState
-        from departments import get_department_head
-    
-    start_time = time.time()
-    
-    graph_dict = state.get("goal_graph")
-    if not graph_dict:
-        try:
-            from .planner import build_action_graph
-        except ImportError:
-            from planner import build_action_graph
-        detected_action = state.get("detected_action")
-        query = state["user_query"]
-        if detected_action:
-            graph = build_action_graph(query, detected_action)
-            graph_dict = graph.to_dict()
-        else:
-            return {"action_result": "No executable action found.", "final_brief": "Execution failed: no action found."}
-            
-    goal_graph = GoalGraph.from_dict(graph_dict)
-    engine = TaskEngine(goal_graph)
-    
-    print(f"[EXECUTOR] Executing goal DAG: {goal_graph.goal_id}", flush=True)
-    
-    execution_log = state.get("execution_log") or []
-    
-    # Extract search results, profile slice, etc. for departments
-    search_ctx = ""
-    kb_ctx = ""
-    profile_ctx = ""
-    
-    has_research_task = any(t.department == "research" for t in goal_graph.tasks)
-    if has_research_task:
-        query = state["user_query"]
-        search_ctx = web_search(query)
-        kb_ctx = search_knowledge(query)
-        profile_ctx = search_profile(query)
-        
-    shared_resources = {
-        "web_search": search_ctx,
-        "knowledge_base": kb_ctx,
-        "profile_search": profile_ctx,
-        "user_query": state["user_query"]
-    }
-    
-    # Execution loop
-    while not engine.is_goal_complete() and not engine.is_goal_blocked():
-        ready_tasks = engine.get_ready_tasks()
-        if not ready_tasks:
-            break
-            
-        for task in ready_tasks:
-            engine.mark_running(task.task_id)
-            dept_head = get_department_head(task.department)
-            
-            # Inject upstream results into context
-            completed_results = engine.get_completed_results()
-            task.context["upstream_results"] = [
-                {"task_id": tid, "result": res}
-                for tid, res in completed_results.items()
-                if tid in task.depends_on
-            ]
-            
-            try:
-                # Dispatch task to the department head
-                result = dept_head.dispatch(task, shared_resources, llm_dept)
-                engine.mark_completed(task.task_id, result)
-                execution_log.append({
-                    "task_id": task.task_id,
-                    "objective": task.objective,
-                    "department": task.department,
-                    "result": result,
-                    "status": "SUCCESS"
-                })
-            except Exception as e:
-                err_msg = str(e)
-                print(f"[EXECUTOR ERROR] Task {task.task_id} failed: {err_msg}", flush=True)
-                engine.mark_failed(task.task_id, err_msg)
-                execution_log.append({
-                    "task_id": task.task_id,
-                    "objective": task.objective,
-                    "department": task.department,
-                    "error": err_msg,
-                    "status": "FAILED"
-                })
-                
-    # Update tracker
-    duration = round(time.time() - start_time, 2)
-    tracker = state.get("execution_tracker") or {}
-    tracker["task_manager_duration"] = duration
-    
-    final_brief = engine.get_execution_summary()
-    
-    # Store action result if there was an execution task
-    action_res = ""
-    for entry in execution_log:
-        if entry["department"] == "execution" and entry["status"] == "SUCCESS":
-            action_res = entry.get("result", "")
-            
-    return {
-        "goal_graph": engine.goal.to_dict(),
-        "execution_log": execution_log,
-        "final_brief": final_brief,
-        "action_result": action_res,
-        "execution_tracker": tracker
     }
 
 
@@ -1095,7 +935,7 @@ def department_synthesizer(state: AriaState):
 
 def pa_node(state: AriaState):
     gear          = state["gear"]
-    research      = state.get("final_brief") or state.get("compressed_research") or "\n\n".join(state.get("research_data", []))
+    research      = state.get("compressed_research") or "\n\n".join(state["research_data"])
     history       = state.get("history_text", "")
     action_result = state.get("action_result", "")
     user_query    = state["user_query"]
@@ -1208,7 +1048,7 @@ def pa_node(state: AriaState):
         log_workflow_event(
             session_id=state.get("session_id", "default"),
             gear=gear,
-            sequence=["router", "planner", "executor", "pa"] if gear != "WALK" else ["router", "pa"],
+            sequence=["router", "research", "department_synth", "task_manager", "action", "pa"],
             total_tokens=token_stats.get("total", 0),
             latency_seconds=tracker.get("research_duration", 0.0) + tracker.get("task_manager_duration", 0.0) + tracker.get("action_duration", 0.0),
             success=True,
@@ -1224,19 +1064,17 @@ def pa_node(state: AriaState):
 
 workflow = StateGraph(AriaState)
 workflow.add_node("router",       intent_router)
-workflow.add_node("planner",      planner_node)
-workflow.add_node("executor",     task_executor_node)
+workflow.add_node("research",     research_dept)
+workflow.add_node("department_synth", department_synthesizer)
+workflow.add_node("task_manager", task_manager_node)
+workflow.add_node("action",       action_node)
 workflow.add_node("pa",           pa_node)
-
 workflow.set_entry_point("router")
-workflow.add_conditional_edges("router", route_after_router, {
-    "walk_direct": "pa",
-    "walk_action": "executor",
-    "plan": "planner",
-    "pending": "pa",
-})
-workflow.add_edge("planner", "executor")
-workflow.add_edge("executor", "pa")
+workflow.add_edge("router",       "research")
+workflow.add_edge("research",     "department_synth")
+workflow.add_edge("department_synth", "task_manager")
+workflow.add_edge("task_manager", "action")
+workflow.add_edge("action",       "pa")
 workflow.add_edge("pa",           END)
 aria_brain = workflow.compile()
 
@@ -1259,9 +1097,6 @@ def invoke_aria(message: str, session_id: str = "default") -> tuple[str, str, di
         "compressed_research": "",
         "routing_metadata": {},
         "pending_action_notice": "",
-        "goal_graph":     None,
-        "execution_log":  [],
-        "final_brief":    "",
         "tokens":         {"prompt": 0, "completion": 0, "total": 0}
     })
     reply = output["messages"][-1].content

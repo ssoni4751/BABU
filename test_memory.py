@@ -2,6 +2,8 @@ import os
 import sys
 import json
 import sqlite3
+from dotenv import load_dotenv
+load_dotenv()
 
 # Force UTF-8 encoding for Windows standard streams to prevent emoji/unicode logging crashes
 if sys.platform == "win32":
@@ -9,8 +11,9 @@ if sys.platform == "win32":
     sys.stderr.reconfigure(encoding="utf-8")
 
 # Configure minimal env for local test runs
-if not os.environ.get("GEMINI_API_KEY"):
-    raise RuntimeError("GEMINI_API_KEY is required in environment for this test.")
+if not os.environ.get("GROQ_API_KEY"):
+    raise RuntimeError("GROQ_API_KEY is required in environment for this test.")
+os.environ["GEMINI_API_KEY"] = os.environ["GROQ_API_KEY"]
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "MOCK_TELEGRAM_TOKEN")
 
 # Add aria to python path so we can import from it
