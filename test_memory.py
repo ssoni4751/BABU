@@ -8,10 +8,10 @@ if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
 
-# Configure API Key for local test
-os.environ["GEMINI_API_KEY"] = "AIzaSyDvdk3YviRanZywosse2rF8ZumBGzZqLbc"
-# Make sure we have other keys if needed, but Gemini fallback is what we want to test
-os.environ["TELEGRAM_BOT_TOKEN"] = "MOCK_TELEGRAM_TOKEN"
+# Configure minimal env for local test runs
+if not os.environ.get("GEMINI_API_KEY"):
+    raise RuntimeError("GEMINI_API_KEY is required in environment for this test.")
+os.environ.setdefault("TELEGRAM_BOT_TOKEN", "MOCK_TELEGRAM_TOKEN")
 
 # Add aria to python path so we can import from it
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))

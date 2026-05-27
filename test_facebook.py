@@ -7,7 +7,8 @@ if sys.platform == "win32":
     sys.stderr.reconfigure(encoding="utf-8")
 
 # Configure API Key for local test
-os.environ["GEMINI_API_KEY"] = "AIzaSyDvdk3YviRanZywosse2rF8ZumBGzZqLbc"
+if not os.environ.get("GEMINI_API_KEY"):
+    raise RuntimeError("GEMINI_API_KEY is required in environment for this test.")
 
 # Add aria to python path so we can import from it
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))

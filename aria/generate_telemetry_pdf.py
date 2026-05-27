@@ -13,7 +13,8 @@ sys.path.append(CURRENT_DIR)
 sys.path.append(os.path.dirname(CURRENT_DIR))
 
 # Ensure Gemini API Key is configured for Google services
-os.environ["GEMINI_API_KEY"] = "AIzaSyDvdk3YviRanZywosse2rF8ZumBGzZqLbc"
+if not os.environ.get("GEMINI_API_KEY"):
+    raise RuntimeError("GEMINI_API_KEY is required in environment for telemetry PDF generation.")
 
 class PDF(FPDF):
     def header(self):

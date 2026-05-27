@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import json
 import os
 import re
@@ -19,8 +19,12 @@ if sys.platform == "win32":
 from dotenv import load_dotenv
 load_dotenv()
 
-from google_service import execute_google_action, is_google_configured
-from social_media import run_autonomous_social_post
+try:
+    from .google_service import execute_google_action, is_google_configured
+    from .social_media import run_autonomous_social_post
+except ImportError:
+    from google_service import execute_google_action, is_google_configured
+    from social_media import run_autonomous_social_post
 from langchain_groq import ChatGroq
 from langgraph.graph import END, StateGraph
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
@@ -38,6 +42,7 @@ TELEGRAM_TOKEN  = os.environ["TELEGRAM_BOT_TOKEN"]
 PORT            = int(os.environ.get("PORT", 8080))
 GEMINI_KEY      = os.environ.get("GEMINI_API_KEY", "")
 OPENAI_KEY      = os.environ.get("OPENAI_API_KEY", "")
+API_CHAT_TOKEN  = os.environ.get("API_CHAT_TOKEN", "").strip()
 
 CURRENT_PA_MODEL   = "llama-3.3-70b-versatile"
 CURRENT_DEPT_MODEL = "llama-3.1-8b-instant"
@@ -90,16 +95,16 @@ def get_user_profile_text() -> str:
     
     lines = ["[USER PROFILE & CONTEXT]"]
     if name:
-        lines.append(f"  • User Name: {name} (Nickname: {nickname})" if nickname else f"  • User Name: {name}")
+        lines.append(f"  â€¢ User Name: {name} (Nickname: {nickname})" if nickname else f"  â€¢ User Name: {name}")
     if details.get("personal_email"):
-        lines.append(f"  • Personal Email: {details.get('personal_email')}")
+        lines.append(f"  â€¢ Personal Email: {details.get('personal_email')}")
     if details.get("official_email"):
-        lines.append(f"  • Official Email: {details.get('official_email')}")
+        lines.append(f"  â€¢ Official Email: {details.get('official_email')}")
     if business:
-        lines.append(f"  • Business: {business.get('business_name', '')} ({business.get('classification', '')})")
+        lines.append(f"  â€¢ Business: {business.get('business_name', '')} ({business.get('classification', '')})")
     if prefs:
-        lines.append(f"  • Timezone: {prefs.get('timezone', 'Asia/Kolkata')}")
-        lines.append(f"  • Communication Style: {prefs.get('communication_style', 'Logical and warm')}")
+        lines.append(f"  â€¢ Timezone: {prefs.get('timezone', 'Asia/Kolkata')}")
+        lines.append(f"  â€¢ Communication Style: {prefs.get('communication_style', 'Logical and warm')}")
         
     return "\n".join(lines)
 
@@ -146,7 +151,7 @@ def search_profile(query: str) -> str:
             results.append("Personal Details:")
             for k, v in details.items():
                 if v and not str(v).startswith("["):
-                    results.append(f"  • {k.replace('_', ' ').title()}: {v}")
+                    results.append(f"  â€¢ {k.replace('_', ' ').title()}: {v}")
                     
         # Load L2 Family Graph Summary
         family = USER_PROFILE.get("family_graph", {})
@@ -156,7 +161,7 @@ def search_profile(query: str) -> str:
                 if isinstance(d, dict):
                     members = ", ".join(f"{k.replace('_', ' ').title()}: {v}" for k, v in d.items() if v and not str(v).startswith("["))
                     if members:
-                        results.append(f"  • {rel.replace('_', ' ').title()}: {members}")
+                        results.append(f"  â€¢ {rel.replace('_', ' ').title()}: {members}")
                         
         # Load L3 Legacy Autobiographical History & Journey
         journey = USER_PROFILE.get("mindset_and_journey", {})
@@ -164,15 +169,15 @@ def search_profile(query: str) -> str:
             results.append(f"{cat.replace('_', ' ').title()} Background:")
             if isinstance(det, dict):
                 for k, v in det.items():
-                    results.append(f"  • {k.replace('_', ' ').title()}: {v}")
+                    results.append(f"  â€¢ {k.replace('_', ' ').title()}: {v}")
             else:
-                results.append(f"  • {det}")
+                results.append(f"  â€¢ {det}")
                 
         edu_career = USER_PROFILE.get("education_and_career", {})
         for edu in edu_career.get("education", []):
-            results.append(f"  • Education Record: {edu}")
+            results.append(f"  â€¢ Education Record: {edu}")
         for emp in edu_career.get("employment_history", []):
-            results.append(f"  • Employment Record: {emp}")
+            results.append(f"  â€¢ Employment Record: {emp}")
             
         return "[Local User Profile (Full Personal Directory Loaded)]\n" + "\n".join(results)
 
@@ -195,26 +200,26 @@ def search_profile(query: str) -> str:
                 member_key_clean = member_key.lower().replace("_", " ")
                 # Match if key is in query, or query is in key, or any search word matches key/value
                 if member_key_clean in q or q in member_key_clean or any(w in member_key_clean for w in search_words) or any(w in str(member_val).lower() for w in search_words):
-                    results.append(f"• Family Connection ({relation.replace('_', ' ').title()} - {member_key.replace('_', ' ').title()}): {member_val}")
+                    results.append(f"â€¢ Family Connection ({relation.replace('_', ' ').title()} - {member_key.replace('_', ' ').title()}): {member_val}")
         elif isinstance(details, list):
             for item in details:
                 if q in str(item).lower() or any(w in str(item).lower() for w in search_words):
-                    results.append(f"• Family connection ({relation.replace('_', ' ').title()}): {item}")
+                    results.append(f"â€¢ Family connection ({relation.replace('_', ' ').title()}): {item}")
         else:
             if relation_clean in q or q in relation_clean or any(w in str(details).lower() for w in search_words):
-                results.append(f"• Family connection ({relation.replace('_', ' ').title()}): {details}")
+                results.append(f"â€¢ Family connection ({relation.replace('_', ' ').title()}): {details}")
                 
     # 2. Search L3: Legacy & Autobiographical Memory
     edu_career = USER_PROFILE.get("education_and_career", {})
     for edu in edu_career.get("education", []):
         edu_str = str(edu).lower()
         if q in edu_str or any(w in edu_str for w in search_words):
-            results.append(f"• Education Record: {edu}")
+            results.append(f"â€¢ Education Record: {edu}")
             
     for emp in edu_career.get("employment_history", []):
         emp_str = str(emp).lower()
         if q in emp_str or any(w in emp_str for w in search_words):
-            results.append(f"• Employment Record: {emp}")
+            results.append(f"â€¢ Employment Record: {emp}")
             
     journey = USER_PROFILE.get("mindset_and_journey", {})
     for category, details in journey.items():
@@ -223,16 +228,16 @@ def search_profile(query: str) -> str:
             for k, v in details.items():
                 k_clean = k.lower().replace("_", " ")
                 if k_clean in q or category_clean in q or q in k_clean or q in str(v).lower() or any(w in str(v).lower() for w in search_words):
-                    results.append(f"• Background History ({category.replace('_', ' ').title()} - {k.replace('_', ' ').title()}): {v}")
+                    results.append(f"â€¢ Background History ({category.replace('_', ' ').title()} - {k.replace('_', ' ').title()}): {v}")
         else:
             if category_clean in q or q in category_clean or q in str(details).lower() or any(w in str(details).lower() for w in search_words):
-                results.append(f"• Background History ({category.replace('_', ' ').title()}): {details}")
+                results.append(f"â€¢ Background History ({category.replace('_', ' ').title()}): {details}")
                 
     if results:
         return "[Local User Profile Matches]\n" + "\n".join(results)
     return ""
 
-# ── Knowledge base ─────────────────────────────────────────────────────────
+# â”€â”€ Knowledge base â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 KNOWLEDGE_BASE = {
     "aria": (
@@ -249,7 +254,7 @@ KNOWLEDGE_BASE = {
     "tools": (
         "Every ARIA agent has access to: live web search (DuckDuckGo), "
         "conversation memory (per-session history), the ARIA knowledge base, "
-        "and Make.com automation (email via Gmail, Calendar events, Sheets logging, and more)."
+        "and Direct Google Workspace automation (email via Gmail, Calendar events, Sheets logging, and more)."
     ),
     "models": (
         "Router and research agents use llama-3.1-8b-instant (fast). "
@@ -283,7 +288,7 @@ def search_knowledge(query: str) -> str:
     return "\n".join(hits) if hits else ""
 
 
-# ── Web search ─────────────────────────────────────────────────────────────
+# â”€â”€ Web search â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def web_search(query: str, max_results: int = 4) -> str:
     cleaned = clean_search_query(query)
@@ -295,13 +300,13 @@ def web_search(query: str, max_results: int = 4) -> str:
             return "No results found."
         lines = []
         for r in results:
-            lines.append(f"• {r['title']}\n  {r['body']}\n  Source: {r['href']}")
+            lines.append(f"â€¢ {r['title']}\n  {r['body']}\n  Source: {r['href']}")
         return "\n\n".join(lines)
     except Exception as e:
         return f"[Search unavailable: {e}]"
 
 
-# ── Make.com automation ────────────────────────────────────────────────────
+# â”€â”€ Direct Google Workspace automation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 # Actions ARIA can detect and trigger
 MAKE_ACTIONS = {
@@ -337,11 +342,11 @@ ACTION_TRIGGER_WORDS = {
 
 def detect_action(message: str, history_text: str = "") -> Optional[dict]:
     """Two-stage detection: zero-token keyword gate, then LLM only if needed."""
-    # Stage 1: Zero-token gate — skip LLM entirely for obvious non-actions
+    # Stage 1: Zero-token gate â€” skip LLM entirely for obvious non-actions
     msg_lower = message.lower()
     if not any(word in msg_lower for word in ACTION_TRIGGER_WORDS):
         return None
-    # Stage 2: LLM detection — only reached if keyword gate passed
+    # Stage 2: LLM detection â€” only reached if keyword gate passed
     try:
         content = ""
         profile_text = get_user_profile_text()
@@ -368,7 +373,7 @@ def detect_action(message: str, history_text: str = "") -> Optional[dict]:
 
 
 
-# ── Memory ─────────────────────────────────────────────────────────────────
+# â”€â”€ Memory â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 _memory_lock = threading.Lock()
 _histories: dict[str, deque] = defaultdict(lambda: deque(maxlen=20))
@@ -427,7 +432,7 @@ def add_tokens(existing: dict, new: dict) -> dict:
     }
 
 
-# ── LangGraph state ────────────────────────────────────────────────────────
+# â”€â”€ LangGraph state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class AriaState(TypedDict):
     messages:       Annotated[list[BaseMessage], "Conversation"]
@@ -437,160 +442,69 @@ class AriaState(TypedDict):
     history_text:   str
     session_id:     str
     search_results: str
-    action_result:  str   # result of Make.com webhook if triggered
+    action_result:  str   # result of direct Google Workspace action if triggered
     tokens:         Annotated[dict, add_tokens]
     detected_action: Optional[dict]
     active_goal:    Optional[dict]
     execution_tracker: dict
+    compressed_research: str
+    routing_metadata: dict
 
 
-# ── Nodes ──────────────────────────────────────────────────────────────────
-
-UNIFIED_ROUTER_PROMPT = (
-    "You are ARIA's Consolidated Orchestrator and Gatekeeper.\n"
-    "Your job is to analyze the user's current message and recent history, classify the target execution tier (gear), "
-    "and detect if they are requesting an automation tool action.\n\n"
-    "Execution Tiers (gear):\n"
-    "- LAUNCH: Deeply complex, strategic, multi-part questions requiring full 6-agent deep swarm research and ultimate synthesis.\n"
-    "- SPRINT: Factual, analytical, search-based, or research questions asking for facts, dates, news, or looking up info.\n"
-    "- WALK: Casual chat, greetings, simple conversational replies, or direct action requests (like sending email, creating calendar event, writing a doc, logging to sheet).\n\n"
-    "Available Automation Actions (action_type):\n"
-    "- send_email: Send an email via Gmail. Params: to, subject, body\n"
-    "- create_event: Create a Google Calendar event. Params: title, date, time, duration, description\n"
-    "- log_to_sheet: Log data to a Google Sheet. Params: sheet_name, data\n"
-    "- create_doc: Create a Google Doc. Params: title, content\n"
-    "- send_slack: Send a Slack message. Params: channel, message\n"
-    "- create_task: Create a task. Params: title, due_date, notes\n"
-    "- copy_photos_to_drive: Copy Google Photos to Drive. Params: category, folder_name\n"
-    "- copy_contacts_to_drive: Write Google Contacts to Sheet in Drive. Params: sheet_name\n"
-    "- search_sheet: Search a query in a specific Sheet. Params: sheet_name, query\n"
-    "- search_image: Search web for an image. Params: query\n\n"
-    "If the action requires research data to generate its content (for example, writing an email summarizing some fresh news, or creating a doc about a researched topic), set the respective parameter value to exactly \"[NEEDS_RESEARCH_CONTEXT]\". This informs the downstream pipeline to resolve this parameter using crawled facts.\n\n"
-    "Provide your analysis as a clean JSON object ONLY, with exactly this format (do NOT wrap in markdown code blocks, just return raw JSON):\n"
-    "{\n"
-    "  \"gear\": \"LAUNCH\" or \"SPRINT\" or \"WALK\",\n"
-    "  \"requires_action\": true or false,\n"
-    "  \"action\": \"action_type_name_or_null\",\n"
-    "  \"params\": { ...param_keys_and_values... }\n"
-    "}"
-)
-
+# â”€â”€ Nodes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def intent_router(state: AriaState):
     query = state["messages"][-1].content
     history_text = state.get("history_text", "")
-    
-    # Fast path for manual tier commands
-    manual_gear = None
-    for cmd in ("/launch", "!launch"):
-        if cmd in query.lower():
-            manual_gear = "LAUNCH"
-    if "/sprint" in query.lower():
+    lowered = query.lower().strip()
+
+    manual_gear = "WALK"
+    if lowered.startswith("/sprint") or lowered.startswith("!sprint"):
         manual_gear = "SPRINT"
-    if "/walk" in query.lower():
+    elif lowered.startswith("/launch") or lowered.startswith("!launch"):
+        manual_gear = "LAUNCH"
+    elif lowered.startswith("/walk") or lowered.startswith("!walk"):
         manual_gear = "WALK"
-        
-    cleaned_q = query.lower()
-    
-    # Build prompt content with live temporal awareness
-    from datetime import datetime, timezone
-    now_str = datetime.now(timezone.utc).strftime("%A, %d %B %Y, %H:%M UTC")
-    content = f"[Current Date & Time] {now_str}\n\n"
-    profile_text = get_user_profile_text()
-    if profile_text:
-        content += f"User Profile Context:\n{profile_text}\n\n"
-    if history_text:
-        content += f"[Recent Conversation History]\n{history_text}\n\n"
-    content += f"User's Current Message: {query}"
-    
+
+    detected_action = detect_action(query, history_text)
+
     try:
-        from memory import get_anti_pattern_rules
-        router_rules = get_anti_pattern_rules("router")
-        system_prompt = UNIFIED_ROUTER_PROMPT
-        if router_rules:
-            system_prompt += "\n\n" + router_rules
-            
-        res = llm_dept.invoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=content)
-        ])
-        text = res.content.strip()
-        
-        # Parse JSON from response
-        match = re.search(r'\{.*\}', text, re.DOTALL)
-        if match:
-            data = json.loads(match.group())
-        else:
-            data = json.loads(text)
-            
-        gear = data.get("gear", "WALK")
-        if manual_gear:
-            gear = manual_gear
-            
-        requires_action = data.get("requires_action", False)
-        detected_action = None
-        if requires_action and data.get("action"):
-            detected_action = {
-                "action": data["action"],
-                "params": data.get("params", {})
-            }
-            
-        # Programmatic SPRINT upgrade override if not already SPRINT/LAUNCH
-        if gear == "WALK":
-            search_keywords = [
-                "search the web", "search for", "look up", "google for", "web search",
-                "latest updates", "news about", "ipl", "schedule for", "final date",
-                "when is", "what is the date", "who is", "how many", "where is",
-                "what's", "what is", "who are", "tell me about", "do you know", 
-                "father", "mother", "brother", "sister", "grandfather", "grandmother",
-                "education", "job", "career", "history", "school", "college"
-            ]
-            if any(kw in cleaned_q for kw in search_keywords):
-                gear = "SPRINT"
-                
-            # If parameters are marked [NEEDS_RESEARCH_CONTEXT], upgrade to SPRINT to compile research!
-            if detected_action:
-                params_vals = [str(v) for v in detected_action.get("params", {}).values()]
-                if any("[NEEDS_RESEARCH_CONTEXT]" in v for v in params_vals):
-                    gear = "SPRINT"
-                    
-        import time
-        tracker = state.get("execution_tracker") or {
-            "start_time": time.time(),
-            "research_duration": 0.0,
-            "task_manager_duration": 0.0,
-            "action_duration": 0.0
-        }
-        return {
-            "gear": gear,
-            "user_query": query,
-            "research_data": [],
-            "search_results": "",
-            "action_result": "",
-            "detected_action": detected_action,
-            "execution_tracker": tracker,
-            "tokens": extract_tokens(res)
-        }
+        try:
+            from .memory import log_routing_decision
+        except ImportError:
+            from memory import log_routing_decision
+        log_routing_decision(
+            session_id=state.get("session_id", "default"),
+            query=query,
+            selected_gear=manual_gear,
+            reason="command_override" if manual_gear != "WALK" else "walk_default",
+            has_action=bool(detected_action),
+        )
     except Exception as e:
-        print(f"[ROUTER ERROR] Failed unified routing: {e}. Falling back to default.", flush=True)
-        fallback_gear = manual_gear if manual_gear else "WALK"
-        import time
-        tracker = state.get("execution_tracker") or {
-            "start_time": time.time(),
-            "research_duration": 0.0,
-            "task_manager_duration": 0.0,
-            "action_duration": 0.0
-        }
-        return {
-            "gear": fallback_gear,
-            "user_query": query,
-            "research_data": [],
-            "search_results": "",
-            "action_result": "",
-            "detected_action": None,
-            "execution_tracker": tracker,
-            "tokens": {"prompt": 0, "completion": 0, "total": 0}
-        }
+        print(f"[ROUTING MEMORY WARNING] Failed to log routing decision: {e}", flush=True)
+
+    import time
+    tracker = state.get("execution_tracker") or {
+        "start_time": time.time(),
+        "research_duration": 0.0,
+        "task_manager_duration": 0.0,
+        "action_duration": 0.0
+    }
+    return {
+        "gear": manual_gear,
+        "user_query": query,
+        "research_data": [],
+        "search_results": "",
+        "action_result": "",
+        "detected_action": detected_action,
+        "execution_tracker": tracker,
+        "compressed_research": "",
+        "routing_metadata": {
+            "mode": "command_only",
+            "reason": "walk_default" if manual_gear == "WALK" else "explicit_command",
+        },
+        "tokens": {"prompt": 0, "completion": 0, "total": 0}
+    }
 
 
 SPRINT_AGENTS = [
@@ -697,7 +611,10 @@ def task_manager_node(state: AriaState):
     if action_name == "facebook_publish" or "facebook" in action_name:
         tool_domain = "social_media.facebook_publisher"
         
-    from memory import get_anti_pattern_rules
+    try:
+        from .memory import get_anti_pattern_rules
+    except ImportError:
+        from memory import get_anti_pattern_rules
     tool_rules = get_anti_pattern_rules(tool_domain)
     
     if tool_rules:
@@ -713,7 +630,7 @@ def task_manager_node(state: AriaState):
             return {
                 "detected_action": None,
                 "active_goal": active_goal,
-                "action_result": f"⚠️ Action bypassed by Task Manager due to persistent historical failures:\n{tool_rules}",
+                "action_result": f"âš ï¸ Action bypassed by Task Manager due to persistent historical failures:\n{tool_rules}",
                 "execution_tracker": tracker
             }
     
@@ -734,7 +651,7 @@ def task_manager_node(state: AriaState):
             return {
                 "detected_action": None,
                 "active_goal": active_goal,
-                "action_result": "❌ Action blocked by Task Manager: Missing required research context.",
+                "action_result": "âŒ Action blocked by Task Manager: Missing required research context.",
                 "execution_tracker": tracker
             }
         else:
@@ -753,7 +670,7 @@ def task_manager_node(state: AriaState):
 def research_dept(state: AriaState):
     import time
     research_start = time.time()
-    gear  = state["gear"]
+    gear = state["gear"]
     query = state["user_query"]
 
     if gear == "WALK":
@@ -763,47 +680,48 @@ def research_dept(state: AriaState):
 
     print(f"[SEARCH] {query[:60]}", flush=True)
     search_ctx = web_search(query)
-    kb_ctx     = search_knowledge(query)
+    kb_ctx = search_knowledge(query)
     profile_ctx = search_profile(query)
-    
-    # Inject live temporal awareness for all research agents
-    from datetime import datetime, timezone
-    now_str = datetime.now(timezone.utc).strftime("%A, %d %B %Y, %H:%M UTC")
-    shared_ctx = f"[Current Date & Time] {now_str}\n\n"
-    if kb_ctx:
-        shared_ctx += f"[ARIA Knowledge Base]\n{kb_ctx}\n\n"
-    if profile_ctx:
-        shared_ctx += f"[User Personal Profile Matches (Context)]\n{profile_ctx}\n\n"
-    if search_ctx:
-        shared_ctx += f"[Live Web Search Results]\n{search_ctx}"
-
-    google_tool_desc = ""  # Google tools only needed in PA node, not swarm agents
-
-    # Inject profile ONCE into shared_ctx — not per-agent (saves ~150 tokens × N agents)
-    profile_text = get_user_profile_text()
-    if profile_text:
-        shared_ctx += f"\n\n[User Profile]\n{profile_text}"
-    shared_ctx += google_tool_desc
-
     agent_tokens = []
 
+    def build_task_dto(name: str, role: str, extra_context: str = "") -> dict:
+        context = {
+            "query": query,
+            "datetime_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+            "constraints": ["be concise", "cite facts from context"],
+            "web_search": search_ctx or "",
+            "knowledge_base": kb_ctx or "",
+        }
+        if profile_ctx and any(k in query.lower() for k in ("my", "me", "profile", "family", "career", "education")):
+            context["profile_slice"] = profile_ctx
+        if extra_context:
+            context["prior_round_context"] = extra_context
+        return {
+            "agent": name,
+            "role": role,
+            "objective": f"Produce the {name.lower()} perspective for this query.",
+            "context": context,
+        }
+
     def run_agent(name: str, role: str, extra_context: str = "") -> str:
-        import time, gc
+        import gc
         if agent_tokens:
-            time.sleep(1.2)  # Stagger to smooth free-tier rate limits
+            time.sleep(1.2)
 
-        from memory import get_anti_pattern_rules
+        try:
+            from .memory import get_anti_pattern_rules
+        except ImportError:
+            from memory import get_anti_pattern_rules
         anti_patterns = get_anti_pattern_rules(f"swarm_agent.{name.lower()}")
-
-        # Profile already in shared_ctx — no redundant injection here
-        system = f"ARIA Swarm [{name}]: {role}\n\nContext:\n{shared_ctx}"
+        task_dto = build_task_dto(name, role, extra_context=extra_context)
+        system = (
+            f"ARIA Swarm [{name}]: {role}\n\n"
+            "You receive a scoped task DTO. Use only the provided context and avoid speculation."
+        )
         if anti_patterns:
             system += f"\n\n{anti_patterns}"
 
-        user_prompt = f"Query: {query}"
-        if extra_context:
-            user_prompt += f"\n\nPrior Research:\n{extra_context}"
-
+        user_prompt = f"Task DTO:\n{json.dumps(task_dto, ensure_ascii=False)}"
         res = llm_dept.invoke([SystemMessage(content=system), HumanMessage(content=user_prompt)])
         agent_tokens.append(extract_tokens(res))
         gc.collect()
@@ -811,38 +729,59 @@ def research_dept(state: AriaState):
 
     if gear == "SPRINT":
         reports = [run_agent(name, role) for name, role in SPRINT_AGENTS]
-        # Aggregate tokens
         total_tokens = {"prompt": 0, "completion": 0, "total": 0}
         for t in agent_tokens:
             total_tokens["prompt"] += t["prompt"]
             total_tokens["completion"] += t["completion"]
             total_tokens["total"] += t["total"]
-        
+
         duration = round(time.time() - research_start, 2)
         tracker = state.get("execution_tracker") or {}
         tracker["research_duration"] = duration
         return {"research_data": reports, "search_results": search_ctx, "tokens": total_tokens, "execution_tracker": tracker}
 
-    r1     = [run_agent(name, role) for name, role in LAUNCH_ROUND_1]
+    r1 = [run_agent(name, role) for name, role in LAUNCH_ROUND_1]
     r1_ctx = "\n\n".join(r1)
-    r2     = [run_agent(name, role, extra_context=r1_ctx) for name, role in LAUNCH_ROUND_2]
-    
-    # Aggregate tokens
+    r2 = [run_agent(name, role, extra_context=r1_ctx) for name, role in LAUNCH_ROUND_2]
     total_tokens = {"prompt": 0, "completion": 0, "total": 0}
     for t in agent_tokens:
         total_tokens["prompt"] += t["prompt"]
         total_tokens["completion"] += t["completion"]
         total_tokens["total"] += t["total"]
-        
+
     duration = round(time.time() - research_start, 2)
     tracker = state.get("execution_tracker") or {}
     tracker["research_duration"] = duration
     return {"research_data": r1 + r2, "search_results": search_ctx, "tokens": total_tokens, "execution_tracker": tracker}
 
 
+def deterministic_compress_reports(reports: List[str], max_chars: int = 2600) -> str:
+    if not reports:
+        return ""
+    compressed = []
+    seen = set()
+    for idx, report in enumerate(reports, start=1):
+        line = " ".join(str(report).split())
+        if not line:
+            continue
+        key = line.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        compressed.append(f"{idx}. {line}")
+    merged = "\n".join(compressed)
+    if len(merged) > max_chars:
+        merged = merged[:max_chars].rsplit(" ", 1)[0] + " ..."
+    return merged
+
+
+def department_synthesizer(state: AriaState):
+    reports = state.get("research_data", [])
+    return {"compressed_research": deterministic_compress_reports(reports)}
+
 def pa_node(state: AriaState):
     gear          = state["gear"]
-    research      = "\n\n".join(state["research_data"])
+    research      = state.get("compressed_research") or "\n\n".join(state["research_data"])
     history       = state.get("history_text", "")
     action_result = state.get("action_result", "")
 
@@ -857,7 +796,7 @@ def pa_node(state: AriaState):
     if gear == "LAUNCH":
         style = "[LAUNCH]\nStructured briefing: ## headers. Cover overview, findings, risks, outlook. End with one concrete recommendation. Dense and precise."
     elif gear == "SPRINT":
-        style = "[SPRINT]\nSynthesize concisely — lead with insight, not summary."
+        style = "[SPRINT]\nSynthesize concisely â€” lead with insight, not summary."
     else:
         style = "[WALK]\nBrief, warm, direct. Max two short paragraphs. Confirm any automation action clearly."
 
@@ -866,7 +805,10 @@ def pa_node(state: AriaState):
     google_tools = ", ".join(MAKE_ACTIONS.keys())
     google_ctx = f"\n\nGoogle Workspace active [{google_tools}]. Confirm any triggered actions clearly."
 
-    from memory import get_anti_pattern_rules
+    try:
+        from .memory import get_anti_pattern_rules
+    except ImportError:
+        from memory import get_anti_pattern_rules
     pa_rules = get_anti_pattern_rules("pa")
     
     # Inject live temporal awareness for PA synthesis
@@ -900,7 +842,7 @@ def pa_node(state: AriaState):
             if match:
                 response.content += "\n\n" + match.group(1)
                 
-    # ── Performance Telemetry Footnote ──
+    # â”€â”€ Performance Telemetry Footnote â”€â”€
     tracker = state.get("execution_tracker", {})
     if tracker and "start_time" in tracker:
         import time
@@ -908,30 +850,51 @@ def pa_node(state: AriaState):
         r = tracker.get("research_duration", 0.0)
         tm = tracker.get("task_manager_duration", 0.0)
         a = tracker.get("action_duration", 0.0)
-        telemetry_footnote = f"\n\n⏱️ _Swarm profile: Research {r}s | Audit {tm}s | Action {a}s | Total {tot}s_"
+        telemetry_footnote = f"\n\nâ±ï¸ _Swarm profile: Research {r}s | Audit {tm}s | Action {a}s | Total {tot}s_"
         response.content += telemetry_footnote
                 
-    return {"messages": state["messages"] + [response], "tokens": extract_tokens(response)}
+    token_stats = extract_tokens(response)
+    try:
+        try:
+            from .memory import log_workflow_event
+        except ImportError:
+            from memory import log_workflow_event
+        tracker = state.get("execution_tracker", {})
+        log_workflow_event(
+            session_id=state.get("session_id", "default"),
+            gear=gear,
+            sequence=["router", "research", "department_synth", "task_manager", "action", "pa"],
+            total_tokens=token_stats.get("total", 0),
+            latency_seconds=tracker.get("research_duration", 0.0) + tracker.get("task_manager_duration", 0.0) + tracker.get("action_duration", 0.0),
+            success=True,
+            note=state.get("user_query", "")[:160],
+        )
+    except Exception as e:
+        print(f"[WORKFLOW MEMORY WARNING] Failed to log workflow event: {e}", flush=True)
+
+    return {"messages": state["messages"] + [response], "tokens": token_stats}
 
 
-# ── Graph ──────────────────────────────────────────────────────────────────
+# â”€â”€ Graph â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 workflow = StateGraph(AriaState)
 workflow.add_node("router",       intent_router)
 workflow.add_node("research",     research_dept)
+workflow.add_node("department_synth", department_synthesizer)
 workflow.add_node("task_manager", task_manager_node)
 workflow.add_node("action",       action_node)
 workflow.add_node("pa",           pa_node)
 workflow.set_entry_point("router")
 workflow.add_edge("router",       "research")
-workflow.add_edge("research",     "task_manager")
+workflow.add_edge("research",     "department_synth")
+workflow.add_edge("department_synth", "task_manager")
 workflow.add_edge("task_manager", "action")
 workflow.add_edge("action",       "pa")
 workflow.add_edge("pa",           END)
 aria_brain = workflow.compile()
 
 
-# ── Core invoke helper ─────────────────────────────────────────────────────
+# â”€â”€ Core invoke helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def invoke_aria(message: str, session_id: str = "default") -> tuple[str, str, dict]:
     history_text = get_history_text(session_id)
@@ -946,6 +909,8 @@ def invoke_aria(message: str, session_id: str = "default") -> tuple[str, str, di
         "action_result":  "",
         "detected_action": None,
         "active_goal":    None,
+        "compressed_research": "",
+        "routing_metadata": {},
         "tokens":         {"prompt": 0, "completion": 0, "total": 0}
     })
     reply = output["messages"][-1].content
@@ -955,14 +920,14 @@ def invoke_aria(message: str, session_id: str = "default") -> tuple[str, str, di
     return reply, gear, tokens
 
 
-# ── Health / chat HTTP server ──────────────────────────────────────────────
+# â”€â”€ Health / chat HTTP server â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 STATUS_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ARIA — AI Assistant</title>
+<title>ARIA â€” AI Assistant</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
   body{font-family:'Segoe UI',sans-serif;background:#0f0f1a;color:#e0e0ff;min-height:100vh;display:flex;align-items:center;justify-content:center}
@@ -984,10 +949,10 @@ STATUS_HTML = """<!DOCTYPE html>
   <div class="badge"><span class="dot"></span>LIVE</div>
   <h1>ARIA</h1>
   <p class="sub">Multi-Agent AI Assistant</p>
-  <div class="gear"><strong>WALK</strong><span>Quick reply + Google automations via Make.com</span></div>
+  <div class="gear"><strong>WALK</strong><span>Quick reply + Google automations via Google Workspace APIs</span></div>
   <div class="gear"><strong>SPRINT</strong><span>3-agent swarm + web search</span></div>
   <div class="gear launch"><strong>LAUNCH</strong><span>6-agent deep swarm + web search + synthesis</span></div>
-  <p class="footer">Groq &bull; Llama 3 &bull; LangGraph &bull; Memory &bull; Web Search &bull; Make.com</p>
+  <p class="footer">Groq &bull; Llama 3 &bull; LangGraph &bull; Memory &bull; Web Search &bull; Google Workspace</p>
 </div>
 </body>
 </html>"""
@@ -1023,8 +988,8 @@ class HealthHandler(BaseHTTPRequestHandler):
         if self.path in ("/healthz", "/api/healthz"):
             body = json.dumps({
                 "status": "ok", "bot": "ARIA",
-                "features": ["memory", "web_search", "knowledge_base", "make_automation"],
-                "make_configured": bool(MAKE_WEBHOOK),
+                "features": ["memory", "web_search", "knowledge_base", "google_workspace"],
+                "google_configured": bool(is_google_configured()),
             }).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -1046,6 +1011,23 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         try:
+            if API_CHAT_TOKEN:
+                auth_header = str(self.headers.get("Authorization", "")).strip()
+                api_key_header = str(self.headers.get("X-API-Key", "")).strip()
+                bearer = ""
+                if auth_header.lower().startswith("bearer "):
+                    bearer = auth_header[7:].strip()
+                provided = api_key_header or bearer
+                if provided != API_CHAT_TOKEN:
+                    err = json.dumps({"error": "unauthorized"}).encode()
+                    self.send_response(401)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(err)))
+                    self._cors()
+                    self.end_headers()
+                    self.wfile.write(err)
+                    return
+
             length = int(self.headers.get("Content-Length", 0))
             body   = json.loads(self.rfile.read(length))
             msg    = str(body.get("message", "")).strip()
@@ -1082,7 +1064,7 @@ def start_health_server():
     server.serve_forever()
 
 
-# ── Autonomous Social Media Scheduler & State ──────────────────────────────
+# â”€â”€ Autonomous Social Media Scheduler & State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CHAT_ID_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chat_id.txt")
 LAST_POST_DATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_post_date.txt")
@@ -1114,11 +1096,11 @@ def get_post_keyboard() -> InlineKeyboardMarkup:
     """Generate the interactive control panel for social post reviews."""
     keyboard = [
         [
-            InlineKeyboardButton("✅ Approve & Publish", callback_data="post_approve"),
-            InlineKeyboardButton("🔄 Change Topic", callback_data="post_change_topic"),
+            InlineKeyboardButton("âœ… Approve & Publish", callback_data="post_approve"),
+            InlineKeyboardButton("ðŸ”„ Change Topic", callback_data="post_change_topic"),
         ],
         [
-            InlineKeyboardButton("❌ Cancel Post", callback_data="post_cancel")
+            InlineKeyboardButton("âŒ Cancel Post", callback_data="post_cancel")
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -1126,7 +1108,10 @@ def get_post_keyboard() -> InlineKeyboardMarkup:
 async def generate_and_send_preview(chat_id: int, bot, custom_topic: str = None, reply_to_message_id: int = None):
     """Generate a high-fidelity social media draft and send it to the user for approval."""
     try:
-        from social_media import generate_social_post_draft
+        try:
+            from .social_media import generate_social_post_draft
+        except ImportError:
+            from social_media import generate_social_post_draft
         draft = await asyncio.to_thread(generate_social_post_draft, custom_topic)
         draft["custom_topic"] = custom_topic
         
@@ -1136,9 +1121,9 @@ async def generate_and_send_preview(chat_id: int, bot, custom_topic: str = None,
         # Send the image preview with interactive keyboard
         with open(draft["image_path"], "rb") as photo_file:
             caption_text = (
-                f"🔍 *ARIA Marketing Department — Post Preview*\n\n"
-                f"📝 *Proposed Caption:*\n{escape_markdown(draft['caption'])}\n\n"
-                f"🎨 *FLUX Prompt:* \"{escape_markdown(draft['image_prompt'])}\"\n\n"
+                f"ðŸ” *ARIA Marketing Department â€” Post Preview*\n\n"
+                f"ðŸ“ *Proposed Caption:*\n{escape_markdown(draft['caption'])}\n\n"
+                f"ðŸŽ¨ *FLUX Prompt:* \"{escape_markdown(draft['image_prompt'])}\"\n\n"
                 f"Please review the graphic and caption below. Click Approve to publish directly to Facebook."
             )
             
@@ -1156,7 +1141,7 @@ async def generate_and_send_preview(chat_id: int, bot, custom_topic: str = None,
         try:
             await bot.send_message(
                 chat_id=chat_id,
-                text=f"❌ *Failed to generate post preview:*\n{escape_markdown(str(e))}",
+                text=f"âŒ *Failed to generate post preview:*\n{escape_markdown(str(e))}",
                 parse_mode="Markdown",
                 reply_to_message_id=reply_to_message_id
             )
@@ -1229,7 +1214,7 @@ async def scheduler_async_loop(application):
                     try:
                         await application.bot.send_message(
                             chat_id=chat_id,
-                            text="🤖 *Scheduled Marketing Swarm engaged!* Generating daily custom tech graphic and copywriting...",
+                            text="ðŸ¤– *Scheduled Marketing Swarm engaged!* Generating daily custom tech graphic and copywriting...",
                             parse_mode="Markdown"
                         )
                     except Exception as err:
@@ -1269,12 +1254,12 @@ async def cmd_postnow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     custom_topic = " ".join(context.args) if context.args else None
     topic_str = f" for topic: '{custom_topic}'" if custom_topic else ""
-    await update.message.reply_text(f"🤖 *Generating marketing swarm preview{topic_str}...* This takes about 15-20 seconds...", parse_mode="Markdown")
+    await update.message.reply_text(f"ðŸ¤– *Generating marketing swarm preview{topic_str}...* This takes about 15-20 seconds...", parse_mode="Markdown")
     
     await generate_and_send_preview(chat_id, context.bot, custom_topic=custom_topic, reply_to_message_id=update.message.message_id)
 
 
-# ── Telegram handlers ──────────────────────────────────────────────────────
+# â”€â”€ Telegram handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async def run_aria(update: Update, msg: str, session_id: str):
     if update and update.effective_chat:
@@ -1296,10 +1281,10 @@ async def run_aria(update: Update, msg: str, session_id: str):
         print(f"[TG OK] gear={gear} len={len(reply)} | Tokens: {tokens['total']} (Prompt: {tokens['prompt']}, Comp: {tokens['completion']})", flush=True)
         # Append token usage footnote in Telegram
         if tokens and tokens.get("total", 0) > 0:
-            reply += f"\n\n⚡ _[Tokens: {tokens['total']}]_"
+            reply += f"\n\nâš¡ _[Tokens: {tokens['total']}]_"
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
-        reply = f"⚠️ ARIA error: {e}"
+        reply = f"âš ï¸ ARIA error: {e}"
     finally:
         stop_typing.set()
         typing_task.cancel()
@@ -1350,11 +1335,11 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         WAITING_FOR_TOPIC.pop(chat_id, None)
         
         if topic.lower() == 'cancel':
-            await update.message.reply_text("❌ *Topic change cancelled.*", parse_mode="Markdown")
+            await update.message.reply_text("âŒ *Topic change cancelled.*", parse_mode="Markdown")
             return
             
         topic_str = f" for topic: '{topic}'"
-        await update.message.reply_text(f"🔄 *Topic received:* \"{topic}\".\nGenerating brand new graphic and caption preview... This takes about 15-20 seconds...", parse_mode="Markdown")
+        await update.message.reply_text(f"ðŸ”„ *Topic received:* \"{topic}\".\nGenerating brand new graphic and caption preview... This takes about 15-20 seconds...", parse_mode="Markdown")
         await generate_and_send_preview(chat_id, context.bot, custom_topic=topic, reply_to_message_id=update.message.message_id)
         return
 
@@ -1378,16 +1363,16 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
                 
             if not transcribed_text or transcribed_text.startswith("[Error"):
-                await update.message.reply_text(f"⚠️ Voice transcription failed:\n{transcribed_text}")
+                await update.message.reply_text(f"âš ï¸ Voice transcription failed:\n{transcribed_text}")
                 return
                 
             print(f"[TG VOICE OK] Transcribed: '{transcribed_text}'", flush=True)
-            await update.message.reply_text(f"🎤 *[Voice Command]*: \"{transcribed_text}\"", parse_mode="Markdown")
+            await update.message.reply_text(f"ðŸŽ¤ *[Voice Command]*: \"{transcribed_text}\"", parse_mode="Markdown")
             await run_aria(update, transcribed_text, tg_session(update))
             
         except Exception as e:
             traceback.print_exc(file=sys.stdout)
-            await update.message.reply_text(f"⚠️ Voice processing error: {e}")
+            await update.message.reply_text(f"âš ï¸ Voice processing error: {e}")
         return
 
     # 2. Standard text processing
@@ -1419,33 +1404,57 @@ async def cmd_launch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not text:
         await update.message.reply_text("Usage: /launch <complex question>")
         return
-    await update.message.reply_text("🚀 LAUNCH engaged — 6-agent deep swarm + web search. ~30s…")
+    await update.message.reply_text("ðŸš€ LAUNCH engaged â€” 6-agent deep swarm + web search. ~30sâ€¦")
     await run_aria(update, f"/launch {text}", tg_session(update))
 
 
 async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with _memory_lock:
         _histories[tg_session(update)].clear()
-    await update.message.reply_text("🗑 Memory cleared. Fresh start.")
+    await update.message.reply_text("ðŸ—‘ Memory cleared. Fresh start.")
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    google_line = "\n• Send email, create calendar event, log to sheet — just ask naturally" if is_google_configured() else ""
+    google_line = "\nâ€¢ Send email, create calendar event, log to sheet â€” just ask naturally" if is_google_configured() else ""
     await update.message.reply_text(
-        "🤖 *ARIA — Multi-Agent AI Assistant*\n\n"
+        "ðŸ¤– *ARIA â€” Multi-Agent AI Assistant*\n\n"
         "*Gears:*\n"
-        "• /walk <msg> — Quick direct reply\n"
-        "• /sprint <question> — 3-agent swarm + web search\n"
-        "• /launch <question> — 6-agent deep swarm + web search\n\n"
+        "â€¢ /walk <msg> â€” Quick direct reply\n"
+        "â€¢ /sprint <question> â€” 3-agent swarm + web search\n"
+        "â€¢ /launch <question> â€” 6-agent deep swarm + web search\n\n"
         "*Marketing Department:*\n"
-        "• /postnow — Instantly generate and post custom daily tech graphic & copy to Facebook Page\n\n"
+        "â€¢ /postnow â€” Instantly generate and post custom daily tech graphic & copy to Facebook Page\n\n"
         "*Extras:*\n"
-        "• /clear — Reset conversation memory\n"
-        f"• /help — Show this menu{google_line}\n\n"
-        "Or just send a message — ARIA routes automatically.\n"
+        "â€¢ /clear â€” Reset conversation memory\n"
+        "â€¢ /stats â€” Show runtime diagnostics\n"
+        f"â€¢ /help â€” Show this menu{google_line}\n\n"
+        "Or just send a message â€” ARIA routes automatically.\n"
         "I remember your conversation and search the web for research queries.",
         parse_mode="Markdown",
     )
+
+
+async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        try:
+            from .memory import get_runtime_stats
+        except ImportError:
+            from memory import get_runtime_stats
+        stats = get_runtime_stats(limit=80)
+        gears = stats.get("gear_counts", {})
+        text = (
+            "ARIA Runtime Stats\n\n"
+            f"Routing events: {stats.get('routing_events', 0)}\n"
+            f"Workflow events: {stats.get('workflow_events', 0)}\n"
+            f"Gear usage: WALK={gears.get('WALK', 0)}, SPRINT={gears.get('SPRINT', 0)}, LAUNCH={gears.get('LAUNCH', 0)}\n"
+            f"Detected actions: {stats.get('action_detected_count', 0)}\n"
+            f"Average tokens: {stats.get('avg_tokens', 0)}\n"
+            f"Average latency (s): {stats.get('avg_latency_seconds', 0)}\n"
+            f"Workflow success rate: {stats.get('success_rate', 0)}"
+        )
+        await update.message.reply_text(text)
+    except Exception as e:
+        await update.message.reply_text(f"Stats unavailable: {e}")
 
 
 async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1454,22 +1463,22 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if not args:
         menu = (
-            "🤖 *ARIA Model Settings*\n\n"
-            f"• *Current PA (Assistant) Model:* `{CURRENT_PA_MODEL}`\n"
-            f"• *Current Swarm (Research) Model:* `{CURRENT_DEPT_MODEL}`\n\n"
+            "ðŸ¤– *ARIA Model Settings*\n\n"
+            f"â€¢ *Current PA (Assistant) Model:* `{CURRENT_PA_MODEL}`\n"
+            f"â€¢ *Current Swarm (Research) Model:* `{CURRENT_DEPT_MODEL}`\n\n"
             "*Available Models to Switch:*\n"
-            "1️⃣ `llama-3.3-70b-versatile` (Llama 3.3 - Best Quality)\n"
-            "2️⃣ `llama-3.1-8b-instant` (Llama 3.1 8B - Fastest / Best Limits)\n"
-            "3️⃣ `mixtral-8x7b-32768` (Mixtral 8x7B - Great Balance)\n"
-            "4️⃣ `gemma2-9b-it` (Gemma 2 9B - Fast & Smart)\n"
-            "5️⃣ `deepseek-r1-distill-llama-70b` (DeepSeek R1 - Deep Reasoning)\n"
-            "6️⃣ `gemini-2.5-flash` (Gemini 2.5 Flash - Routes to Llama on Groq)\n"
-            "7️⃣ `gpt-4o-mini` (GPT-4o Mini - Fast & Cheap OpenAI)\n"
-            "8️⃣ `gpt-4o` (GPT-4o - Flagship OpenAI Intelligence)\n\n"
+            "1ï¸âƒ£ `llama-3.3-70b-versatile` (Llama 3.3 - Best Quality)\n"
+            "2ï¸âƒ£ `llama-3.1-8b-instant` (Llama 3.1 8B - Fastest / Best Limits)\n"
+            "3ï¸âƒ£ `mixtral-8x7b-32768` (Mixtral 8x7B - Great Balance)\n"
+            "4ï¸âƒ£ `gemma2-9b-it` (Gemma 2 9B - Fast & Smart)\n"
+            "5ï¸âƒ£ `deepseek-r1-distill-llama-70b` (DeepSeek R1 - Deep Reasoning)\n"
+            "6ï¸âƒ£ `gemini-2.5-flash` (Gemini 2.5 Flash - Routes to Llama on Groq)\n"
+            "7ï¸âƒ£ `gpt-4o-mini` (GPT-4o Mini - Fast & Cheap OpenAI)\n"
+            "8ï¸âƒ£ `gpt-4o` (GPT-4o - Flagship OpenAI Intelligence)\n\n"
             "*How to Switch:*\n"
-            "• `/model <1-8>` - Change the main Personal Assistant model\n"
-            "• `/model swarm <1-8>` - Change the underlying swarm/research model\n\n"
-            "💡 *Tip:* If you encounter rate limits, switch models or let ARIA's task manager auto-throttle and balance reasoning!"
+            "â€¢ `/model <1-8>` - Change the main Personal Assistant model\n"
+            "â€¢ `/model swarm <1-8>` - Change the underlying swarm/research model\n\n"
+            "ðŸ’¡ *Tip:* If you encounter rate limits, switch models or let ARIA's task manager auto-throttle and balance reasoning!"
         )
         await update.message.reply_text(menu, parse_mode="Markdown")
         return
@@ -1496,20 +1505,20 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if choice in [m for m in model_map.values()]:
             selected_model = choice
         else:
-            await update.message.reply_text("❌ Invalid choice. Use `/model` to see the list of valid options.")
+            await update.message.reply_text("âŒ Invalid choice. Use `/model` to see the list of valid options.")
             return
 
     try:
         if is_swarm:
             CURRENT_DEPT_MODEL = selected_model
             llm_dept = build_llm(CURRENT_DEPT_MODEL, 0.7)
-            await update.message.reply_text(f"✅ Swarm/Research model switched to: `{CURRENT_DEPT_MODEL}`")
+            await update.message.reply_text(f"âœ… Swarm/Research model switched to: `{CURRENT_DEPT_MODEL}`")
         else:
             CURRENT_PA_MODEL = selected_model
             llm_pa = build_llm(CURRENT_PA_MODEL, 0.2)
-            await update.message.reply_text(f"✅ Main Personal Assistant model switched to: `{CURRENT_PA_MODEL}`")
+            await update.message.reply_text(f"âœ… Main Personal Assistant model switched to: `{CURRENT_PA_MODEL}`")
     except Exception as e:
-        await update.message.reply_text(f"❌ Failed to switch model: {e}")
+        await update.message.reply_text(f"âŒ Failed to switch model: {e}")
 
 
 async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1522,17 +1531,23 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "post_approve":
         draft = PENDING_POSTS.get(chat_id)
         if not draft:
-            await query.edit_message_caption(caption="❌ *No pending post found to approve.* Please run /postnow to generate a new draft.", parse_mode="Markdown")
+            await query.edit_message_caption(caption="âŒ *No pending post found to approve.* Please run /postnow to generate a new draft.", parse_mode="Markdown")
             return
         
-        await query.edit_message_caption(caption="📤 *Publishing to Facebook Page... Please wait.*", parse_mode="Markdown")
+        await query.edit_message_caption(caption="ðŸ“¤ *Publishing to Facebook Page... Please wait.*", parse_mode="Markdown")
         
-        from social_media import publish_to_facebook_page
+        try:
+            from .social_media import publish_to_facebook_page
+        except ImportError:
+            from social_media import publish_to_facebook_page
         ok, msg = await asyncio.to_thread(publish_to_facebook_page, draft["image_path"], draft["caption"])
         
         # Log work progress atomically to profile
         try:
-            from memory import append_to_profile_ledger
+            try:
+                from .memory import append_to_profile_ledger
+            except ImportError:
+                from memory import append_to_profile_ledger
             append_to_profile_ledger("work_summaries", {
                 "task_name": "Daily FB Marketing Post",
                 "status": "SUCCESS" if ok else "FAILED",
@@ -1552,27 +1567,27 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             WAITING_FOR_TOPIC.pop(chat_id, None)
             
             await query.edit_message_caption(
-                caption=f"✅ *Successfully published to Facebook Page!*\n\n{msg}\n\n📝 *Caption:*\n{escape_markdown(draft['caption'])}",
+                caption=f"âœ… *Successfully published to Facebook Page!*\n\n{msg}\n\nðŸ“ *Caption:*\n{escape_markdown(draft['caption'])}",
                 parse_mode="Markdown"
             )
         else:
             await query.edit_message_caption(
-                caption=f"❌ *Failed to publish to Facebook:*\n{escape_markdown(msg)}\n\n📝 *Caption:*\n{escape_markdown(draft['caption'])}\n\n💡 _You can click Approve again to retry, Change Topic, or Cancel._",
+                caption=f"âŒ *Failed to publish to Facebook:*\n{escape_markdown(msg)}\n\nðŸ“ *Caption:*\n{escape_markdown(draft['caption'])}\n\nðŸ’¡ _You can click Approve again to retry, Change Topic, or Cancel._",
                 parse_mode="Markdown",
                 reply_markup=get_post_keyboard() # Keep keyboard active so they can try again or change topic!
             )
             
     elif data == "post_change_topic":
         WAITING_FOR_TOPIC[chat_id] = True
-        await query.message.reply_text("✍️ *Please reply directly to this chat with your new custom topic* (e.g. 'health and yoga', 'cybersecurity tips', or 'computer repair services') to regenerate the post:")
+        await query.message.reply_text("âœï¸ *Please reply directly to this chat with your new custom topic* (e.g. 'health and yoga', 'cybersecurity tips', or 'computer repair services') to regenerate the post:")
         
     elif data == "post_cancel":
         PENDING_POSTS.pop(chat_id, None)
         WAITING_FOR_TOPIC.pop(chat_id, None)
-        await query.edit_message_caption(caption="❌ *Post draft cancelled.*", parse_mode="Markdown")
+        await query.edit_message_caption(caption="âŒ *Post draft cancelled.*", parse_mode="Markdown")
 
 
-# ── Entry point ────────────────────────────────────────────────────────────
+# â”€â”€ Entry point â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 if __name__ == "__main__":
     health_thread = threading.Thread(target=start_health_server, daemon=True)
@@ -1589,8 +1604,11 @@ if __name__ == "__main__":
     bot.add_handler(CommandHandler("launch", cmd_launch))
     bot.add_handler(CommandHandler("clear",  cmd_clear))
     bot.add_handler(CommandHandler("help",   cmd_help))
+    bot.add_handler(CommandHandler("stats",  cmd_stats))
     bot.add_handler(CommandHandler("model",  cmd_model))
     bot.add_handler(CommandHandler("postnow", cmd_postnow))
     bot.add_handler(MessageHandler((filters.TEXT | filters.VOICE) & (~filters.COMMAND), on_message))
     bot.add_handler(CallbackQueryHandler(on_post_callback))
     bot.run_polling(drop_pending_updates=True)
+
+

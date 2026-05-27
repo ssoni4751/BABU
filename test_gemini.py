@@ -9,7 +9,7 @@ if sys.platform == "win32":
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage
 
-API_KEY = "AIzaSyDvdk3YviRanZywosse2rF8ZumBGzZqLbc"
+API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 
 models = [
     "gemini-1.5-flash",
@@ -23,6 +23,9 @@ models = [
 print("="*60)
 print("Testing Gemini Models with User Key...")
 print("="*60)
+
+if not API_KEY:
+    raise RuntimeError("GEMINI_API_KEY is required in environment for this test.")
 
 for model in models:
     try:

@@ -8,8 +8,9 @@ if sys.platform == "win32":
     sys.stderr.reconfigure(encoding="utf-8")
 
 # Configure credentials
-os.environ["GEMINI_API_KEY"] = "AIzaSyDvdk3YviRanZywosse2rF8ZumBGzZqLbc"
-os.environ["TELEGRAM_BOT_TOKEN"] = "MOCK_TELEGRAM_TOKEN"
+if not os.environ.get("GEMINI_API_KEY"):
+    raise RuntimeError("GEMINI_API_KEY is required in environment for this test.")
+os.environ.setdefault("TELEGRAM_BOT_TOKEN", "MOCK_TELEGRAM_TOKEN")
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(CURRENT_DIR)

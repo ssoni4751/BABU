@@ -2,7 +2,7 @@ import os
 import sys
 import json
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 
 # Ensure environment variables are loaded
@@ -17,6 +17,9 @@ if sys.platform == "win32":
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROFILE_PATH = os.path.join(CURRENT_DIR, "user_profile.json")
 FAILURES_PATH = os.path.join(CURRENT_DIR, "memory", "failures.json")
+LAYERED_MEMORY_DIR = os.path.join(CURRENT_DIR, "memory")
+ROUTING_STATS_PATH = os.path.join(LAYERED_MEMORY_DIR, "routing", "routing_stats.json")
+WORKFLOW_LOGS_PATH = os.path.join(LAYERED_MEMORY_DIR, "orchestration", "workflows.json")
 
 # Thread Locks for Atomic Writing
 PROFILE_LOCK = threading.Lock()
@@ -231,3 +234,146 @@ def compress_context_payload(raw_text: str, context_topic: str = "general data")
     except Exception as e:
         print(f"[COMPRESSOR ERROR] Distillation pass failed: {e}. Passing raw text.", flush=True)
         return raw_text
+
+
+def _read_json_list(path: str) -> list:
+    if not os.path.exists(path):
+        return []
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def _write_json_list(path: str, items: list) -> bool:
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        temp_path = path + ".tmp"
+        with open(temp_path, "w", encoding="utf-8") as f:
+            json.dump(items, f, indent=2, ensure_ascii=False)
+        os.replace(temp_path, path)
+        return True
+    except Exception as e:
+        print(f"[MEMORY WRITE ERROR] Failed to write {path}: {e}", flush=True)
+        return False
+
+
+def _is_expired(entry: dict) -> bool:
+    ttl_days = int(entry.get("ttl_days", 10) or 10)
+    last_used_raw = entry.get("last_used") or entry.get("timestamp")
+    if not last_used_raw:
+        return False
+    try:
+        last_used = datetime.fromisoformat(str(last_used_raw).replace("Z", "+00:00"))
+        if not last_used.tzinfo:
+            last_used = last_used.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) > (last_used + timedelta(days=ttl_days))
+    except Exception:
+        return False
+
+
+def prune_expired_memory_entries(default_ttl_days: int = 10) -> dict:
+    """Prune stale layered memory entries using TTL metadata (default 10 days)."""
+    stats = {"routing_removed": 0, "workflow_removed": 0}
+
+    routing_items = _read_json_list(ROUTING_STATS_PATH)
+    kept_routing = []
+    for item in routing_items:
+        if "ttl_days" not in item:
+            item["ttl_days"] = default_ttl_days
+        if _is_expired(item):
+            stats["routing_removed"] += 1
+        else:
+            kept_routing.append(item)
+    _write_json_list(ROUTING_STATS_PATH, kept_routing)
+
+    workflow_items = _read_json_list(WORKFLOW_LOGS_PATH)
+    kept_workflows = []
+    for item in workflow_items:
+        if "ttl_days" not in item:
+            item["ttl_days"] = default_ttl_days
+        if _is_expired(item):
+            stats["workflow_removed"] += 1
+        else:
+            kept_workflows.append(item)
+    _write_json_list(WORKFLOW_LOGS_PATH, kept_workflows)
+    return stats
+
+
+def log_routing_decision(session_id: str, query: str, selected_gear: str, reason: str, has_action: bool, ttl_days: int = 10) -> bool:
+    entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "last_used": datetime.now(timezone.utc).isoformat(),
+        "session_id": session_id,
+        "query_preview": query[:180],
+        "selected_gear": selected_gear,
+        "reason": reason,
+        "has_action": bool(has_action),
+        "ttl_days": ttl_days,
+        "confidence": 1.0,
+    }
+    items = _read_json_list(ROUTING_STATS_PATH)
+    items.append(entry)
+    ok = _write_json_list(ROUTING_STATS_PATH, items)
+    if ok:
+        prune_expired_memory_entries(default_ttl_days=ttl_days)
+    return ok
+
+
+def log_workflow_event(session_id: str, gear: str, sequence: list, total_tokens: int, latency_seconds: float, success: bool, note: str = "", ttl_days: int = 10) -> bool:
+    entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "last_used": datetime.now(timezone.utc).isoformat(),
+        "session_id": session_id,
+        "gear": gear,
+        "sequence": sequence,
+        "total_tokens": int(total_tokens or 0),
+        "latency_seconds": float(latency_seconds or 0.0),
+        "success": bool(success),
+        "note": note[:220],
+        "ttl_days": ttl_days,
+        "confidence": 1.0 if success else 0.5,
+    }
+    items = _read_json_list(WORKFLOW_LOGS_PATH)
+    items.append(entry)
+    ok = _write_json_list(WORKFLOW_LOGS_PATH, items)
+    if ok:
+        prune_expired_memory_entries(default_ttl_days=ttl_days)
+    return ok
+
+
+def get_runtime_stats(limit: int = 50) -> dict:
+    """Return lightweight routing/workflow stats for diagnostics surfaces."""
+    routing_items = _read_json_list(ROUTING_STATS_PATH)[-limit:]
+    workflow_items = _read_json_list(WORKFLOW_LOGS_PATH)[-limit:]
+
+    gear_counts = {"WALK": 0, "SPRINT": 0, "LAUNCH": 0}
+    action_count = 0
+    for item in routing_items:
+        gear = str(item.get("selected_gear", "WALK")).upper()
+        if gear in gear_counts:
+            gear_counts[gear] += 1
+        if item.get("has_action"):
+            action_count += 1
+
+    token_total = 0
+    latency_total = 0.0
+    success_total = 0
+    for item in workflow_items:
+        token_total += int(item.get("total_tokens", 0) or 0)
+        latency_total += float(item.get("latency_seconds", 0.0) or 0.0)
+        if item.get("success"):
+            success_total += 1
+
+    workflow_count = len(workflow_items)
+    return {
+        "routing_events": len(routing_items),
+        "workflow_events": workflow_count,
+        "gear_counts": gear_counts,
+        "action_detected_count": action_count,
+        "avg_tokens": round(token_total / workflow_count, 2) if workflow_count else 0,
+        "avg_latency_seconds": round(latency_total / workflow_count, 2) if workflow_count else 0.0,
+        "success_rate": round(success_total / workflow_count, 3) if workflow_count else 0.0,
+    }
