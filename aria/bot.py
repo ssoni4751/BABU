@@ -1771,13 +1771,22 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if pending and _is_approval_message(msg):
         with _pending_actions_lock:
-            pending = _pending_actions.pop(session_id, None)
+            pending = _pending_actions.get(session_id)
         if pending:
             action = pending.get("action", "")
             params = resolve_action_params(pending.get("params", {}), research_text="")
             ok, result_msg = await asyncio.to_thread(execute_google_action, action, params)
-            status = "Action executed successfully." if ok else "Action execution failed."
-            await update.message.reply_text(f"{status}\n\n{result_msg}")
+            if ok:
+                with _pending_actions_lock:
+                    _pending_actions.pop(session_id, None)
+                status = "Action executed successfully."
+                await update.message.reply_text(f"{status}\n\n{result_msg}")
+            else:
+                status = "Action execution failed."
+                await update.message.reply_text(
+                    f"{status}\n\n{result_msg}\n\nYou can type '1' / 'approve' again to retry, or '0' / 'cancel' to discard.",
+                    reply_markup=get_action_approval_keyboard(session_id)
+                )
             return
 
     if pending and _is_reject_message(msg):
@@ -1941,15 +1950,24 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("action_approve|"):
         session_id = data.split("|", 1)[1].strip()
         with _pending_actions_lock:
-            pending = _pending_actions.pop(session_id, None)
+            pending = _pending_actions.get(session_id)
         if not pending:
             await query.edit_message_text("No pending action found to approve.")
             return
         action = pending.get("action", "")
         params = resolve_action_params(pending.get("params", {}), research_text="")
         ok, result_msg = await asyncio.to_thread(execute_google_action, action, params)
-        status = "Action executed successfully." if ok else "Action execution failed."
-        await query.edit_message_text(f"{status}\n\n{result_msg}")
+        if ok:
+            with _pending_actions_lock:
+                _pending_actions.pop(session_id, None)
+            status = "Action executed successfully."
+            await query.edit_message_text(f"{status}\n\n{result_msg}")
+        else:
+            status = "Action execution failed."
+            await query.edit_message_text(
+                f"{status}\n\n{result_msg}\n\nYou can click Approve again to retry, or Cancel.",
+                reply_markup=get_action_approval_keyboard(session_id)
+            )
         return
 
     if data.startswith("action_cancel|"):

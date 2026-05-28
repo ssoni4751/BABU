@@ -221,6 +221,14 @@
           "Proceed with Phase 3 integration"
         ],
         "timestamp": "2026-05-28T07:54:50.843554+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-28T08:03:01.089674+00:00"
       }
     ],
     "work_summaries": [
@@ -289,6 +297,12 @@
         "status": "FAILED",
         "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A futuristic illustration of a shield protecting a computer and mobile phone fro...",
         "timestamp": "2026-05-28T07:55:09.796964+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A futuristic illustration of a person safely browsing the internet with a shield...",
+        "timestamp": "2026-05-28T08:03:15.594702+00:00"
       }
     ]
   }
