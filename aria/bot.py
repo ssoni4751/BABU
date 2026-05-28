@@ -594,7 +594,7 @@ def intent_router(state: AriaState):
         pending_action_notice = "Pending action cancelled."
     elif pending:
         pending_action_notice = "You already have a pending action approval. Reply with '1' / 'approve' to execute, or '0' / 'cancel' to discard."
-    else:
+    elif manual_gear == "WALK":
         detected_action = sanitize_single_action_payload(detect_action(query, history_text))
         if detected_action:
             with _pending_actions_lock:
@@ -769,6 +769,62 @@ def task_executor_node(state: AriaState):
                 for tid, res in completed_results.items()
                 if tid in task.depends_on
             ]
+            
+            # If the task is an execution task, we MUST ask the user for approval
+            # with the fully resolved parameters (including upstream findings!)
+            if task.department == "execution":
+                if not task.context.get("approved"):
+                    action = task.context.get("action", "")
+                    params = task.context.get("params", {})
+                    
+                    # Resolve params with upstream research/writing text
+                    upstream_texts = [
+                        item["result"] for item in task.context.get("upstream_results", [])
+                    ]
+                    upstream_text = "\n\n".join(upstream_texts) if upstream_texts else ""
+                    
+                    # Call execution department head _resolve_params method dynamically
+                    resolved_params = dept_head._resolve_params(params, upstream_text)
+                    
+                    session_id = state.get("session_id", "default")
+                    
+                    # Save in pending action lock
+                    with _pending_actions_lock:
+                        _pending_actions[session_id] = {
+                            "action": action,
+                            "params": resolved_params,
+                            "task_id": task.task_id,
+                            "goal_id": goal_graph.goal_id
+                        }
+                        
+                    # Format a beautiful preview of the action plan!
+                    preview_fields = {k: v for k, v in resolved_params.items() if k not in ("body", "content")}
+                    fields_str = "\n".join(f"  • {k.capitalize()}: {v}" for k, v in preview_fields.items())
+                    body_preview = resolved_params.get("body", resolved_params.get("content", ""))
+                    
+                    preview = fields_str
+                    if body_preview:
+                        preview += f"\n\n**Draft Content:**\n{body_preview}"
+                        
+                    pending_action_notice = (
+                        f"Action authorization required.\n\n"
+                        f"Proposed action: **{action}**\n"
+                        f"{preview}\n\n"
+                        "Reply with '1' / 'approve' to execute, or '0' / 'cancel' to reject."
+                    )
+                    
+                    duration = round(time.time() - start_time, 2)
+                    tracker = state.get("execution_tracker") or {}
+                    tracker["task_manager_duration"] = duration
+                    
+                    return {
+                        "goal_graph": engine.goal.to_dict(),
+                        "execution_log": execution_log,
+                        "final_brief": pending_action_notice,
+                        "action_result": "",
+                        "execution_tracker": tracker,
+                        "pending_action_notice": pending_action_notice
+                    }
             
             try:
                 # Dispatch task to the department head
