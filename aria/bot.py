@@ -25,6 +25,57 @@ try:
 except ImportError:
     from google_service import execute_google_action, is_google_configured
     from social_media import run_autonomous_social_post
+import sqlite3
+from langgraph.checkpoint.sqlite import SqliteSaver
+
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory", "aria_checkpoint.db")
+os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+
+def init_durable_checkpoint_db():
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sealed_epochs (
+            epoch_id TEXT PRIMARY KEY,
+            sealed_at TEXT
+        );
+    """)
+    conn.commit()
+    return conn
+
+try:
+    db_conn = init_durable_checkpoint_db()
+    checkpointer = SqliteSaver(db_conn)
+except Exception as e:
+    print(f"[CHECKPOINTER WARNING] Failed to initialize SqliteSaver: {e}", flush=True)
+    checkpointer = None
+
+def is_epoch_sealed(epoch_id: str) -> bool:
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM sealed_epochs WHERE epoch_id = ?", (epoch_id,))
+        res = cursor.fetchone()
+        conn.close()
+        return bool(res)
+    except Exception as e:
+        print(f"[DB ERROR] is_epoch_sealed failed: {e}", flush=True)
+        return False
+
+def seal_epoch(epoch_id: str):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR IGNORE INTO sealed_epochs (epoch_id, sealed_at) VALUES (?, ?)",
+            (epoch_id, datetime.now(timezone.utc).isoformat())
+        )
+        conn.commit()
+        conn.close()
+        print(f"[GOVERNANCE] Epoch '{epoch_id}' successfully sealed.", flush=True)
+    except Exception as e:
+        print(f"[DB ERROR] seal_epoch failed: {e}", flush=True)
+
 from langchain_groq import ChatGroq
 from langgraph.graph import END, StateGraph
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -683,12 +734,15 @@ def planner_node(state: AriaState):
     history_text = state.get("history_text", "")
     profile_text = get_user_profile_text()
     
-    print(f"[PLANNER NODE] Planning goal for query: '{query[:50]}'", flush=True)
+    active_goal = state.get("active_goal") or {}
+    pre_goal_id = active_goal.get("goal_id")
+    
+    print(f"[PLANNER NODE] Planning goal for query: '{query[:50]}' (goal_id: {pre_goal_id})", flush=True)
     
     if is_simple_query(query):
-        graph = build_walk_graph(query)
+        graph = build_walk_graph(query, goal_id=pre_goal_id)
     else:
-        graph = plan_goal(query, "LAUNCH", history_text, profile_text)
+        graph = plan_goal(query, "LAUNCH", history_text, profile_text, goal_id=pre_goal_id)
         
     return {"goal_graph": graph.to_dict()}
 
@@ -715,8 +769,10 @@ def task_executor_node(state: AriaState):
             from planner import build_action_graph
         detected_action = state.get("detected_action")
         query = state["user_query"]
+        active_goal = state.get("active_goal") or {}
+        pre_goal_id = active_goal.get("goal_id")
         if detected_action:
-            graph = build_action_graph(query, detected_action)
+            graph = build_action_graph(query, detected_action, goal_id=pre_goal_id)
             graph_dict = graph.to_dict()
         else:
             return {"action_result": "No executable action found.", "final_brief": "Execution failed: no action found."}
@@ -740,6 +796,28 @@ def task_executor_node(state: AriaState):
             break
             
         for task in ready_tasks:
+            # Token Budget Check
+            accumulated_goal_tokens = state.get("tokens", {}).get("total", 0)
+            accumulated_task_tokens = 0
+            for entry in execution_log:
+                accumulated_goal_tokens += entry.get("tokens", {}).get("total", 0)
+                if entry.get("task_id") == task.task_id:
+                    accumulated_task_tokens += entry.get("tokens", {}).get("total", 0)
+                
+            is_ok, budget_reason = engine.verify_token_budget(task.task_id, accumulated_task_tokens, accumulated_goal_tokens)
+            if not is_ok:
+                print(f"[EXECUTOR] Token budget exhausted: {budget_reason}", flush=True)
+                engine.mark_cancelled(task.task_id, f"Token Budget Exhausted: {budget_reason}")
+                execution_log.append({
+                    "task_id": task.task_id,
+                    "objective": task.objective,
+                    "department": task.department,
+                    "error": f"Token Budget Exhausted: {budget_reason}",
+                    "status": "CANCELLED",
+                    "tokens": {"prompt": 0, "completion": 0, "total": 0}
+                })
+                continue
+                
             engine.mark_running(task.task_id)
             
             # Layer 5 Bipartite Auditor: Pre-Execution Gatekeeper check
@@ -829,7 +907,7 @@ def task_executor_node(state: AriaState):
             
             try:
                 # Dispatch task to the department head
-                result = dept_head.dispatch(task, shared_resources, llm_dept)
+                result, task_tokens = dept_head.dispatch(task, shared_resources, llm_dept)
                 
                 # Layer 5 Bipartite Auditor: Post-Execution Validator check
                 passed_post, audit_result = auditor.audit_post(task, result)
@@ -841,7 +919,8 @@ def task_executor_node(state: AriaState):
                         "objective": task.objective,
                         "department": task.department,
                         "error": f"Post-execution Audit Failed: {audit_result}",
-                        "status": "FAILED"
+                        "status": "FAILED",
+                        "tokens": task_tokens
                     })
                 else:
                     engine.mark_completed(task.task_id, audit_result)
@@ -850,7 +929,8 @@ def task_executor_node(state: AriaState):
                         "objective": task.objective,
                         "department": task.department,
                         "result": audit_result,
-                        "status": "SUCCESS"
+                        "status": "SUCCESS",
+                        "tokens": task_tokens
                     })
             except Exception as e:
                 err_msg = str(e)
@@ -861,7 +941,8 @@ def task_executor_node(state: AriaState):
                     "objective": task.objective,
                     "department": task.department,
                     "error": err_msg,
-                    "status": "FAILED"
+                    "status": "FAILED",
+                    "tokens": {"prompt": 0, "completion": 0, "total": 0}
                 })
                 
     # Update tracker
@@ -877,12 +958,20 @@ def task_executor_node(state: AriaState):
         if entry["department"] == "execution" and entry["status"] == "SUCCESS":
             action_res = entry.get("result", "")
             
+    node_tokens = {"prompt": 0, "completion": 0, "total": 0}
+    for entry in execution_log:
+        t = entry.get("tokens") or {"prompt": 0, "completion": 0, "total": 0}
+        node_tokens["prompt"] += t.get("prompt", 0)
+        node_tokens["completion"] += t.get("completion", 0)
+        node_tokens["total"] += t.get("total", 0)
+            
     return {
         "goal_graph": engine.goal.to_dict(),
         "execution_log": execution_log,
         "final_brief": final_brief,
         "action_result": action_res,
-        "execution_tracker": tracker
+        "execution_tracker": tracker,
+        "tokens": node_tokens
     }
 
 
@@ -1315,13 +1404,30 @@ workflow.add_conditional_edges("router", route_after_router, {
 workflow.add_edge("planner", "executor")
 workflow.add_edge("executor", "pa")
 workflow.add_edge("pa",           END)
-aria_brain = workflow.compile()
+if checkpointer:
+    aria_brain = workflow.compile(checkpointer=checkpointer)
+else:
+    aria_brain = workflow.compile()
 
 
 # â”€â”€ Core invoke helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-def invoke_aria(message: str, session_id: str = "default") -> tuple[str, str, dict]:
+def invoke_aria(message: str, session_id: str = "default", goal_id: Optional[str] = None) -> tuple[str, str, dict]:
+    if not goal_id:
+        goal_id = f"G-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+    
+    epoch_id = f"{session_id}:{goal_id}"
+    
+    if is_epoch_sealed(epoch_id):
+        print(f"[GOVERNANCE REFUSAL] Epoch '{epoch_id}' is sealed. Execution blocked.", flush=True)
+        return "This execution epoch is completed and permanently sealed. No further actions or mutations are permitted.", "WALK", {}
+    
     history_text = get_history_text(session_id)
+    
+    config = {}
+    if checkpointer:
+        config = {"configurable": {"thread_id": epoch_id}}
+        
     output = aria_brain.invoke({
         "messages":       [HumanMessage(content=message)],
         "gear":           "WALK",
@@ -1332,7 +1438,7 @@ def invoke_aria(message: str, session_id: str = "default") -> tuple[str, str, di
         "search_results": "",
         "action_result":  "",
         "detected_action": None,
-        "active_goal":    None,
+        "active_goal":    {"goal_id": goal_id},
         "compressed_research": "",
         "routing_metadata": {},
         "pending_action_notice": "",
@@ -1340,11 +1446,20 @@ def invoke_aria(message: str, session_id: str = "default") -> tuple[str, str, di
         "execution_log":  [],
         "final_brief":    "",
         "tokens":         {"prompt": 0, "completion": 0, "total": 0}
-    })
+    }, config)
+    
     reply = output["messages"][-1].content
     gear  = output.get("gear", "WALK")
     tokens = output.get("tokens", {"prompt": 0, "completion": 0, "total": 0})
+    
     add_to_history(session_id, message, reply)
+    
+    goal_graph_dict = output.get("goal_graph")
+    if goal_graph_dict:
+        status = goal_graph_dict.get("status", "ACTIVE")
+        if status in ("COMPLETED", "FAILED", "CANCELLED"):
+            seal_epoch(epoch_id)
+            
     return reply, gear, tokens
 
 

@@ -101,36 +101,29 @@ def _extract_json(text: str) -> dict:
     return json.loads(cleaned)
 
 
-def _build_fallback_graph(query: str) -> GoalGraph:
-    """Return a minimal 2-task graph when LLM planning fails."""
-    goal_id = f"G-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+def _build_fallback_graph(query: str, goal_id: Optional[str] = None) -> GoalGraph:
+    """Return a single-task fail-closed graph refusing execution due to planning ambiguity."""
+    if not goal_id:
+        goal_id = f"G-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
     now_iso = datetime.now(timezone.utc).isoformat()
 
     tasks = [
         TaskDTO(
             task_id="T1",
-            objective=f"Research information about: {query[:200]}",
-            department="research",
+            objective="Inform the user that the request could not be planned securely because the query is too ambiguous, lacks required context, or violates system safety boundaries. Refuse autonomous execution and request clarity.",
+            department="pa",
             depends_on=[],
             priority=1,
             state=TaskState.READY,
-            compliance_checklist=["Verify search returned relevant information", "No empty results"],
-        ),
-        TaskDTO(
-            task_id="T2",
-            objective="Synthesize research findings and respond to user",
-            department="pa",
-            depends_on=["T1"],
-            priority=2,
-            state=TaskState.PENDING,
-            compliance_checklist=["Address the original query", "Synthesize findings factually"],
-        ),
+            compliance_checklist=["State query ambiguity clearly", "Refuse execution factually"],
+        )
     ]
 
     return GoalGraph(
         goal_id=goal_id,
         goal=query[:200],
         tasks=tasks,
+        status="FAILED",
         created_at=now_iso,
     )
 
@@ -145,6 +138,7 @@ def plan_goal(
     history_text: str = "",
     profile_text: str = "",
     model_name: str = "llama-3.1-8b-instant",
+    goal_id: Optional[str] = None,
 ) -> GoalGraph:
     """Decompose *query* into a structured GoalGraph using a single LLM call.
 
@@ -205,7 +199,7 @@ def plan_goal(
         raw_text: str = response.content  # type: ignore[union-attr]
     except Exception as exc:
         print(f"[PLANNER] LLM call failed: {exc}")
-        return _build_fallback_graph(query)
+        return _build_fallback_graph(query, goal_id=goal_id)
 
     # Parse JSON -----------------------------------------------------------
     try:
@@ -213,7 +207,7 @@ def plan_goal(
     except (json.JSONDecodeError, ValueError) as exc:
         print(f"[PLANNER] JSON parse error: {exc}")
         print(f"[PLANNER] Raw LLM output: {raw_text[:300]}")
-        return _build_fallback_graph(query)
+        return _build_fallback_graph(query, goal_id=goal_id)
 
     # Validate & build TaskDTOs -------------------------------------------
     goal_text: str = data.get("goal", query[:200])
@@ -221,7 +215,7 @@ def plan_goal(
 
     if not raw_tasks:
         print("[PLANNER] LLM returned empty task list — using fallback")
-        return _build_fallback_graph(query)
+        return _build_fallback_graph(query, goal_id=goal_id)
 
     valid_dept_names = set(DEPARTMENTS.keys())
     tasks: List[TaskDTO] = []
@@ -289,7 +283,8 @@ def plan_goal(
                         t.state = TaskState.PENDING
 
     # Build GoalGraph ------------------------------------------------------
-    goal_id = f"G-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+    if not goal_id:
+        goal_id = f"G-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
     now_iso = datetime.now(timezone.utc).isoformat()
 
 
@@ -312,7 +307,7 @@ def plan_goal(
     return graph
 
 
-def build_walk_graph(query: str) -> GoalGraph:
+def build_walk_graph(query: str, goal_id: Optional[str] = None) -> GoalGraph:
     """Return a trivial single-task GoalGraph for WALK-gear queries.
 
     No LLM call is made.  The sole task instructs the PA department to
@@ -322,12 +317,15 @@ def build_walk_graph(query: str) -> GoalGraph:
     ----------
     query : str
         The user's query text.
+    goal_id : Optional[str]
+        Optional pre-generated goal ID.
 
     Returns
     -------
     GoalGraph
     """
-    goal_id = f"G-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+    if not goal_id:
+        goal_id = f"G-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
     now_iso = datetime.now(timezone.utc).isoformat()
 
     return GoalGraph(
@@ -347,7 +345,7 @@ def build_walk_graph(query: str) -> GoalGraph:
     )
 
 
-def build_action_graph(query: str, detected_action: dict) -> GoalGraph:
+def build_action_graph(query: str, detected_action: dict, goal_id: Optional[str] = None) -> GoalGraph:
     """Build a 2-task GoalGraph for WALK queries with a detected action.
 
     No LLM call is made.  Task T1 executes the action via the *execution*
@@ -360,12 +358,15 @@ def build_action_graph(query: str, detected_action: dict) -> GoalGraph:
     detected_action : dict
         Must contain ``"action"`` (str) and ``"params"`` (dict) keys
         describing the action to perform.
+    goal_id : Optional[str]
+        Optional pre-generated goal ID.
 
     Returns
     -------
     GoalGraph
     """
-    goal_id = f"G-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+    if not goal_id:
+        goal_id = f"G-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
     now_iso = datetime.now(timezone.utc).isoformat()
 
     action_name: str = detected_action.get("action", "unknown_action")

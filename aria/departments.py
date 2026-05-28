@@ -71,8 +71,22 @@ class DepartmentHead:
             "constraints": task.context.get("constraints", []),
         }
 
-    def dispatch(self, task: TaskDTO, shared_resources: dict, llm: Any) -> str:
-        """Validate → scope → run worker → compress.  Returns result string."""
+    def validate_schema_invariants(self, raw_result: str) -> None:
+        """Enforce strict structured output invariants for departments requiring JSON shapes.
+
+        Raises ValueError on mismatch.
+        """
+        if self.name in ("research", "analysis", "writing"):
+            if not raw_result or len(raw_result.strip()) < 5:
+                raise ValueError("Worker returned empty or extremely short output.")
+            if raw_result.strip().startswith("{") or raw_result.strip().startswith("["):
+                try:
+                    json.loads(raw_result)
+                except Exception as e:
+                    raise ValueError(f"Worker returned malformed JSON output: {e}")
+
+    def dispatch(self, task: TaskDTO, shared_resources: dict, llm: Any) -> tuple[str, dict]:
+        """Validate → scope → run worker → compress.  Returns (result, tokens) tuple."""
         if not self.validate_task(task):
             raise ValueError(f"Invalid task for {self.name}: {task.task_id}")
 
@@ -81,18 +95,22 @@ class DepartmentHead:
             f"[DEPT:{self.name}] Dispatching worker for task {task.task_id}",
             flush=True,
         )
-        raw_result = self._run_worker(task, scoped, llm)
+        raw_result, tokens = self._run_worker(task, scoped, llm)
+        
+        # Enforce structural schema invariants
+        self.validate_schema_invariants(raw_result)
+        
         compressed = self.compress_result(raw_result)
         print(
             f"[DEPT:{self.name}] Worker finished — raw {len(raw_result)} chars → "
             f"compressed {len(compressed)} chars",
             flush=True,
         )
-        return compressed
+        return compressed, tokens
 
     # ── internals ────────────────────────────────────────────────────────
 
-    def _run_worker(self, task: TaskDTO, scoped_context: dict, llm: Any) -> str:
+    def _run_worker(self, task: TaskDTO, scoped_context: dict, llm: Any) -> tuple[str, dict]:
         """Delegate task execution to modular narrow-context worker."""
         try:
             from .workers import run_worker
@@ -237,7 +255,7 @@ class ExecutionHead(DepartmentHead):
     name: str = "execution"
 
     # noinspection PyMethodOverriding
-    def dispatch(self, task: TaskDTO, shared_resources: dict, llm: Any) -> str:
+    def dispatch(self, task: TaskDTO, shared_resources: dict, llm: Any) -> tuple[str, dict]:
         """Execute Google action directly — no LLM involved."""
         if not self.validate_task(task):
             raise ValueError(f"Invalid task for {self.name}: {task.task_id}")
@@ -248,7 +266,7 @@ class ExecutionHead(DepartmentHead):
         if not action:
             msg = f"[DEPT:{self.name}] No action specified in task {task.task_id}"
             print(msg, flush=True)
-            return msg
+            return msg, {"prompt": 0, "completion": 0, "total": 0}
 
         # ── Anti-pattern check ───────────────────────────────────────────
         tool_domain = f"action.{action}"
@@ -266,7 +284,7 @@ class ExecutionHead(DepartmentHead):
                     f"persistent historical failures:\n{anti_patterns}"
                 )
                 print(f"[DEPT:{self.name}] {msg}", flush=True)
-                return msg
+                return msg, {"prompt": 0, "completion": 0, "total": 0}
 
         # Collect upstream results to resolve research context
         upstream_list = task.context.get("upstream_results", [])
@@ -302,11 +320,11 @@ class ExecutionHead(DepartmentHead):
             ok, result_msg = execute_google_action(action, resolved_params)
             status = "SUCCESS" if ok else "FAILED"
             print(f"[DEPT:{self.name}] {status}: {result_msg}", flush=True)
-            return result_msg
+            return result_msg, {"prompt": 0, "completion": 0, "total": 0}
         except Exception as exc:
             error_msg = f"ExecutionHead error for action '{action}': {exc}"
             print(f"[DEPT:{self.name}] {error_msg}", flush=True)
-            return error_msg
+            return error_msg, {"prompt": 0, "completion": 0, "total": 0}
 
     # ── placeholder resolution (mirrors bot.py resolve_action_params) ────
 
@@ -385,14 +403,14 @@ class PAHead(DepartmentHead):
 
     name: str = "pa"
 
-    def dispatch(self, task: TaskDTO, shared_resources: dict, llm: Any) -> str:
+    def dispatch(self, task: TaskDTO, shared_resources: dict, llm: Any) -> tuple[str, dict]:
         """Return the task objective as-is — PA synthesis is handled later."""
         print(
             f"[DEPT:{self.name}] Passthrough for task {task.task_id} — "
             "PA synthesis deferred to pa_node",
             flush=True,
         )
-        return task.objective
+        return task.objective, {"prompt": 0, "completion": 0, "total": 0}
 
 
 # ── Factory ──────────────────────────────────────────────────────────────────

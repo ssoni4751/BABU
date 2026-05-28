@@ -305,5 +305,52 @@ class TestBipartiteAuditor(unittest.TestCase):
         self.assertIn("- [ ] Factual sources cited", sys_msg)
         self.assertIn("- [ ] No generic claims", sys_msg)
 
+    def test_token_budget_governance(self):
+        t1 = TaskDTO(task_id="T1", objective="Research", department="research", depends_on=[], priority=1, token_budget=1000)
+        goal = GoalGraph(goal_id="G_budget", goal="Budget test", tasks=[t1], total_token_budget=5000)
+        engine = TaskEngine(goal)
+        
+        is_ok, reason = engine.verify_token_budget("T1", 0, 4000)
+        self.assertTrue(is_ok)
+        
+        is_ok, reason = engine.verify_token_budget("T1", 0, 6000)
+        self.assertFalse(is_ok)
+        self.assertIn("Goal-level token budget exhausted", reason)
+
+        is_ok, reason = engine.verify_token_budget("T1", 1200, 4000)
+        self.assertFalse(is_ok)
+        self.assertIn("Task-level token budget exhausted", reason)
+
+    def test_structured_schema_invariants(self):
+        head = get_department_head("research")
+        
+        valid_json = '{"findings": "Clear skies", "sources": ["NASA"]}'
+        head.validate_schema_invariants(valid_json)
+        
+        invalid_json = '{"findings": "Clear skies", "sources": ["NASA"'
+        with self.assertRaises(ValueError) as ctx:
+            head.validate_schema_invariants(invalid_json)
+        self.assertIn("Worker returned malformed JSON output", str(ctx.exception))
+        
+        short_out = "12"
+        with self.assertRaises(ValueError) as ctx:
+            head.validate_schema_invariants(short_out)
+        self.assertIn("extremely short output", str(ctx.exception))
+
+    def test_fail_closed_ambiguity_refusal(self):
+        from aria.planner import _build_fallback_graph
+        graph = _build_fallback_graph("gibberish query")
+        self.assertEqual(graph.status, "FAILED")
+        self.assertEqual(len(graph.tasks), 1)
+        self.assertEqual(graph.tasks[0].department, "pa")
+        self.assertIn("ambiguous", graph.tasks[0].objective)
+
+    def test_sqlite_epoch_sealing(self):
+        from aria.bot import is_epoch_sealed, seal_epoch
+        epoch = f"test_session_{datetime.now(timezone.utc).timestamp()}:G-test-epoch"
+        self.assertFalse(is_epoch_sealed(epoch))
+        seal_epoch(epoch)
+        self.assertTrue(is_epoch_sealed(epoch))
+
 if __name__ == "__main__":
     unittest.main()

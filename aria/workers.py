@@ -14,7 +14,19 @@ except ImportError:
     from task_engine import TaskDTO
     from memory import get_anti_pattern_rules
 
-def run_worker(task: TaskDTO, scoped_context: dict, llm: Any) -> str:
+def extract_tokens(res) -> dict:
+    usage = {"prompt": 0, "completion": 0, "total": 0}
+    if not res or not hasattr(res, "response_metadata"):
+        return usage
+    meta = res.response_metadata or {}
+    usage_meta = meta.get("token_usage") or meta.get("usage") or {}
+    if usage_meta:
+        usage["prompt"] = usage_meta.get("input_tokens", 0) or usage_meta.get("prompt_tokens", 0) or 0
+        usage["completion"] = usage_meta.get("output_tokens", 0) or usage_meta.get("completion_tokens", 0) or 0
+        usage["total"] = usage_meta.get("total_tokens", 0) or (usage["prompt"] + usage["completion"])
+    return usage
+
+def run_worker(task: TaskDTO, scoped_context: dict, llm: Any) -> tuple[str, dict]:
     """Execute a single task using the provided narrow context.
     
     Parameters
@@ -28,8 +40,8 @@ def run_worker(task: TaskDTO, scoped_context: dict, llm: Any) -> str:
         
     Returns
     -------
-    str
-        The result of task execution.
+    tuple[str, dict]
+        The result string and token usage dictionary.
     """
     from langchain_core.messages import SystemMessage, HumanMessage
 
@@ -51,7 +63,8 @@ def run_worker(task: TaskDTO, scoped_context: dict, llm: Any) -> str:
             SystemMessage(content=system),
             HumanMessage(content=user_content)
         ])
-        return res.content.strip()
+        tokens = extract_tokens(res)
+        return res.content.strip(), tokens
     except Exception as exc:
         print(f"[WORKER:{task.department.upper()}] Invocation failed: {exc}", flush=True)
-        return f"[Worker error: {exc}]"
+        return f"[Worker error: {exc}]", {"prompt": 0, "completion": 0, "total": 0}

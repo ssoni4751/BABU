@@ -419,6 +419,24 @@ class TaskEngine:
             self._cascade_block(task_id)
             self._update_goal_status()
 
+    def verify_token_budget(self, task_id: str, accumulated_task_tokens: int, accumulated_goal_tokens: int) -> tuple[bool, str]:
+        """Check if executing this task exceeds task-level or goal-level token budgets.
+
+        Returns
+        -------
+        tuple[bool, str]
+            (is_ok, error_reason)
+        """
+        with self._lock:
+            task = self._task_map[task_id]
+            # Check goal-level budget cap
+            if self.goal.total_token_budget > 0 and accumulated_goal_tokens >= self.goal.total_token_budget:
+                return False, f"Goal-level token budget exhausted ({accumulated_goal_tokens} >= {self.goal.total_token_budget})"
+            # Check individual task soft budget cap
+            if task.token_budget > 0 and accumulated_task_tokens >= task.token_budget:
+                return False, f"Task-level token budget exhausted for task '{task_id}' (accumulated {accumulated_task_tokens} >= budget {task.token_budget})"
+            return True, ""
+
     # -- goal-level queries --------------------------------------------------
 
     def is_goal_complete(self) -> bool:
