@@ -698,9 +698,11 @@ def task_executor_node(state: AriaState):
     try:
         from .task_engine import TaskEngine, GoalGraph, TaskState
         from .departments import get_department_head
+        from .auditor import BipartiteAuditor
     except ImportError:
         from task_engine import TaskEngine, GoalGraph, TaskState
         from departments import get_department_head
+        from auditor import BipartiteAuditor
     
     start_time = time.time()
     
@@ -720,6 +722,7 @@ def task_executor_node(state: AriaState):
             
     goal_graph = GoalGraph.from_dict(graph_dict)
     engine = TaskEngine(goal_graph)
+    auditor = BipartiteAuditor(llm=llm_dept)
     
     print(f"[EXECUTOR] Executing goal DAG: {goal_graph.goal_id}", flush=True)
     
@@ -752,6 +755,21 @@ def task_executor_node(state: AriaState):
             
         for task in ready_tasks:
             engine.mark_running(task.task_id)
+            
+            # Layer 5 Bipartite Auditor: Pre-Execution Gatekeeper check
+            passed_pre, reason_pre = auditor.audit_pre(task)
+            if not passed_pre:
+                print(f"[EXECUTOR] Pre-execution audit blocked task {task.task_id}: {reason_pre}", flush=True)
+                engine.mark_failed(task.task_id, f"Pre-execution Audit Blocked: {reason_pre}")
+                execution_log.append({
+                    "task_id": task.task_id,
+                    "objective": task.objective,
+                    "department": task.department,
+                    "error": f"Pre-execution Audit Blocked: {reason_pre}",
+                    "status": "FAILED"
+                })
+                continue
+                
             dept_head = get_department_head(task.department)
             
             # Inject upstream results into context
@@ -765,14 +783,28 @@ def task_executor_node(state: AriaState):
             try:
                 # Dispatch task to the department head
                 result = dept_head.dispatch(task, shared_resources, llm_dept)
-                engine.mark_completed(task.task_id, result)
-                execution_log.append({
-                    "task_id": task.task_id,
-                    "objective": task.objective,
-                    "department": task.department,
-                    "result": result,
-                    "status": "SUCCESS"
-                })
+                
+                # Layer 5 Bipartite Auditor: Post-Execution Validator check
+                passed_post, audit_result = auditor.audit_post(task, result)
+                if not passed_post:
+                    print(f"[EXECUTOR] Post-execution audit failed task {task.task_id}: {audit_result}", flush=True)
+                    engine.mark_failed(task.task_id, f"Post-execution Audit Failed: {audit_result}")
+                    execution_log.append({
+                        "task_id": task.task_id,
+                        "objective": task.objective,
+                        "department": task.department,
+                        "error": f"Post-execution Audit Failed: {audit_result}",
+                        "status": "FAILED"
+                    })
+                else:
+                    engine.mark_completed(task.task_id, audit_result)
+                    execution_log.append({
+                        "task_id": task.task_id,
+                        "objective": task.objective,
+                        "department": task.department,
+                        "result": audit_result,
+                        "status": "SUCCESS"
+                    })
             except Exception as e:
                 err_msg = str(e)
                 print(f"[EXECUTOR ERROR] Task {task.task_id} failed: {err_msg}", flush=True)

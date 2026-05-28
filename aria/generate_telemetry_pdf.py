@@ -14,7 +14,12 @@ sys.path.append(os.path.dirname(CURRENT_DIR))
 
 # Ensure Gemini API Key is configured for Google services
 if not os.environ.get("GEMINI_API_KEY"):
-    raise RuntimeError("GEMINI_API_KEY is required in environment for telemetry PDF generation.")
+    from dotenv import load_dotenv
+    load_dotenv()
+    if os.environ.get("GROQ_API_KEY"):
+        os.environ["GEMINI_API_KEY"] = os.environ["GROQ_API_KEY"]
+    else:
+        raise RuntimeError("GEMINI_API_KEY or GROQ_API_KEY is required in environment for telemetry PDF generation.")
 
 class PDF(FPDF):
     def header(self):

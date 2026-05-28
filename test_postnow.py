@@ -22,7 +22,10 @@ load_dotenv()
 
 # Ensure GEMINI_API_KEY is set
 if not os.environ.get("GEMINI_API_KEY"):
-    raise RuntimeError("GEMINI_API_KEY is required in environment for this test.")
+    if os.environ.get("GROQ_API_KEY"):
+        os.environ["GEMINI_API_KEY"] = os.environ["GROQ_API_KEY"]
+    else:
+        raise RuntimeError("GEMINI_API_KEY or GROQ_API_KEY is required in environment for this test.")
 
 # Add aria to path
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))

@@ -4,6 +4,7 @@ test_orchestration.py — Comprehensive Test Suite for ARIA's DAG Orchestration 
 
 import unittest
 from datetime import datetime, timezone
+from unittest.mock import patch, MagicMock
 from aria.task_engine import TaskDTO, GoalGraph, TaskState, TaskEngine, validate_dag
 from aria.planner import build_walk_graph, build_action_graph
 from aria.departments import get_department_head, DepartmentHead
@@ -150,6 +151,119 @@ class TestDepartments(unittest.TestCase):
         compressed = head.compress_result(raw)
         # Verify line deduplication
         self.assertEqual(compressed, "Line 1\nLine 2\nLine 3")
+
+class TestBipartiteAuditor(unittest.TestCase):
+    
+    def test_pre_execution_gatekeeper_basic(self):
+        from aria.auditor import PreExecutionGatekeeper
+        gatekeeper = PreExecutionGatekeeper()
+        
+        # 1. Missing action payload
+        task_no_action = TaskDTO(
+            task_id="T1",
+            objective="Send email",
+            department="execution",
+            depends_on=[],
+            priority=1,
+            context={}
+        )
+        passed, reason = gatekeeper.audit(task_no_action)
+        self.assertFalse(passed)
+        self.assertIn("no specified action payload", reason)
+        
+        # 2. Unsupported action
+        task_unsupported = TaskDTO(
+            task_id="T1",
+            objective="Hack mainframe",
+            department="execution",
+            depends_on=[],
+            priority=1,
+            context={"action": "hack_mainframe"}
+        )
+        passed, reason = gatekeeper.audit(task_unsupported)
+        self.assertFalse(passed)
+        self.assertIn("Unsupported Workspace action", reason)
+
+    @patch("aria.auditor.is_google_configured")
+    def test_pre_execution_gatekeeper_google_config(self, mock_is_configured):
+        from aria.auditor import PreExecutionGatekeeper
+        gatekeeper = PreExecutionGatekeeper()
+        
+        task_valid = TaskDTO(
+            task_id="T1",
+            objective="Send an email to user",
+            department="execution",
+            depends_on=[],
+            priority=1,
+            context={"action": "send_email"}
+        )
+        
+        # Google not configured
+        mock_is_configured.return_value = False
+        passed, reason = gatekeeper.audit(task_valid)
+        self.assertFalse(passed)
+        self.assertIn("credentials not configured", reason)
+        
+        # Google configured
+        mock_is_configured.return_value = True
+        passed, reason = gatekeeper.audit(task_valid)
+        self.assertTrue(passed)
+        self.assertEqual(reason, "")
+
+    def test_post_execution_validator_deterministic(self):
+        from aria.auditor import PostExecutionValidator
+        validator = PostExecutionValidator()
+        task = TaskDTO(task_id="T1", objective="Research things", department="research", depends_on=[], priority=1)
+        
+        # Empty result
+        passed, reason = validator.audit(task, "")
+        self.assertFalse(passed)
+        self.assertIn("empty result", reason)
+        
+        # Worker error
+        passed, reason = validator.audit(task, "This is [Worker error: Timeout]")
+        self.assertFalse(passed)
+        self.assertIn("Deterministic execution error", reason)
+        
+        # LLM error
+        passed, reason = validator.audit(task, "This is [LLM error: Rate limit]")
+        self.assertFalse(passed)
+        self.assertIn("Deterministic execution error", reason)
+        
+        # Valid output
+        passed, reason = validator.audit(task, "Search results: Python 3.12 is released.")
+        self.assertTrue(passed)
+        self.assertEqual(reason, "Search results: Python 3.12 is released.")
+
+    def test_post_execution_validator_semantic_pass(self):
+        from aria.auditor import PostExecutionValidator
+        # Mock LLM to return JSON indicating passing audit
+        mock_llm = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = '{"passed": true, "reason": "Looks good and factual."}'
+        mock_llm.invoke.return_value = mock_response
+        
+        validator = PostExecutionValidator(llm=mock_llm)
+        task = TaskDTO(task_id="T1", objective="Get count", department="research", depends_on=[], priority=1)
+        
+        passed, reason = validator.audit(task, "The count is 42.")
+        self.assertTrue(passed)
+        self.assertEqual(reason, "The count is 42.")
+        
+    def test_post_execution_validator_semantic_fail(self):
+        from aria.auditor import PostExecutionValidator
+        # Mock LLM to return JSON indicating failed audit (hallucination)
+        mock_llm = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = '{"passed": false, "reason": "Claims action was executed when it was only planned."}'
+        mock_llm.invoke.return_value = mock_response
+        
+        validator = PostExecutionValidator(llm=mock_llm)
+        task = TaskDTO(task_id="T1", objective="Check email", department="research", depends_on=[], priority=1)
+        
+        passed, reason = validator.audit(task, "I have successfully logged into your email and sent 10 emails.")
+        self.assertFalse(passed)
+        self.assertIn("Claims action was executed", reason)
 
 if __name__ == "__main__":
     unittest.main()

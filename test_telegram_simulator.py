@@ -9,7 +9,12 @@ if sys.platform == "win32":
 
 # Configure credentials
 if not os.environ.get("GEMINI_API_KEY"):
-    raise RuntimeError("GEMINI_API_KEY is required in environment for this test.")
+    from dotenv import load_dotenv
+    load_dotenv()
+    if os.environ.get("GROQ_API_KEY"):
+        os.environ["GEMINI_API_KEY"] = os.environ["GROQ_API_KEY"]
+    else:
+        raise RuntimeError("GEMINI_API_KEY or GROQ_API_KEY is required in environment for this test.")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "MOCK_TELEGRAM_TOKEN")
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
