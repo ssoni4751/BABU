@@ -96,12 +96,12 @@ OPENAI_KEY      = os.environ.get("OPENAI_API_KEY", "")
 API_CHAT_TOKEN  = os.environ.get("API_CHAT_TOKEN", "").strip()
 
 CURRENT_PA_MODEL   = "llama-3.1-8b-instant"
-CURRENT_DEPT_MODEL = "llama-3.1-8b-instant"
+CURRENT_DEPT_MODEL = "llama-3.3-70b-versatile"
 
 def build_llm(model_name: str, temp: float):
-    """Dynamically construct ChatGroq, ChatGoogleGenerativeAI, or ChatOpenAI based on model name, redirecting Gemini and 70b to Groq 8b to prevent rate limits."""
+    """Dynamically construct ChatGroq, ChatGoogleGenerativeAI, or ChatOpenAI based on model name, redirecting Gemini to Groq 8b to prevent rate limits."""
     target_model = model_name
-    if "70b" in target_model or target_model.startswith("gemini-"):
+    if target_model.startswith("gemini-"):
         target_model = "llama-3.1-8b-instant"
         print(f"[LLM REDIRECT] Mapping model '{model_name}' to 'llama-3.1-8b-instant' to bypass rate limits.", flush=True)
 
@@ -129,30 +129,39 @@ def load_user_profile() -> dict:
 
 USER_PROFILE = load_user_profile()
 
-def get_user_profile_text() -> str:
-    """Return L1 Daily Profile Context (Core identity details for conversational awareness)."""
+def get_user_profile_text(gear: str = "LAUNCH") -> str:
+    """Return L1 Daily Profile Context, selectively retrieving context based on gear."""
     if not USER_PROFILE:
         return ""
     
     details = USER_PROFILE.get("personal_details", {})
-    business = USER_PROFILE.get("business_context", {})
     prefs = USER_PROFILE.get("preferences", {})
+    nickname = details.get("primary_nickname", "") or details.get("full_name", "Anshu")
     
+    if gear == "WALK":
+        # Ultra-thin identity context for casual conversation
+        lines = [
+            "[USER PERSONALIZATION CONTEXT]",
+            f"  • User Name: {nickname}",
+            f"  • Tone Preference: {prefs.get('communication_style', 'Warm, brief, natural')}"
+        ]
+        return "\n".join(lines)
+        
+    business = USER_PROFILE.get("business_context", {})
     name = details.get("full_name", "") or details.get("primary_nickname", "")
-    nickname = details.get("primary_nickname", "")
     
     lines = ["[USER PROFILE & CONTEXT]"]
     if name:
-        lines.append(f"  â€¢ User Name: {name} (Nickname: {nickname})" if nickname else f"  â€¢ User Name: {name}")
+        lines.append(f"  • User Name: {name} (Nickname: {nickname})" if nickname else f"  • User Name: {name}")
     if details.get("personal_email"):
-        lines.append(f"  â€¢ Personal Email: {details.get('personal_email')}")
+        lines.append(f"  • Personal Email: {details.get('personal_email')}")
     if details.get("official_email"):
-        lines.append(f"  â€¢ Official Email: {details.get('official_email')}")
+        lines.append(f"  • Official Email: {details.get('official_email')}")
     if business:
-        lines.append(f"  â€¢ Business: {business.get('business_name', '')} ({business.get('classification', '')})")
+        lines.append(f"  • Business: {business.get('business_name', '')} ({business.get('classification', '')})")
     if prefs:
-        lines.append(f"  â€¢ Timezone: {prefs.get('timezone', 'Asia/Kolkata')}")
-        lines.append(f"  â€¢ Communication Style: {prefs.get('communication_style', 'Logical and warm')}")
+        lines.append(f"  • Timezone: {prefs.get('timezone', 'Asia/Kolkata')}")
+        lines.append(f"  • Communication Style: {prefs.get('communication_style', 'Logical and warm')}")
         
     return "\n".join(lines)
 
@@ -1345,6 +1354,22 @@ def pa_node(state: AriaState):
     user_query    = state["user_query"]
     pending_action_notice = state.get("pending_action_notice", "")
 
+    # Soft Continuity: Suppress conversational history for fresh greetings to avoid residual bias
+    lowered_query = user_query.lower().strip().removeprefix("/").removeprefix("!")
+    for char in "?!.,":
+        lowered_query = lowered_query.replace(char, "")
+    lowered_query = lowered_query.strip()
+    
+    greetings = {
+        "hi", "hello", "hey", "how are you", "how's it going", "how you doing", 
+        "how doing", "yo", "hi buddy", "hey buddy", "hello buddy", "good morning", 
+        "good afternoon", "good evening"
+    }
+    is_fresh_greeting = lowered_query in greetings or any(lowered_query.startswith(g + " ") for g in greetings)
+    
+    if is_fresh_greeting:
+        history = ""
+
     if pending_action_notice:
         response = AIMessage(content=pending_action_notice)
         return {"messages": state["messages"] + [response], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
@@ -1388,29 +1413,42 @@ def pa_node(state: AriaState):
     else:
         style = "[LAUNCH]\nStructured briefing: ## headers. Cover overview, findings, risks, outlook. End with one concrete recommendation. Dense and precise."
 
-    profile_text = get_user_profile_text()
-    profile_ctx = f"\n\nUser Profile:\n{profile_text}" if profile_text else ""
-    google_tools = ", ".join(MAKE_ACTIONS.keys())
-    google_ctx = f"\n\nGoogle Workspace active [{google_tools}]. Confirm any triggered actions clearly."
-
-    try:
-        from .memory import get_anti_pattern_rules
-    except ImportError:
-        from memory import get_anti_pattern_rules
-    pa_rules = get_anti_pattern_rules("pa")
-    
     # Inject live temporal awareness for PA synthesis
     from datetime import datetime, timezone
     now_str = datetime.now(timezone.utc).strftime("%A, %d %B %Y, %H:%M UTC")
-    manifesto = (
-        f"ARIA [{gear}]. Current date/time: {now_str}. Never reveal internal agents. {style}"
-        f" Use history for context, never repeat it verbatim."
-        f"{google_ctx}{profile_ctx}"
-    )
-    if not action_result:
-        manifesto += "\n\nCRITICAL: Do not claim any action was executed/sent/created in this turn unless [Automation Result] is explicitly present."
-    if pa_rules:
-        manifesto += "\n\n" + pa_rules
+
+    # Tiered Prompt Architecture
+    if gear == "WALK":
+        # Ultra-thin manifesto for casual conversational mode
+        details = USER_PROFILE.get("personal_details", {}) if USER_PROFILE else {}
+        nickname = details.get("primary_nickname", "") or details.get("full_name", "Anshu")
+        manifesto = (
+            f"You are ARIA, a warm, direct, and helpful personal companion. Current date/time: {now_str}.\n"
+            f"Style: Warm, brief, natural human dialogue. Max two short paragraphs. Do not mention internal details.\n"
+            f"Recipient: You are talking directly to {nickname}."
+        )
+    else:
+        # Full Workflow/Launch/Sprint Mode Prompt
+        profile_text = get_user_profile_text(gear)
+        profile_ctx = f"\n\nUser Profile:\n{profile_text}" if profile_text else ""
+        google_tools = ", ".join(MAKE_ACTIONS.keys())
+        google_ctx = f"\n\nGoogle Workspace active [{google_tools}]. Confirm any triggered actions clearly."
+        
+        try:
+            from .memory import get_anti_pattern_rules
+        except ImportError:
+            from memory import get_anti_pattern_rules
+        pa_rules = get_anti_pattern_rules("pa")
+
+        manifesto = (
+            f"ARIA [{gear}]. Current date/time: {now_str}. Never reveal internal agents. {style}"
+            f" Use history for context, never repeat it verbatim."
+            f"{google_ctx}{profile_ctx}"
+        )
+        if not action_result:
+            manifesto += "\n\nCRITICAL: Do not claim any action was executed/sent/created in this turn unless [Automation Result] is explicitly present."
+        if pa_rules:
+            manifesto += "\n\n" + pa_rules
 
     parts = []
     if history:
