@@ -570,13 +570,7 @@ def intent_router(state: AriaState):
     lowered = query.lower().strip()
     session_id = state.get("session_id", "default")
 
-    manual_gear = "WALK"
-    if lowered.startswith("/sprint") or lowered.startswith("!sprint"):
-        manual_gear = "SPRINT"
-    elif lowered.startswith("/launch") or lowered.startswith("!launch"):
-        manual_gear = "LAUNCH"
-    elif lowered.startswith("/walk") or lowered.startswith("!walk"):
-        manual_gear = "WALK"
+    manual_gear = "LAUNCH"
 
     detected_action = None
     pending_action_notice = ""
@@ -666,28 +660,35 @@ def route_after_router(state: AriaState) -> str:
     return "plan"
 
 
+def is_simple_query(text: str) -> bool:
+    t = (text or "").lower().strip()
+    # Remove common command prefixes
+    t = t.removeprefix("/").removeprefix("!")
+    
+    # Common greetings, basic phrases, and stats
+    greetings = {"hi", "hello", "hey", "good morning", "good afternoon", "good evening", "how are you", "help", "clear", "stats", "model"}
+    if t in greetings or len(t) < 15:
+        return True
+    return False
+
+
 def planner_node(state: AriaState):
     """Decompose user goal into a structured GoalGraph."""
     try:
-        from .planner import plan_goal, build_walk_graph, build_action_graph
+        from .planner import plan_goal, build_walk_graph
     except ImportError:
-        from planner import plan_goal, build_walk_graph, build_action_graph
+        from planner import plan_goal, build_walk_graph
         
     query = state["user_query"]
-    gear = state["gear"]
     history_text = state.get("history_text", "")
     profile_text = get_user_profile_text()
     
-    print(f"[PLANNER NODE] Planning goal for query: '{query[:50]}' with gear: {gear}", flush=True)
+    print(f"[PLANNER NODE] Planning goal for query: '{query[:50]}'", flush=True)
     
-    if gear == "WALK":
-        detected_action = state.get("detected_action")
-        if detected_action:
-            graph = build_action_graph(query, detected_action)
-        else:
-            graph = build_walk_graph(query)
+    if is_simple_query(query):
+        graph = build_walk_graph(query)
     else:
-        graph = plan_goal(query, gear, history_text, profile_text)
+        graph = plan_goal(query, "LAUNCH", history_text, profile_text)
         
     return {"goal_graph": graph.to_dict()}
 
@@ -1195,8 +1196,8 @@ def pa_node(state: AriaState):
         response = AIMessage(content=response_text)
         return {"messages": state["messages"] + [response], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
 
-    # Deterministic short-circuit for basic profile facts in WALK mode.
-    if gear == "WALK" and not action_result:
+    # Deterministic short-circuit for basic profile facts.
+    if not action_result:
         direct_fact = get_profile_fact_answer(user_query)
         if direct_fact:
             tracker = state.get("execution_tracker", {})
@@ -1207,20 +1208,17 @@ def pa_node(state: AriaState):
             response = AIMessage(content=direct_fact)
             return {"messages": state["messages"] + [response], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
 
-    # Dynamic L2/L3 profile retrieval fallback for the WALK gear:
-    # If this is WALK gear and there's no research, query search_profile to fetch matching personal details!
-    # This completely avoids running the 3-agent swarm (saving 2,500+ tokens) for simple personal queries.
-    if gear == "WALK" and not research:
+    # Dynamic L2/L3 profile retrieval fallback:
+    # If there's no research, query search_profile to fetch matching personal details!
+    if not research and not action_result:
         profile_ctx = search_profile(state["user_query"])
         if profile_ctx and "[Local User Profile Matches]" in profile_ctx:
             research = profile_ctx
 
-    if gear == "LAUNCH":
-        style = "[LAUNCH]\nStructured briefing: ## headers. Cover overview, findings, risks, outlook. End with one concrete recommendation. Dense and precise."
-    elif gear == "SPRINT":
-        style = "[SPRINT]\nSynthesize concisely - lead with insight, not summary."
-    else:
+    if is_simple_query(user_query):
         style = "[WALK]\nBrief, warm, direct. Max two short paragraphs. Confirm any automation action clearly."
+    else:
+        style = "[LAUNCH]\nStructured briefing: ## headers. Cover overview, findings, risks, outlook. End with one concrete recommendation. Dense and precise."
 
     profile_text = get_user_profile_text()
     profile_ctx = f"\n\nUser Profile:\n{profile_text}" if profile_text else ""
@@ -1357,32 +1355,40 @@ STATUS_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ARIA â€” AI Assistant</title>
+<title>ARIA — AI Assistant</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
-  body{font-family:'Segoe UI',sans-serif;background:#0f0f1a;color:#e0e0ff;min-height:100vh;display:flex;align-items:center;justify-content:center}
-  .card{background:#1a1a2e;border:1px solid #2a2a4a;border-radius:16px;padding:48px 56px;text-align:center;max-width:500px;width:90%}
-  .dot{width:14px;height:14px;background:#00e676;border-radius:50%;display:inline-block;margin-right:8px;animation:pulse 2s infinite}
-  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(0,230,118,.4)}50%{box-shadow:0 0 0 8px rgba(0,230,118,0)}}
-  h1{font-size:2.4rem;font-weight:700;letter-spacing:2px;color:#a78bfa;margin:20px 0 8px}
-  .sub{color:#888;font-size:.95rem;margin-bottom:32px}
-  .badge{display:inline-flex;align-items:center;background:#0d2b1f;border:1px solid #00e676;color:#00e676;border-radius:24px;padding:6px 18px;font-size:.85rem;font-weight:600;margin-bottom:32px}
-  .gear{background:#1e1e3a;border-radius:10px;padding:14px 18px;margin:8px 0;text-align:left}
-  .gear.launch{background:#1e1028;border:1px solid #7c3aed}
-  .gear strong{color:#a78bfa}.gear.launch strong{color:#c084fc}
-  .gear span{color:#aaa;font-size:.88rem;margin-left:8px}
-  .footer{margin-top:32px;color:#555;font-size:.8rem}
+  body{font-family:'Segoe UI',sans-serif;background:#0b0b14;color:#e2e8f0;min-height:100vh;display:flex;align-items:center;justify-content:center}
+  .card{background:#131325;border:1px solid #282846;border-radius:20px;padding:48px 40px;text-align:center;max-width:480px;width:90%;box-shadow:0 10px 30px rgba(0,0,0,0.5)}
+  .dot{width:12px;height:12px;background:#10b981;border-radius:50%;display:inline-block;margin-right:8px;animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(16,185,129,.4)}50%{box-shadow:0 0 0 8px rgba(16,185,129,0)}}
+  h1{font-size:2.5rem;font-weight:800;letter-spacing:4px;color:#a78bfa;margin:16px 0 4px;background:linear-gradient(to right,#a78bfa,#c084fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .sub{color:#71717a;font-size:.95rem;margin-bottom:32px;letter-spacing:1px;text-transform:uppercase}
+  .badge{display:inline-flex;align-items:center;background:#064e3b;border:1px solid #10b981;color:#34d399;border-radius:24px;padding:6px 16px;font-size:.8rem;font-weight:600;margin-bottom:28px}
+  .swarm{background:#1a1a36;border:1px solid #7c3aed;border-radius:12px;padding:18px;margin-bottom:24px;text-align:left;box-shadow:inset 0 1px 0 rgba(255,255,255,0.05)}
+  .swarm strong{color:#c084fc;font-size:1.1rem;display:block;margin-bottom:6px}
+  .swarm p{color:#94a3b8;font-size:.88rem;line-height:1.5}
+  .features{text-align:left;margin:20px 0 32px;padding-left:4px}
+  .feat{color:#94a3b8;font-size:.88rem;margin:10px 0;display:flex;align-items:center}
+  .feat-dot{width:6px;height:6px;background:#c084fc;border-radius:50%;margin-right:12px;display:inline-block}
+  .footer{border-top:1px solid #27272a;padding-top:24px;color:#52525b;font-size:.8rem;letter-spacing:0.5px}
 </style>
 </head>
 <body>
 <div class="card">
-  <div class="badge"><span class="dot"></span>LIVE</div>
+  <div class="badge"><span class="dot"></span>UNIFIED SWARM</div>
   <h1>ARIA</h1>
-  <p class="sub">Multi-Agent AI Assistant</p>
-  <div class="gear"><strong>WALK</strong><span>Quick reply + Google automations via Google Workspace APIs</span></div>
-  <div class="gear"><strong>SPRINT</strong><span>3-agent swarm + web search</span></div>
-  <div class="gear launch"><strong>LAUNCH</strong><span>6-agent deep swarm + web search + synthesis</span></div>
-  <p class="footer">Groq &bull; Llama 3 &bull; LangGraph &bull; Memory &bull; Web Search &bull; Google Workspace</p>
+  <p class="sub">AI Swarm Assistant</p>
+  <div class="swarm">
+    <strong>Unified Swarm Engine</strong>
+    <p>Dynamic DAG-based task planning, routing, and execution. Integrates multi-agent deep research, writing, and secure audited actions.</p>
+  </div>
+  <div class="features">
+    <div class="feat"><span class="feat-dot"></span>Instant short-circuit for casual conversations</div>
+    <div class="feat"><span class="feat-dot"></span>6-Agent deep swarm + web search for complex tasks</div>
+    <div class="feat"><span class="feat-dot"></span>Secure audited execution of Google Workspace APIs</div>
+  </div>
+  <p class="footer">Groq &bull; Llama 3 &bull; LangGraph &bull; Self-Healing Memory</p>
 </div>
 </body>
 </html>"""
@@ -1859,29 +1865,13 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await run_aria(update, msg, session_id)
 
 
-async def cmd_walk(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = " ".join(context.args) if context.args else ""
-    if not text:
-        await update.message.reply_text("Usage: /walk <message>")
-        return
-    await run_aria(update, f"/walk {text}", tg_session(update))
-
-
-async def cmd_sprint(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = " ".join(context.args) if context.args else ""
-    if not text:
-        await update.message.reply_text("Usage: /sprint <question>")
-        return
-    await run_aria(update, f"/sprint {text}", tg_session(update))
-
-
 async def cmd_launch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = " ".join(context.args) if context.args else ""
     if not text:
         await update.message.reply_text("Usage: /launch <complex question>")
         return
-    await update.message.reply_text("LAUNCH engaged - 6-agent deep swarm + web search (~30s).")
-    await run_aria(update, f"/launch {text}", tg_session(update))
+    await update.message.reply_text("Swarm engaged — planning and executing goal (~30s)...")
+    await run_aria(update, text, tg_session(update))
 
 
 async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1894,18 +1884,16 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     google_line = "\n- Send email, create calendar event, log to sheet - just ask naturally" if is_google_configured() else ""
     await update.message.reply_text(
         "ARIA - Multi-Agent AI Assistant\n\n"
-        "Gears:\n"
-        "- /walk <msg> - Quick direct reply\n"
-        "- /sprint <question> - 3-agent swarm + web search\n"
-        "- /launch <question> - 6-agent deep swarm + web search\n\n"
+        "Unified Agent Swarm:\n"
+        "- Just send a message naturally! ARIA automatically decomposes your query, performs deep web research, writes drafts, and executes secure audited actions.\n"
+        "- /launch <question> - Shortcut command to explicitly trigger the planner.\n\n"
         "Marketing Department:\n"
         "- /postnow - Instantly generate and post custom daily tech graphic & copy to Facebook Page\n\n"
         "Extras:\n"
         "- /clear - Reset conversation memory\n"
         "- /stats - Show runtime diagnostics\n"
         f"- /help - Show this menu{google_line}\n\n"
-        "Or just send a message - ARIA routes automatically.\n"
-        "I remember your conversation and search the web for research queries.",
+        "I remember your conversation and personalize drafts based on your user profile.",
     )
 
 
@@ -2096,14 +2084,12 @@ if __name__ == "__main__":
     health_thread = threading.Thread(target=start_health_server, daemon=True)
     health_thread.start()
     google_status = f"Google Workspace ({'active' if is_google_configured() else 'NOT configured'})"
-    print(f"--- ARIA IS LIVE | Memory | Web Search | Knowledge Base | {google_status} | WALK + SPRINT + LAUNCH ---", flush=True)
+    print(f"--- ARIA IS LIVE | Memory | Web Search | Knowledge Base | {google_status} | Unified Swarm ---", flush=True)
     bot = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     
     # Start autonomous social media manager scheduler
     start_social_scheduler(bot)
     
-    bot.add_handler(CommandHandler("walk",   cmd_walk))
-    bot.add_handler(CommandHandler("sprint", cmd_sprint))
     bot.add_handler(CommandHandler("launch", cmd_launch))
     bot.add_handler(CommandHandler("clear",  cmd_clear))
     bot.add_handler(CommandHandler("help",   cmd_help))
