@@ -352,5 +352,42 @@ class TestBipartiteAuditor(unittest.TestCase):
         seal_epoch(epoch)
         self.assertTrue(is_epoch_sealed(epoch))
 
+    def test_autoimmune_confidence_decay(self):
+        from aria.memory import log_execution_failure, register_successful_execution, get_anti_pattern_rules, FAILURES_PATH
+        import json
+        
+        domain = "test.autoimmune_decay"
+        method = "test_method"
+        err = "Mock connection timeout"
+        
+        # 1. Log failure
+        success = log_execution_failure(domain, method, err)
+        self.assertTrue(success)
+        
+        # Verify initial rule
+        rules = get_anti_pattern_rules(domain)
+        self.assertIn("CRITICAL DIRECTION", rules)
+        
+        # 2. Register success - first decay (1.0 -> 0.85)
+        register_successful_execution(domain)
+        
+        with open(FAILURES_PATH, "r", encoding="utf-8") as f:
+            failures = json.load(f)
+        
+        entry = next((e for e in failures if e.get("domain") == domain), None)
+        self.assertIsNotNone(entry)
+        self.assertAlmostEqual(entry["confidence"], 0.85)
+        self.assertEqual(entry["success_count"], 1)
+        
+        # 3. Success runs until pruned (threshold < 0.25)
+        for _ in range(12):
+            register_successful_execution(domain)
+            
+        with open(FAILURES_PATH, "r", encoding="utf-8") as f:
+            failures = json.load(f)
+            
+        entry_after = next((e for e in failures if e.get("domain") == domain), None)
+        self.assertIsNone(entry_after, "Failed rule was not healed and pruned from failures.json")
+
 if __name__ == "__main__":
     unittest.main()

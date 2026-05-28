@@ -962,6 +962,14 @@ def task_executor_node(state: AriaState):
                         "status": "SUCCESS",
                         "tokens": task_tokens
                     })
+                    # Register success to heal the immune system!
+                    try:
+                        from .memory import register_successful_execution
+                    except ImportError:
+                        from memory import register_successful_execution
+                    register_successful_execution(domain=f"department.{task.department}")
+                    if task.department == "execution" and task.context.get("action"):
+                        register_successful_execution(domain=f"action.{task.context['action']}")
             except Exception as e:
                 err_msg = str(e)
                 print(f"[EXECUTOR ERROR] Task {task.task_id} failed: {err_msg}", flush=True)

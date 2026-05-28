@@ -139,6 +139,10 @@ def log_execution_failure(domain: str, method: str, exception_msg: str) -> bool:
             "attempted_methodology": method,
             "observed_consequence": observed,
             "active_anti_pattern_rule": rule,
+            "confidence": 1.0,
+            "decay_rate": 0.15,
+            "success_count": 0,
+            "ttl_sessions_remaining": 20,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
@@ -174,6 +178,52 @@ def log_execution_failure(domain: str, method: str, exception_msg: str) -> bool:
         return False
 
 
+def register_successful_execution(domain: str) -> None:
+    """Register successful method run to decay failure rules and heal the immune system."""
+    if not os.path.exists(FAILURES_PATH):
+        return
+        
+    with FAILURES_LOCK:
+        try:
+            with open(FAILURES_PATH, "r", encoding="utf-8") as f:
+                failures = json.load(f)
+                
+            updated_failures = []
+            healed_signatures = []
+            
+            for entry in failures:
+                if entry.get("domain") == domain:
+                    # Increment success tracking and decay confidence
+                    entry["success_count"] = entry.get("success_count", 0) + 1
+                    decay = entry.get("decay_rate", 0.15)
+                    entry["confidence"] = max(0.0, entry.get("confidence", 1.0) * (1 - decay))
+                    entry["ttl_sessions_remaining"] = entry.get("ttl_sessions_remaining", 20) - 1
+                    
+                    # Pruning threshold check
+                    if entry["confidence"] < 0.25 or entry["ttl_sessions_remaining"] <= 0:
+                        healed_signatures.append(entry.get("failure_signature"))
+                        continue # Rule is wiped completely (healed!)
+                        
+                updated_failures.append(entry)
+                
+            if healed_signatures:
+                print(f"[IMMUNE SYSTEM] Healed anti-pattern(s) from memory: {', '.join(healed_signatures)}", flush=True)
+                
+            # Atomic Writeback
+            temp_path = FAILURES_PATH + ".tmp"
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump(updated_failures, f, indent=2, ensure_ascii=False)
+            os.replace(temp_path, FAILURES_PATH)
+            
+        except Exception as e:
+            print(f"[IMMUNE SYSTEM ERROR] Failed to heal anti-patterns: {e}", flush=True)
+            if os.path.exists(FAILURES_PATH + ".tmp"):
+                try:
+                    os.remove(FAILURES_PATH + ".tmp")
+                except Exception:
+                    pass
+
+
 def get_anti_pattern_rules(domain: str) -> str:
     """Retrieve all logged anti-pattern rules for a specific domain to inject as negative constraints."""
     if not os.path.exists(FAILURES_PATH):
@@ -185,7 +235,7 @@ def get_anti_pattern_rules(domain: str) -> str:
             
         rules = []
         for entry in failures:
-            if entry.get("domain") == domain:
+            if entry.get("domain") == domain and entry.get("confidence", 1.0) >= 0.25:
                 rules.append(f"• Previously Failed Method: {entry.get('attempted_methodology')}\n  Observed Issue: {entry.get('observed_consequence')}\n  CRITICAL DIRECTION: {entry.get('active_anti_pattern_rule')}")
                 
         if rules:
