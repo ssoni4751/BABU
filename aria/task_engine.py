@@ -100,6 +100,7 @@ class TaskDTO:
     created_at: str = ""
     completed_at: str = ""
     token_budget: int = 1500
+    compliance_checklist: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not self.created_at:
@@ -124,6 +125,7 @@ class TaskDTO:
             "created_at": self.created_at,
             "completed_at": self.completed_at,
             "token_budget": self.token_budget,
+            "compliance_checklist": list(self.compliance_checklist),
         }
 
     @classmethod
@@ -144,6 +146,7 @@ class TaskDTO:
             created_at=data.get("created_at", ""),
             completed_at=data.get("completed_at", ""),
             token_budget=int(data.get("token_budget", 1500)),
+            compliance_checklist=list(data.get("compliance_checklist", [])),
         )
 
 

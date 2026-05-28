@@ -131,25 +131,35 @@ class ResearchHead(DepartmentHead):
     def scope_context(self, task: TaskDTO, shared_resources: dict) -> dict:
         """
         Include query, web-search hits, KB hits, and an optional profile
-        slice (only when the query is personal).  Empty sources are omitted.
+        slice. Empty sources are dynamically fetched using the task objective
+        to ensure precision and avoid raw user command pollution.
         """
         scoped: dict[str, Any] = {
             "objective": task.objective,
             "constraints": task.context.get("constraints", []),
         }
 
-        user_query = shared_resources.get("user_query", task.objective)
-        scoped["query"] = user_query
+        # 1. Use the specific, atomic task objective as the search query
+        search_query = task.objective
+        scoped["query"] = search_query
 
-        web_search = shared_resources.get("web_search")
-        if web_search:
-            scoped["web_search"] = web_search
+        # 2. Dynamically import search helpers to avoid circular dependencies
+        try:
+            from .bot import web_search, search_knowledge, search_profile
+        except ImportError:
+            from bot import web_search, search_knowledge, search_profile
 
-        kb_hits = shared_resources.get("knowledge_base")
+        # 3. Dynamic search execution
+        print(f"[DEPT:research] Dynamically executing web search for objective: '{search_query}'", flush=True)
+        web_hits = web_search(search_query)
+        if web_hits and web_hits != "No results found.":
+            scoped["web_search"] = web_hits
+
+        kb_hits = search_knowledge(search_query)
         if kb_hits:
             scoped["knowledge_base"] = kb_hits
 
-        profile_slice = shared_resources.get("profile_search")
+        profile_slice = search_profile(search_query)
         if profile_slice:
             scoped["profile_slice"] = profile_slice
 

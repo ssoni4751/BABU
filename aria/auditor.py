@@ -126,10 +126,19 @@ class PostExecutionValidator:
         if self.llm:
             print(f"[AUDITOR:POST] Initiating semantic validator for task '{task.task_id}'...", flush=True)
             
+            checklist_str = ""
+            if task.compliance_checklist:
+                checklist_str = "\n".join(f"- [ ] {item}" for item in task.compliance_checklist)
+            else:
+                checklist_str = "- [ ] Verify that the worker actually answered/accomplished the objective.\n- [ ] Check for factual truthfulness and style alignment."
+
             system_prompt = (
                 "You are ARIA's Post-Execution Auditor. Your ONLY job is to audit a worker's output "
-                "for structural validity, factual truthfulness, and to detect any hallucinated success.\n\n"
-                "CRITICAL GATES:\n"
+                "for structural validity, factual truthfulness, and compliance with the checklist below.\n"
+                "You must verify each checklist item individually. Provide a green signal (passed: true) only if ALL compliance criteria are fully satisfied.\n\n"
+                "COMPLIANCE CHECKLIST:\n"
+                f"{checklist_str}\n\n"
+                "CRITICAL AUDITING GATES:\n"
                 "- Verify that the worker actually answered/accomplished the objective.\n"
                 "- Check for hallucinated success markers (e.g. claiming an action was executed when it was not).\n"
                 "- Check if the output claims the model is 'flawless', 'perfect', or '100% correct' (unrealistic AI claims).\n"
@@ -137,7 +146,7 @@ class PostExecutionValidator:
                 "- Output ONLY a JSON payload matching this format:\n"
                 "{\n"
                 '  "passed": true/false,\n'
-                '  "reason": "explanation of fail or pass"\n'
+                '  "reason": "explanation of fail or pass. If failed, detail exactly which checklist items were violated."\n'
                 "}"
             )
             
@@ -146,7 +155,8 @@ class PostExecutionValidator:
                 "objective": task.objective,
                 "department": task.department,
                 "context": task.context,
-                "worker_result": result
+                "worker_result": result,
+                "compliance_checklist": task.compliance_checklist
             }
 
             from langchain_core.messages import SystemMessage, HumanMessage
@@ -165,7 +175,7 @@ class PostExecutionValidator:
                     reason = str(data.get("reason", "Unknown audit verdict"))
                     
                     if not passed:
-                        print(f"[AUDITOR:POST] Task '{task.task_id}' FAILED post-audit: {reason}", flush=True)
+                        print(f"[AUDITOR:POST] Task '{task.task_id}' FAILED post-audit checklist verification: {reason}", flush=True)
                         return False, reason
                 else:
                     print("[AUDITOR:POST] Warning: Auditor LLM returned non-JSON output. Skipping semantic block.", flush=True)

@@ -728,22 +728,7 @@ def task_executor_node(state: AriaState):
     
     execution_log = state.get("execution_log") or []
     
-    # Extract search results, profile slice, etc. for departments
-    search_ctx = ""
-    kb_ctx = ""
-    profile_ctx = ""
-    
-    has_research_task = any(t.department == "research" for t in goal_graph.tasks)
-    if has_research_task:
-        query = state["user_query"]
-        search_ctx = web_search(query)
-        kb_ctx = search_knowledge(query)
-        profile_ctx = search_profile(query)
-        
     shared_resources = {
-        "web_search": search_ctx,
-        "knowledge_base": kb_ctx,
-        "profile_search": profile_ctx,
         "user_query": state["user_query"]
     }
     

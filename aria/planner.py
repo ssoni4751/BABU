@@ -46,7 +46,8 @@ PLANNER_SYSTEM_PROMPT: str = (
     "RULES:\n"
     "- Output ONLY valid JSON. No markdown, no explanation.\n"
     "- Each task must have: task_id (T1, T2, ...), objective, department, "
-    "depends_on (list of task_ids), priority (1=highest)\n"
+    "depends_on (list of task_ids), priority (1=highest), and compliance_checklist (list of strings).\n"
+    "- compliance_checklist: A list of 2-3 specific, concrete criteria that the task's output must satisfy for the auditor to approve it (e.g., verifying specific factual items, formatting style, checking profile matches, or ensuring it is not a raw status message).\n"
     "- Valid departments: research, analysis, writing, execution, pa\n"
     "- depends_on must reference existing task_ids only\n"
     "- Tasks with no dependencies get depends_on: []\n"
@@ -70,10 +71,11 @@ PLANNER_SYSTEM_PROMPT: str = (
     '  "goal": "brief goal description",\n'
     '  "tasks": [\n'
     '    {"task_id": "T1", "objective": "...", "department": "research", '
-    '"depends_on": [], "priority": 1},\n'
+    '"depends_on": [], "priority": 1, "compliance_checklist": ["Verify search was done", "No empty results"]},\n'
     '    {"task_id": "T2", "objective": "...", "department": "execution", '
     '"depends_on": ["T1"], "priority": 2, "action": "send_email", '
-    '"params": {"to": "user@example.com", "subject": "Report", "body": "[NEEDS_RESEARCH_CONTEXT]"}}\n'
+    '"params": {"to": "user@example.com", "subject": "Report", "body": "[NEEDS_RESEARCH_CONTEXT]"}, '
+    '"compliance_checklist": ["Verify email body is correct", "Recipient matches target"]}\n'
     "  ]\n"
     "}"
 )
@@ -112,6 +114,7 @@ def _build_fallback_graph(query: str) -> GoalGraph:
             depends_on=[],
             priority=1,
             state=TaskState.READY,
+            compliance_checklist=["Verify search returned relevant information", "No empty results"],
         ),
         TaskDTO(
             task_id="T2",
@@ -120,6 +123,7 @@ def _build_fallback_graph(query: str) -> GoalGraph:
             depends_on=["T1"],
             priority=2,
             state=TaskState.PENDING,
+            compliance_checklist=["Address the original query", "Synthesize findings factually"],
         ),
     ]
 
@@ -229,6 +233,7 @@ def plan_goal(
         objective: str = t.get("objective", "")
         depends_on: List[str] = t.get("depends_on", [])
         priority: int = int(t.get("priority", len(tasks) + 1))
+        compliance_checklist: List[str] = list(t.get("compliance_checklist", []))
 
         # Skip tasks with unknown departments
         if department not in valid_dept_names:
@@ -256,6 +261,7 @@ def plan_goal(
                 priority=priority,
                 state=state,
                 context=task_context,
+                compliance_checklist=compliance_checklist,
             )
         )
         seen_ids.add(task_id)

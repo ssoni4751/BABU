@@ -277,5 +277,33 @@ class TestBipartiteAuditor(unittest.TestCase):
         self.assertEqual(reason, "SUCCESS: Email sent successfully.")
         mock_llm.invoke.assert_not_called()
 
+    def test_post_execution_validator_compliance_checklist(self):
+        from aria.auditor import PostExecutionValidator
+        # Verify the auditor evaluates custom checklists correctly
+        mock_llm = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = '{"passed": false, "reason": "Checklist violated: Factual sources missing."}'
+        mock_llm.invoke.return_value = mock_response
+        
+        validator = PostExecutionValidator(llm=mock_llm)
+        task = TaskDTO(
+            task_id="T1",
+            objective="Environmental study",
+            department="research",
+            depends_on=[],
+            priority=1,
+            compliance_checklist=["Factual sources cited", "No generic claims"]
+        )
+        
+        passed, reason = validator.audit(task, "Air pollution is a concern.")
+        self.assertFalse(passed)
+        self.assertEqual(reason, "Checklist violated: Factual sources missing.")
+        
+        # Verify system prompt contains checklist elements
+        call_args = mock_llm.invoke.call_args[0][0]
+        sys_msg = call_args[0].content
+        self.assertIn("- [ ] Factual sources cited", sys_msg)
+        self.assertIn("- [ ] No generic claims", sys_msg)
+
 if __name__ == "__main__":
     unittest.main()
