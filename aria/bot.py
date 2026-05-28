@@ -635,13 +635,52 @@ def _is_reject_message(text: str) -> bool:
 
 # â”€â”€ Nodes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+def should_escalate_to_workflow(text: str) -> bool:
+    """Classify user query to separate conversational interactions from complex workflows.
+    
+    Returns True ONLY if query demands physical mutation actions or explicit complex workflows.
+    """
+    t = (text or "").lower().strip()
+    t = t.removeprefix("/").removeprefix("!")
+    
+    # Explicit launch/sprint command overrides
+    if t.startswith("launch") or t.startswith("sprint"):
+        return True
+        
+    # Greetings, tutoring/coaching, and direct conversational pattern gates
+    coaching_patterns = {
+        "teach", "learn", "speak", "practice", "how are you", "who are you",
+        "what are you", "feeling", "hello", "hi", "hey", "good morning",
+        "good afternoon", "good evening", "help", "clear", "stats", "model", "doing"
+    }
+    if any(p in t for p in coaching_patterns):
+        return False
+        
+    # Explicit action triggers demanding Google Workspace or Facebook mutations
+    action_triggers = {
+        "send email", "send an email", "email my", "mail my",
+        "create doc", "create a doc", "write a document", "draft a document",
+        "save to drive", "copy to drive", "backup to drive",
+        "post to facebook", "publish to facebook", "post to page",
+        "log to sheet", "add to sheet", "log to spreadsheet", "add to spreadsheet",
+        "create event", "schedule an event", "add to calendar", "schedule event"
+    }
+    if any(trigger in t for trigger in action_triggers):
+        return True
+        
+    # Default to Lightweight Conversational Fast Path (WALK) for all natural dialogue
+    return False
+
+
 def intent_router(state: AriaState):
     query = state["messages"][-1].content
     history_text = state.get("history_text", "")
     lowered = query.lower().strip()
     session_id = state.get("session_id", "default")
 
-    manual_gear = "LAUNCH"
+    # Dynamic Interaction Mode Classification
+    is_workflow = should_escalate_to_workflow(query)
+    manual_gear = "LAUNCH" if is_workflow else "WALK"
 
     detected_action = None
     pending_action_notice = ""
@@ -660,20 +699,8 @@ def intent_router(state: AriaState):
     elif pending:
         pending_action_notice = "You already have a pending action approval. Reply with '1' / 'approve' to execute, or '0' / 'cancel' to discard."
     elif manual_gear == "WALK":
-        detected_action = sanitize_single_action_payload(detect_action(query, history_text))
-        if detected_action:
-            with _pending_actions_lock:
-                _pending_actions[session_id] = detected_action
-            action_name = detected_action.get("action", "unknown_action")
-            params = detected_action.get("params", {})
-            preview = ", ".join(f"{k}={v}" for k, v in params.items()) if params else "no parameters"
-            pending_action_notice = (
-                f"Action authorization required.\n\n"
-                f"Proposed action: {action_name}\n"
-                f"Params: {preview}\n\n"
-                "Reply with '1' / 'approve' to execute, or '0' / 'cancel' to reject."
-            )
-            detected_action = None
+        # Direct action detection is disabled in conversational fast path to prevent contamination
+        detected_action = None
 
     try:
         try:
@@ -1325,11 +1352,12 @@ def pa_node(state: AriaState):
     # Hard guard: if no action was executed this turn, never claim execution.
     if not action_result and is_action_status_query(user_query):
         response_text = "No action was executed in this turn."
-        tracker = state.get("execution_tracker", {})
-        if tracker and "start_time" in tracker:
-            import time
-            tot = round(time.time() - tracker["start_time"], 2)
-            response_text += f"\n\nSwarm profile: Research {tracker.get('research_duration', 0.0)}s | Audit {tracker.get('task_manager_duration', 0.0)}s | Action {tracker.get('action_duration', 0.0)}s | Total {tot}s"
+        if gear == "LAUNCH":
+            tracker = state.get("execution_tracker", {})
+            if tracker and "start_time" in tracker:
+                import time
+                tot = round(time.time() - tracker["start_time"], 2)
+                response_text += f"\n\nSwarm profile: Research {tracker.get('research_duration', 0.0)}s | Audit {tracker.get('task_manager_duration', 0.0)}s | Action {tracker.get('action_duration', 0.0)}s | Total {tot}s"
         response = AIMessage(content=response_text)
         return {"messages": state["messages"] + [response], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
 
@@ -1337,11 +1365,12 @@ def pa_node(state: AriaState):
     if not action_result:
         direct_fact = get_profile_fact_answer(user_query)
         if direct_fact:
-            tracker = state.get("execution_tracker", {})
-            if tracker and "start_time" in tracker:
-                import time
-                tot = round(time.time() - tracker["start_time"], 2)
-                direct_fact += f"\n\nSwarm profile: Research {tracker.get('research_duration', 0.0)}s | Audit {tracker.get('task_manager_duration', 0.0)}s | Action {tracker.get('action_duration', 0.0)}s | Total {tot}s"
+            if gear == "LAUNCH":
+                tracker = state.get("execution_tracker", {})
+                if tracker and "start_time" in tracker:
+                    import time
+                    tot = round(time.time() - tracker["start_time"], 2)
+                    direct_fact += f"\n\nSwarm profile: Research {tracker.get('research_duration', 0.0)}s | Audit {tracker.get('task_manager_duration', 0.0)}s | Action {tracker.get('action_duration', 0.0)}s | Total {tot}s"
             response = AIMessage(content=direct_fact)
             return {"messages": state["messages"] + [response], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
 
@@ -1352,8 +1381,10 @@ def pa_node(state: AriaState):
         if profile_ctx and "[Local User Profile Matches]" in profile_ctx:
             research = profile_ctx
 
-    if is_simple_query(user_query):
+    if gear == "WALK":
         style = "[WALK]\nBrief, warm, direct. Max two short paragraphs. Confirm any automation action clearly."
+    elif gear == "SPRINT":
+        style = "[SPRINT]\nActionable, fast-paced summary. Direct bullets, immediate takeaway."
     else:
         style = "[LAUNCH]\nStructured briefing: ## headers. Cover overview, findings, risks, outlook. End with one concrete recommendation. Dense and precise."
 
@@ -1401,16 +1432,17 @@ def pa_node(state: AriaState):
             if match:
                 response.content += "\n\n" + match.group(1)
                 
-    # â”€â”€ Performance Telemetry Footnote â”€â”€
-    tracker = state.get("execution_tracker", {})
-    if tracker and "start_time" in tracker:
-        import time
-        tot = round(time.time() - tracker["start_time"], 2)
-        r = tracker.get("research_duration", 0.0)
-        tm = tracker.get("task_manager_duration", 0.0)
-        a = tracker.get("action_duration", 0.0)
-        telemetry_footnote = f"\n\nSwarm profile: Research {r}s | Audit {tm}s | Action {a}s | Total {tot}s"
-        response.content += telemetry_footnote
+    # ​​Performance Telemetry Footnote ​​
+    if gear == "LAUNCH":
+        tracker = state.get("execution_tracker", {})
+        if tracker and "start_time" in tracker:
+            import time
+            tot = round(time.time() - tracker["start_time"], 2)
+            r = tracker.get("research_duration", 0.0)
+            tm = tracker.get("task_manager_duration", 0.0)
+            a = tracker.get("action_duration", 0.0)
+            telemetry_footnote = f"\n\nSwarm profile: Research {r}s | Audit {tm}s | Action {a}s | Total {tot}s"
+            response.content += telemetry_footnote
                 
     token_stats = extract_tokens(response)
     try:
