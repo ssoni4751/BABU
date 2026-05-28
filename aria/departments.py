@@ -339,16 +339,16 @@ class ExecutionHead(DepartmentHead):
             # ── Deterministic Placeholder & Subject Resolution ──────────────────
             if key in ("body", "content"):
                 # Strip redundant Subject: header at the very beginning of the draft body
-                val_str = re.sub(r'^(?i)subject:\s*[^\n]+\n*', '', val_str).strip()
+                val_str = re.sub(r'^subject:\s*[^\n]+\n*', '', val_str, flags=re.IGNORECASE).strip()
                 
                 # Retrieve profile values for resolving common draft placeholders
                 name = details.get("full_name", "") or details.get("primary_nickname", "")
                 nickname = details.get("primary_nickname", "") or name
                 
                 # Replace common bracketed patterns
-                val_str = re.sub(r'\[(?i)(your\s+)?name\]|\[(?i)sender(\s+name)?\]|\[(?i)my\s+name\]', name, val_str)
-                val_str = re.sub(r'\[(?i)(your\s+)?nickname\]', nickname, val_str)
-                val_str = re.sub(r'\[(?i)recipient(\s+name)?\]|\[(?i)recipient\'s\s+name\]', nickname, val_str)
+                val_str = re.sub(r'\[(your\s+)?name\]|\[sender(\s+name)?\]|\[my\s+name\]', name, val_str, flags=re.IGNORECASE)
+                val_str = re.sub(r'\[(your\s+)?nickname\]', nickname, val_str, flags=re.IGNORECASE)
+                val_str = re.sub(r'\[recipient(\s+name)?\]|\[recipient\'s\s+name\]', nickname, val_str, flags=re.IGNORECASE)
             
             if val_str in placeholder_map and placeholder_map[val_str]:
                 resolved[key] = placeholder_map[val_str]
