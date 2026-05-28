@@ -133,6 +133,70 @@
           "Proceed with Phase 3 integration"
         ],
         "timestamp": "2026-05-26T07:35:24.655391+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-27T06:19:39.409796+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-27T06:21:37.296236+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-27T06:32:03.275007+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-27T06:36:16.439514+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-27T10:33:58.241724+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-28T05:56:49.091031+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-28T06:29:43.331268+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-28T07:26:50.015712+00:00"
       }
     ],
     "work_summaries": [
@@ -141,6 +205,48 @@
         "status": "FAILED",
         "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A highly detailed, modern, and visually stunning square graphic for FLUX model. ...",
         "timestamp": "2026-05-26T07:36:05.292993+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A colorful illustration of a person sitting in front of a computer with a shield...",
+        "timestamp": "2026-05-27T06:23:17.477682+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A futuristic illustration of a person safely navigating through a digital world ...",
+        "timestamp": "2026-05-27T06:33:04.566883+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "CRITICAL_ERROR",
+        "details": "Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01ksanet3cfh6szhqyxr45df3p` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 99712, Requested 858. Please try again in 8m12.48s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}",
+        "timestamp": "2026-05-27T06:36:31.613876+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A futuristic, neon-lit graphic of a person safely browsing the internet on their...",
+        "timestamp": "2026-05-27T10:34:16.879642+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A futuristic illustration of a person safely browsing the internet on their lapt...",
+        "timestamp": "2026-05-28T05:57:05.554419+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A futuristic, high-contrast illustration of a shield protecting a computer from ...",
+        "timestamp": "2026-05-28T06:30:02.652150+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A futuristic illustration of a shield protecting a computer from cyber threats, ...",
+        "timestamp": "2026-05-28T07:27:05.653428+00:00"
       }
     ]
   }
