@@ -201,12 +201,25 @@ class WritingHead(DepartmentHead):
     name: str = "writing"
 
     def scope_context(self, task: TaskDTO, shared_resources: dict) -> dict:
+        profile = _load_profile()
+        details = profile.get("personal_details", {})
+        
+        # Pass a brief, secure slice of profile details to writing worker to personalize content
+        user_context = {
+            "user_name": details.get("full_name", ""),
+            "user_nickname": details.get("primary_nickname", ""),
+            "user_official_email": details.get("official_email", ""),
+            "user_personal_email": details.get("personal_email", ""),
+        }
+        
         return {
             "objective": task.objective,
             "constraints": task.context.get("constraints", []),
             "upstream_results": task.context.get("upstream_results", []),
             "formatting": task.context.get("formatting", {}),
+            "sender_profile": user_context,
         }
+
 
 
 # ── ExecutionHead ────────────────────────────────────────────────────────────
@@ -300,6 +313,7 @@ class ExecutionHead(DepartmentHead):
     @staticmethod
     def _resolve_params(params: dict, research_text: str = "") -> dict:
         """Replace profile placeholders (``my_official_email``, etc.) and upstream findings."""
+        import re
         profile = _load_profile()
         details = profile.get("personal_details", {})
 
@@ -321,6 +335,21 @@ class ExecutionHead(DepartmentHead):
         resolved: dict[str, Any] = {}
         for key, value in (params or {}).items():
             val_str = str(value).strip()
+            
+            # ── Deterministic Placeholder & Subject Resolution ──────────────────
+            if key in ("body", "content"):
+                # Strip redundant Subject: header at the very beginning of the draft body
+                val_str = re.sub(r'^(?i)subject:\s*[^\n]+\n*', '', val_str).strip()
+                
+                # Retrieve profile values for resolving common draft placeholders
+                name = details.get("full_name", "") or details.get("primary_nickname", "")
+                nickname = details.get("primary_nickname", "") or name
+                
+                # Replace common bracketed patterns
+                val_str = re.sub(r'\[(?i)(your\s+)?name\]|\[(?i)sender(\s+name)?\]|\[(?i)my\s+name\]', name, val_str)
+                val_str = re.sub(r'\[(?i)(your\s+)?nickname\]', nickname, val_str)
+                val_str = re.sub(r'\[(?i)recipient(\s+name)?\]|\[(?i)recipient\'s\s+name\]', nickname, val_str)
+            
             if val_str in placeholder_map and placeholder_map[val_str]:
                 resolved[key] = placeholder_map[val_str]
             elif "[NEEDS_RESEARCH_CONTEXT]" in val_str:
@@ -333,11 +362,11 @@ class ExecutionHead(DepartmentHead):
                     if len(val_str) < 300:
                         resolved[key] = f"{val_str}\n\n{cleaned_research}"
                     else:
-                        resolved[key] = value
+                        resolved[key] = val_str
                 else:
-                    resolved[key] = value
+                    resolved[key] = val_str
             else:
-                resolved[key] = value
+                resolved[key] = val_str if isinstance(value, str) else value
         return resolved
 
 
