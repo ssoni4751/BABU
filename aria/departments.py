@@ -325,9 +325,21 @@ class ExecutionHead(DepartmentHead):
                 resolved[key] = placeholder_map[val_str]
             elif "[NEEDS_RESEARCH_CONTEXT]" in val_str:
                 resolved[key] = val_str.replace("[NEEDS_RESEARCH_CONTEXT]", research_text.strip() if research_text else "(No research/analysis context found)")
+            elif key in ("body", "content") and research_text:
+                # Dynamically inject research findings if body/content is short or a placeholder,
+                # ensuring the actual drafted work is sent instead of a generic subject line/summary.
+                cleaned_research = research_text.strip()
+                if cleaned_research and cleaned_research not in val_str:
+                    if len(val_str) < 300:
+                        resolved[key] = f"{val_str}\n\n{cleaned_research}"
+                    else:
+                        resolved[key] = value
+                else:
+                    resolved[key] = value
             else:
                 resolved[key] = value
         return resolved
+
 
 
 # ── PAHead (passthrough) ─────────────────────────────────────────────────────

@@ -270,9 +270,28 @@ def plan_goal(
         print("[PLANNER] All tasks filtered out — using fallback")
         return _build_fallback_graph(query)
 
+    # ── Post-processing: Enforce content dependencies for execution tasks ──
+    content_task_ids = [t.task_id for t in tasks if t.department in ("writing", "analysis", "research")]
+    if content_task_ids:
+        preferred_dep = None
+        for dept in ("writing", "analysis", "research"):
+            matching = [t.task_id for t in tasks if t.department == dept]
+            if matching:
+                preferred_dep = matching[-1]
+                break
+        if preferred_dep:
+            for t in tasks:
+                if t.department == "execution":
+                    if preferred_dep not in t.depends_on and t.task_id != preferred_dep:
+                        print(f"[PLANNER] Post-processing: adding dependency {preferred_dep} to execution task {t.task_id} to ensure context propagation.", flush=True)
+                        t.depends_on.append(preferred_dep)
+                        # Re-evaluate state since dependencies have changed
+                        t.state = TaskState.PENDING
+
     # Build GoalGraph ------------------------------------------------------
     goal_id = f"G-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
     now_iso = datetime.now(timezone.utc).isoformat()
+
 
     graph = GoalGraph(
         goal_id=goal_id,
