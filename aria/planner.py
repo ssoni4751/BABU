@@ -51,16 +51,15 @@ PLANNER_SYSTEM_PROMPT: str = (
     "- Valid departments: research, analysis, writing, execution, pa\n"
     "- depends_on must reference existing task_ids only\n"
     "- Tasks with no dependencies get depends_on: []\n"
-    "- The LAST task should synthesize/deliver the final result\n"
-    "- For action requests (send email, create event, etc.), create an "
-    "'execution' department task.\n"
-    "  CRITICAL: If department is 'execution', you MUST specify 'action' and 'params' in that task's JSON object!\n"
+    "- The LAST task should synthesize/deliver the final result to the user and MUST belong to the 'pa' department.\n"
+    "- CRITICAL: ONLY create an 'execution' department task if the user's request explicitly asks for a physical mutation action (e.g. sending an email, logging to sheets, creating a document, or scheduling a calendar event). Do NOT default to creating execution/action tasks for informational, question-answering, or research queries (e.g. 'get the weather update' or 'research cyber security trends'). Such requests should only use 'research', 'analysis', and 'writing' tasks, and end directly with a 'pa' task.\n"
+    "- CRITICAL: If department is 'execution', you MUST specify 'action' and 'params' in that task's JSON object! You must dynamically select the most appropriate action from the list of valid actions based on the user's intent. Do not blindly default to 'send_email'.\n"
     "  Valid actions & parameters:\n"
-    "    * send_email(to, subject, body)\n"
-    "    * create_event(title, date, time, duration, description)\n"
-    "    * log_to_sheet(sheet_name, data)\n"
-    "    * create_doc(title, content)\n"
-    "    * search_sheet(sheet_name, query)\n"
+    "    * send_email(to, subject, body) -- Use ONLY if user explicitly asked to send/mail an email.\n"
+    "    * create_event(title, date, time, duration, description) -- Use ONLY if user explicitly asked to schedule/create a calendar event.\n"
+    "    * log_to_sheet(sheet_name, data) -- Use ONLY if user explicitly asked to log or add data to a spreadsheet/sheet.\n"
+    "    * create_doc(title, content) -- Use ONLY if user explicitly asked to write/create/draft a separate document file.\n"
+    "    * search_sheet(sheet_name, query) -- Use ONLY if user explicitly asked to query/search/find information inside a spreadsheet/sheet.\n"
     "  In 'params', use the placeholder '[NEEDS_RESEARCH_CONTEXT]' for parameters that depend on upstream findings (e.g. content: '[NEEDS_RESEARCH_CONTEXT]' or body: '[NEEDS_RESEARCH_CONTEXT]').\n"
     "  CRITICAL: If a task (like send_email) is designed to transmit/report findings or content generated upstream, it MUST depend directly on the 'writing', 'analysis', or 'research' task that generated that content, NOT on intermediate execution tasks (like 'create_doc' or 'log_to_sheet') which only return a status confirmation message.\n"
     "- Keep tasks atomic — one clear objective each\n"
@@ -72,10 +71,8 @@ PLANNER_SYSTEM_PROMPT: str = (
     '  "tasks": [\n'
     '    {"task_id": "T1", "objective": "...", "department": "research", '
     '"depends_on": [], "priority": 1, "compliance_checklist": ["Verify search was done", "No empty results"]},\n'
-    '    {"task_id": "T2", "objective": "...", "department": "execution", '
-    '"depends_on": ["T1"], "priority": 2, "action": "send_email", '
-    '"params": {"to": "user@example.com", "subject": "Report", "body": "[NEEDS_RESEARCH_CONTEXT]"}, '
-    '"compliance_checklist": ["Verify email body is correct", "Recipient matches target"]}\n'
+    '    {"task_id": "T2", "objective": "...", "department": "pa", '
+    '"depends_on": ["T1"], "priority": 2, "compliance_checklist": ["Verify findings are synthesized factually"]}\n'
     "  ]\n"
     "}"
 )
@@ -182,8 +179,6 @@ def plan_goal(
     user_content = "\n".join(user_content_parts)
 
     target_model = model_name
-    if "70b" in target_model:
-        target_model = "llama-3.1-8b-instant"
 
     # Call LLM -------------------------------------------------------------
     try:

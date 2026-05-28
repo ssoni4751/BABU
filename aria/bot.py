@@ -537,6 +537,26 @@ def add_to_history(session_id: str, user_msg: str, aria_msg: str) -> None:
         _histories[session_id].append(("aria", aria_msg))
 
 
+def compact_completed_session_history(session_id: str) -> None:
+    """Wipe intermediate details from conversation history once the goal epoch is completed.
+    
+    Keeps only high-level requests and concise summaries to prevent context contamination.
+    """
+    with _memory_lock:
+        history = _histories[session_id]
+        if not history:
+            return
+            
+        compacted = deque(maxlen=20)
+        for role, content in history:
+            if len(content) > 800:
+                summary = content[:300] + "\n... [Intermediate details cleared upon successful audit validation] ...\n" + content[-200:]
+                compacted.append((role, summary))
+            else:
+                compacted.append((role, content))
+        _histories[session_id] = compacted
+
+
 def extract_tokens(res) -> dict:
     """Safely extract prompt, completion, and total tokens from an LLM response."""
     usage = {"prompt": 0, "completion": 0, "total": 0}
@@ -742,7 +762,7 @@ def planner_node(state: AriaState):
     if is_simple_query(query):
         graph = build_walk_graph(query, goal_id=pre_goal_id)
     else:
-        graph = plan_goal(query, "LAUNCH", history_text, profile_text, goal_id=pre_goal_id)
+        graph = plan_goal(query, "LAUNCH", history_text, profile_text, model_name=CURRENT_DEPT_MODEL, goal_id=pre_goal_id)
         
     return {"goal_graph": graph.to_dict()}
 
@@ -922,6 +942,16 @@ def task_executor_node(state: AriaState):
                         "status": "FAILED",
                         "tokens": task_tokens
                     })
+                    # Log failure to the immune system to learn from errors!
+                    try:
+                        from .memory import log_execution_failure
+                    except ImportError:
+                        from memory import log_execution_failure
+                    log_execution_failure(
+                        domain=f"department.{task.department}",
+                        method=task.objective,
+                        exception_msg=f"Post-execution Audit Failed: {audit_result}"
+                    )
                 else:
                     engine.mark_completed(task.task_id, audit_result)
                     execution_log.append({
@@ -944,6 +974,16 @@ def task_executor_node(state: AriaState):
                     "status": "FAILED",
                     "tokens": {"prompt": 0, "completion": 0, "total": 0}
                 })
+                # Log failure to the immune system to learn from errors!
+                try:
+                    from .memory import log_execution_failure
+                except ImportError:
+                    from memory import log_execution_failure
+                log_execution_failure(
+                    domain=f"department.{task.department}",
+                    method=task.objective,
+                    exception_msg=f"Task Execution Exception: {err_msg}"
+                )
                 
     # Update tracker
     duration = round(time.time() - start_time, 2)
@@ -1459,6 +1499,7 @@ def invoke_aria(message: str, session_id: str = "default", goal_id: Optional[str
         status = goal_graph_dict.get("status", "ACTIVE")
         if status in ("COMPLETED", "FAILED", "CANCELLED"):
             seal_epoch(epoch_id)
+            compact_completed_session_history(session_id)
             
     return reply, gear, tokens
 
@@ -1990,8 +2031,11 @@ async def cmd_launch(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    session_id = tg_session(update)
     with _memory_lock:
-        _histories[tg_session(update)].clear()
+        _histories[session_id].clear()
+    with _pending_actions_lock:
+        _pending_actions.pop(session_id, None)
     await update.message.reply_text("Memory cleared. Fresh start.")
 
 
