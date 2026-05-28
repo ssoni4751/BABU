@@ -775,7 +775,12 @@ def task_executor_node(state: AriaState):
             # Inject upstream results into context
             completed_results = engine.get_completed_results()
             task.context["upstream_results"] = [
-                {"task_id": tid, "result": res}
+                {
+                    "task_id": tid,
+                    "result": res,
+                    "department": engine._task_map[tid].department,
+                    "objective": engine._task_map[tid].objective
+                }
                 for tid, res in completed_results.items()
                 if tid in task.depends_on
             ]

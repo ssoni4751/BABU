@@ -61,6 +61,7 @@ PLANNER_SYSTEM_PROMPT: str = (
     "    * create_doc(title, content)\n"
     "    * search_sheet(sheet_name, query)\n"
     "  In 'params', use the placeholder '[NEEDS_RESEARCH_CONTEXT]' for parameters that depend on upstream findings (e.g. content: '[NEEDS_RESEARCH_CONTEXT]' or body: '[NEEDS_RESEARCH_CONTEXT]').\n"
+    "  CRITICAL: If a task (like send_email) is designed to transmit/report findings or content generated upstream, it MUST depend directly on the 'writing', 'analysis', or 'research' task that generated that content, NOT on intermediate execution tasks (like 'create_doc' or 'log_to_sheet') which only return a status confirmation message.\n"
     "- Keep tasks atomic — one clear objective each\n"
     "- Minimum 2 tasks for SPRINT, 3-6 for LAUNCH\n"
     "\n"

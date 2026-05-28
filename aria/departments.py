@@ -247,9 +247,17 @@ class ExecutionHead(DepartmentHead):
 
         # Collect upstream results to resolve research context
         upstream_list = task.context.get("upstream_results", [])
+        
+        # Filter out programmatic execution status updates if other content exists
+        has_content_task = any(ur.get("department") in ("research", "analysis", "writing") for ur in upstream_list)
+        
         upstream_texts = []
         for ur in upstream_list:
-            upstream_texts.append(f"Task {ur['task_id']} Result:\n{ur['result']}")
+            if has_content_task and ur.get("department") == "execution":
+                print(f"[DEPT:{self.name}] Filtering out execution status update task '{ur['task_id']}' to prevent raw output pollution.", flush=True)
+                continue
+            upstream_texts.append(ur['result'])
+            
         upstream_text = "\n\n".join(upstream_texts) if upstream_texts else ""
 
         # ── Resolve profile and research placeholders ─────────────────────
