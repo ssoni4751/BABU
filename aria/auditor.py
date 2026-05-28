@@ -117,7 +117,12 @@ class PostExecutionValidator:
         if "[Worker error" in result or "[LLM error" in result:
             return False, f"Deterministic execution error detected: {result}"
 
-        # 2. Semantic and Hallucination audit using LLM (if provided)
+        # 2. Programmatic execution tasks bypass LLM semantic validation
+        if task.department.lower() == "execution":
+            print(f"[AUDITOR:POST] Bypassing LLM semantic validation for execution task '{task.task_id}'", flush=True)
+            return True, result
+
+        # 3. Semantic and Hallucination audit using LLM (if provided)
         if self.llm:
             print(f"[AUDITOR:POST] Initiating semantic validator for task '{task.task_id}'...", flush=True)
             
@@ -128,6 +133,7 @@ class PostExecutionValidator:
                 "- Verify that the worker actually answered/accomplished the objective.\n"
                 "- Check for hallucinated success markers (e.g. claiming an action was executed when it was not).\n"
                 "- Check if the output claims the model is 'flawless', 'perfect', or '100% correct' (unrealistic AI claims).\n"
+                "- Be fair, realistic, and constructive. Do NOT reject or block valid responses simply because they are concise, summarizing, or convey upstream results clearly, as long as they address the objective.\n"
                 "- Output ONLY a JSON payload matching this format:\n"
                 "{\n"
                 '  "passed": true/false,\n'

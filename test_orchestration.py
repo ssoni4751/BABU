@@ -265,5 +265,17 @@ class TestBipartiteAuditor(unittest.TestCase):
         self.assertFalse(passed)
         self.assertIn("Claims action was executed", reason)
 
+    def test_post_execution_validator_execution_bypass(self):
+        from aria.auditor import PostExecutionValidator
+        # If department is execution, LLM should not be called at all
+        mock_llm = MagicMock()
+        validator = PostExecutionValidator(llm=mock_llm)
+        task = TaskDTO(task_id="T1", objective="Send email", department="execution", depends_on=[], priority=1)
+        
+        passed, reason = validator.audit(task, "SUCCESS: Email sent successfully.")
+        self.assertTrue(passed)
+        self.assertEqual(reason, "SUCCESS: Email sent successfully.")
+        mock_llm.invoke.assert_not_called()
+
 if __name__ == "__main__":
     unittest.main()
