@@ -307,10 +307,15 @@ def search_profile(query: str) -> str:
     stopwords = {
         "which", "year", "i", "passed", "grade", "ecam", "exam", "my", "me", "in", "on", 
         "at", "to", "for", "of", "who", "when", "what", "is", "was", "are", "do", "you", 
-        "know", "tell", "show", "did", "does", "have", "has", "had", "a", "an", "the", "about"
+        "know", "tell", "show", "did", "does", "have", "has", "had", "a", "an", "the", "about",
+        "hi", "hello", "hey", "yo"  # Add conversational greetings to stopwords
     }
     search_words = [w for w in q.split() if w not in stopwords and len(w) >= 1]
     
+    def matches_word(text: str) -> bool:
+        t_lower = text.lower()
+        return any(re.search(r'\b' + re.escape(w) + r'\b', t_lower) for w in search_words)
+
     # 1. Search L2: Family Graph
     family = USER_PROFILE.get("family_graph", {})
     for relation, details in family.items():
@@ -318,28 +323,28 @@ def search_profile(query: str) -> str:
         if isinstance(details, dict):
             for member_key, member_val in details.items():
                 member_key_clean = member_key.lower().replace("_", " ")
-                # Match if key is in query, or query is in key, or any search word matches key/value
-                if member_key_clean in q or q in member_key_clean or any(w in member_key_clean for w in search_words) or any(w in str(member_val).lower() for w in search_words):
-                    results.append(f"â€¢ Family Connection ({relation.replace('_', ' ').title()} - {member_key.replace('_', ' ').title()}): {member_val}")
+                # Match if key is in query, or query is in key, or any search word matches key/value as a whole word
+                if member_key_clean in q or q in member_key_clean or matches_word(member_key_clean) or matches_word(str(member_val)):
+                    results.append(f"• Family Connection ({relation.replace('_', ' ').title()} - {member_key.replace('_', ' ').title()}): {member_val}")
         elif isinstance(details, list):
             for item in details:
-                if q in str(item).lower() or any(w in str(item).lower() for w in search_words):
-                    results.append(f"â€¢ Family connection ({relation.replace('_', ' ').title()}): {item}")
+                if q in str(item).lower() or matches_word(str(item)):
+                    results.append(f"• Family connection ({relation.replace('_', ' ').title()}): {item}")
         else:
-            if relation_clean in q or q in relation_clean or any(w in str(details).lower() for w in search_words):
-                results.append(f"â€¢ Family connection ({relation.replace('_', ' ').title()}): {details}")
+            if relation_clean in q or q in relation_clean or matches_word(str(details)):
+                results.append(f"• Family connection ({relation.replace('_', ' ').title()}): {details}")
                 
     # 2. Search L3: Legacy & Autobiographical Memory
     edu_career = USER_PROFILE.get("education_and_career", {})
     for edu in edu_career.get("education", []):
         edu_str = str(edu).lower()
-        if q in edu_str or any(w in edu_str for w in search_words):
-            results.append(f"â€¢ Education Record: {edu}")
+        if q in edu_str or matches_word(edu_str):
+            results.append(f"• Education Record: {edu}")
             
     for emp in edu_career.get("employment_history", []):
         emp_str = str(emp).lower()
-        if q in emp_str or any(w in emp_str for w in search_words):
-            results.append(f"â€¢ Employment Record: {emp}")
+        if q in emp_str or matches_word(emp_str):
+            results.append(f"• Employment Record: {emp}")
             
     journey = USER_PROFILE.get("mindset_and_journey", {})
     for category, details in journey.items():
@@ -347,11 +352,11 @@ def search_profile(query: str) -> str:
         if isinstance(details, dict):
             for k, v in details.items():
                 k_clean = k.lower().replace("_", " ")
-                if k_clean in q or category_clean in q or q in k_clean or q in str(v).lower() or any(w in str(v).lower() for w in search_words):
-                    results.append(f"â€¢ Background History ({category.replace('_', ' ').title()} - {k.replace('_', ' ').title()}): {v}")
+                if k_clean in q or category_clean in q or q in k_clean or q in str(v).lower() or matches_word(str(v)):
+                    results.append(f"• Background History ({category.replace('_', ' ').title()} - {k.replace('_', ' ').title()}): {v}")
         else:
-            if category_clean in q or q in category_clean or q in str(details).lower() or any(w in str(details).lower() for w in search_words):
-                results.append(f"â€¢ Background History ({category.replace('_', ' ').title()}): {details}")
+            if category_clean in q or q in category_clean or q in str(details).lower() or matches_word(str(details)):
+                results.append(f"• Background History ({category.replace('_', ' ').title()}): {details}")
                 
     if results:
         return "[Local User Profile Matches]\n" + "\n".join(results)
@@ -1399,9 +1404,9 @@ def pa_node(state: AriaState):
             response = AIMessage(content=direct_fact)
             return {"messages": state["messages"] + [response], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
 
-    # Dynamic L2/L3 profile retrieval fallback:
+    # Dynamic L2/L3 profile retrieval fallback (LAUNCH/SPRINT only):
     # If there's no research, query search_profile to fetch matching personal details!
-    if not research and not action_result:
+    if gear != "WALK" and not research and not action_result:
         profile_ctx = search_profile(state["user_query"])
         if profile_ctx and "[Local User Profile Matches]" in profile_ctx:
             research = profile_ctx
