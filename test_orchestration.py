@@ -389,5 +389,59 @@ class TestBipartiteAuditor(unittest.TestCase):
         entry_after = next((e for e in failures if e.get("domain") == domain), None)
         self.assertIsNone(entry_after, "Failed rule was not healed and pruned from failures.json")
 
+    def test_intent_router_overrides(self):
+        from aria.bot import intent_router, AriaState
+        from langchain_core.messages import HumanMessage
+        
+        # Test 1: explicit /launch command should route to LAUNCH and strip prefix
+        state_launch = AriaState(
+            messages=[HumanMessage(content="/launch Research the latest space tech advancements")],
+            gear="WALK",
+            research_data=[],
+            user_query="",
+            history_text="",
+            session_id="test_session",
+            search_results="",
+            action_result="",
+            detected_action=None,
+            active_goal={"goal_id": "G_test"},
+            compressed_research="",
+            routing_metadata={},
+            pending_action_notice="",
+            goal_graph=None,
+            execution_log=[],
+            final_brief="",
+            tokens={"prompt": 0, "completion": 0, "total": 0}
+        )
+        
+        res = intent_router(state_launch)
+        self.assertEqual(res["gear"], "LAUNCH")
+        self.assertEqual(res["user_query"], "Research the latest space tech advancements")
+        
+        # Test 2: explicit launch command (plain text) should route to LAUNCH and strip prefix
+        state_plain = AriaState(
+            messages=[HumanMessage(content="launch research quantum computing")],
+            gear="WALK",
+            research_data=[],
+            user_query="",
+            history_text="",
+            session_id="test_session",
+            search_results="",
+            action_result="",
+            detected_action=None,
+            active_goal={"goal_id": "G_test"},
+            compressed_research="",
+            routing_metadata={},
+            pending_action_notice="",
+            goal_graph=None,
+            execution_log=[],
+            final_brief="",
+            tokens={"prompt": 0, "completion": 0, "total": 0}
+        )
+        
+        res_plain = intent_router(state_plain)
+        self.assertEqual(res_plain["gear"], "LAUNCH")
+        self.assertEqual(res_plain["user_query"], "research quantum computing")
+
 if __name__ == "__main__":
     unittest.main()

@@ -696,6 +696,19 @@ def intent_router(state: AriaState):
     is_workflow = should_escalate_to_workflow(query)
     manual_gear = "LAUNCH" if is_workflow else "WALK"
 
+    # Strip command prefix overrides to keep the processed query clean
+    clean_query = query
+    if is_workflow:
+        t_lower = query.lower().strip()
+        if t_lower.startswith("launch"):
+            clean_query = query[len("launch"):].strip()
+        elif t_lower.startswith("sprint"):
+            clean_query = query[len("sprint"):].strip()
+        elif t_lower.startswith("/launch"):
+            clean_query = query[len("/launch"):].strip()
+        elif t_lower.startswith("/sprint"):
+            clean_query = query[len("/sprint"):].strip()
+
     detected_action = None
     pending_action_notice = ""
 
@@ -740,7 +753,7 @@ def intent_router(state: AriaState):
     }
     return {
         "gear": manual_gear,
-        "user_query": query,
+        "user_query": clean_query,
         "research_data": [],
         "search_results": "",
         "action_result": "",
@@ -2110,7 +2123,7 @@ async def cmd_launch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Usage: /launch <complex question>")
         return
     await update.message.reply_text("Swarm engaged — planning and executing goal (~30s)...")
-    await run_aria(update, text, tg_session(update))
+    await run_aria(update, "launch " + text, tg_session(update))
 
 
 async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
