@@ -443,5 +443,24 @@ class TestBipartiteAuditor(unittest.TestCase):
         self.assertEqual(res_plain["gear"], "LAUNCH")
         self.assertEqual(res_plain["user_query"], "research quantum computing")
 
+    @patch("requests.get")
+    def test_wikipedia_search(self, mock_get):
+        from aria.bot import wikipedia_search
+        
+        # Mock response for Wikipedia opensearch
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            "quantum",
+            ["Quantum mechanics"],
+            ["Quantum mechanics is a fundamental theory in physics..."],
+            ["https://en.wikipedia.org/wiki/Quantum_mechanics"]
+        ]
+        mock_get.return_value = mock_response
+        
+        res = wikipedia_search("quantum")
+        self.assertIn("Wikipedia: Quantum mechanics", res)
+        self.assertIn("Source: https://en.wikipedia.org/wiki/Quantum_mechanics", res)
+
 if __name__ == "__main__":
     unittest.main()

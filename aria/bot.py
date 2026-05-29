@@ -413,22 +413,112 @@ def search_knowledge(query: str) -> str:
     return "\n".join(hits) if hits else ""
 
 
-# â”€â”€ Web search â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Web search ────────────────────────────────────────────────────────────────
+
+def wikipedia_search(query: str, max_results: int = 3) -> str:
+    """Query Wikipedia MediaWiki API to fetch high-quality, structured summaries for research data.
+    
+    Complies with MediaWiki User-Agent guidelines for up to 200+ requests per minute.
+    """
+    cleaned = clean_search_query(query)
+    if not cleaned:
+        return "No search query provided."
+    import requests
+    url = "https://en.wikipedia.org/w/api.php"
+    params = {
+        "action": "opensearch",
+        "search": cleaned,
+        "limit": max_results,
+        "namespace": 0,
+        "format": "json"
+    }
+    headers = {
+        "User-Agent": "ARIA-Assistant/1.0 (ssoni4751@gmail.com) Python-Requests/2.0"
+    }
+    try:
+        response = requests.get(url, params=params, headers=headers, timeout=5)
+        if response.status_code != 200:
+            return f"[Wikipedia search failed: status {response.status_code}]"
+        
+        data = response.json()
+        if len(data) < 4:
+            return "No Wikipedia matches found."
+            
+        titles = data[1]
+        descriptions = data[2]
+        urls = data[3]
+        
+        if not titles:
+            return "No Wikipedia articles matched."
+            
+        lines = []
+        for i in range(len(titles)):
+            title = titles[i]
+            desc = descriptions[i] if i < len(descriptions) else ""
+            link = urls[i] if i < len(urls) else ""
+            
+            # If description is empty or short, fetch high-quality plain-text introduction extract
+            if not desc or len(desc) < 30:
+                extract_params = {
+                    "action": "query",
+                    "prop": "extracts",
+                    "exintro": True,
+                    "explaintext": True,
+                    "redirects": 1,
+                    "titles": title,
+                    "format": "json"
+                }
+                ext_resp = requests.get(url, params=extract_params, headers=headers, timeout=3)
+                if ext_resp.status_code == 200:
+                    ext_data = ext_resp.json()
+                    pages = ext_data.get("query", {}).get("pages", {})
+                    for page_id, page_val in pages.items():
+                        if "extract" in page_val and page_val["extract"]:
+                            desc = page_val["extract"]
+                            break
+                            
+            if not desc:
+                desc = "No summary available."
+                
+            lines.append(f"• Wikipedia: {title}\n  {desc}\n  Source: {link}")
+            
+        return "\n\n".join(lines)
+    except Exception as e:
+        return f"[Wikipedia search unavailable: {e}]"
+
 
 def web_search(query: str, max_results: int = 4) -> str:
     cleaned = clean_search_query(query)
+    
+    # 1. Fetch DuckDuckGo results
     try:
         from ddgs import DDGS
         with DDGS() as ddgs:
             results = list(ddgs.text(cleaned, max_results=max_results))
-        if not results:
-            return "No results found."
-        lines = []
-        for r in results:
-            lines.append(f"â€¢ {r['title']}\n  {r['body']}\n  Source: {r['href']}")
-        return "\n\n".join(lines)
+        ddg_lines = []
+        if results:
+            for r in results:
+                ddg_lines.append(f"• {r['title']}\n  {r['body']}\n  Source: {r['href']}")
+        ddg_text = "\n\n".join(ddg_lines)
     except Exception as e:
-        return f"[Search unavailable: {e}]"
+        ddg_text = f"[DuckDuckGo search unavailable: {e}]"
+
+    # 2. Fetch Wikipedia results (max 2 for optimal token management)
+    wiki_text = wikipedia_search(cleaned, max_results=2)
+
+    # Merge results factually
+    merged = []
+    if wiki_text and not wiki_text.startswith("[") and "No Wikipedia" not in wiki_text:
+        merged.append("[Wikipedia Research Matches]")
+        merged.append(wiki_text)
+    if ddg_text and not ddg_text.startswith("[") and "No results found" not in ddg_text:
+        merged.append("[Web Search Results]")
+        merged.append(ddg_text)
+        
+    if not merged:
+        return "No web or Wikipedia results found."
+        
+    return "\n\n".join(merged)
 
 
 # â”€â”€ Direct Google Workspace automation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
