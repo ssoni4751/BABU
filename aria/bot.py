@@ -40,6 +40,29 @@ def init_durable_checkpoint_db():
             sealed_at TEXT
         );
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS search_cache (
+            query_hash TEXT PRIMARY KEY,
+            raw_query TEXT,
+            distilled_results TEXT,
+            sources TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS execution_ledger (
+            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            goal_id TEXT NOT NULL,
+            task_id TEXT,
+            department TEXT,
+            event_type TEXT NOT NULL,
+            state_before TEXT,
+            state_after TEXT,
+            metadata TEXT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
     conn.commit()
     return conn
 
@@ -75,6 +98,61 @@ def seal_epoch(epoch_id: str):
         print(f"[GOVERNANCE] Epoch '{epoch_id}' successfully sealed.", flush=True)
     except Exception as e:
         print(f"[DB ERROR] seal_epoch failed: {e}", flush=True)
+
+# ── Part 3: State Execution Ledger Helpers ───────────────────────────────
+
+def log_execution_ledger_event(session_id: str, goal_id: str, task_id: Optional[str], department: Optional[str], event_type: str, state_before: Optional[str] = None, state_after: Optional[str] = None, metadata: Optional[dict] = None):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        meta_str = json.dumps(metadata) if metadata else None
+        cursor.execute("""
+            INSERT INTO execution_ledger (session_id, goal_id, task_id, department, event_type, state_before, state_after, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (session_id, goal_id, task_id, department, event_type, state_before, state_after, meta_str))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[DB ERROR] log_execution_ledger_event failed: {e}", flush=True)
+
+# ── Part 2: Stateful Search Cache Helpers ───────────────────────────────────
+
+import hashlib
+
+def _query_hash(query: str) -> str:
+    return hashlib.sha256(query.lower().strip().encode("utf-8")).hexdigest()
+
+def get_cached_search(query: str, ttl_hours: float = 12.0) -> Optional[dict]:
+    try:
+        q_hash = _query_hash(query)
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT distilled_results, sources, created_at 
+            FROM search_cache 
+            WHERE query_hash = ? AND (strftime('%s', 'now') - strftime('%s', created_at)) < ?
+        """, (q_hash, ttl_hours * 3600))
+        res = cursor.fetchone()
+        conn.close()
+        if res:
+            return {"results": res[0], "sources": res[1]}
+    except Exception as e:
+        print(f"[DB ERROR] get_cached_search failed: {e}", flush=True)
+    return None
+
+def store_cached_search(query: str, distilled_results: str, sources: str):
+    try:
+        q_hash = _query_hash(query)
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT OR REPLACE INTO search_cache (query_hash, raw_query, distilled_results, sources, created_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """, (q_hash, query, distilled_results, sources))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[DB ERROR] store_cached_search failed: {e}", flush=True)
 
 from langchain_groq import ChatGroq
 from langgraph.graph import END, StateGraph
@@ -480,7 +558,7 @@ def wikipedia_search(query: str, max_results: int = 3) -> str:
             if not desc:
                 desc = "No summary available."
                 
-            lines.append(f"• Wikipedia: {title}\n  {desc}\n  Source: {link}")
+            lines.append(f"• Wikipedia: {title} [Confidence: 0.95]\n  {desc}\n  Source: {link}")
             
         return "\n\n".join(lines)
     except Exception as e:
@@ -489,6 +567,14 @@ def wikipedia_search(query: str, max_results: int = 3) -> str:
 
 def web_search(query: str, max_results: int = 4) -> str:
     cleaned = clean_search_query(query)
+    if not cleaned:
+        return "No results found."
+
+    # Check Stateful Search Cache (12-hour TTL)
+    cached = get_cached_search(cleaned)
+    if cached:
+        print(f"[SEARCH CACHE HIT] Reusing cached search results for: '{cleaned[:40]}'", flush=True)
+        return cached["results"]
     
     # 1. Fetch DuckDuckGo results
     try:
@@ -498,7 +584,16 @@ def web_search(query: str, max_results: int = 4) -> str:
         ddg_lines = []
         if results:
             for r in results:
-                ddg_lines.append(f"• {r['title']}\n  {r['body']}\n  Source: {r['href']}")
+                href = r.get("href", "").lower()
+                # Dynamic Source Confidence Weighting
+                confidence = 0.50
+                if any(ext in href for ext in (".edu", ".gov", ".org")):
+                    confidence = 0.98 if any(ext in href for ext in (".edu", ".gov")) else 0.85
+                elif any(news in href for news in ("reuters.com", "apnews.com", "bbc.co.uk", "nytimes.com", "cnn.com", "bloomberg.com")):
+                    confidence = 0.85
+                elif any(low in href for low in ("reddit.com", "medium.com", "blogspot.com", "twitter.com", "facebook.com", "x.com")):
+                    confidence = 0.25
+                ddg_lines.append(f"• {r['title']} [Confidence: {confidence}]\n  {r['body']}\n  Source: {r['href']}")
         ddg_text = "\n\n".join(ddg_lines)
     except Exception as e:
         ddg_text = f"[DuckDuckGo search unavailable: {e}]"
@@ -516,9 +611,15 @@ def web_search(query: str, max_results: int = 4) -> str:
         merged.append(ddg_text)
         
     if not merged:
-        return "No web or Wikipedia results found."
+        merged_text = "No web or Wikipedia results found."
+    else:
+        merged_text = "\n\n".join(merged)
         
-    return "\n\n".join(merged)
+    # Store in local SQLite search cache
+    if merged and "No web" not in merged_text:
+        store_cached_search(cleaned, merged_text, "Wikipedia, DuckDuckGo")
+        
+    return merged_text
 
 
 # â”€â”€ Direct Google Workspace automation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -908,6 +1009,21 @@ def planner_node(state: AriaState):
     else:
         graph = plan_goal(query, "LAUNCH", history_text, profile_text, model_name=CURRENT_DEPT_MODEL, goal_id=pre_goal_id)
         
+    session_id = state.get("session_id", "default")
+    log_execution_ledger_event(
+        session_id=session_id,
+        goal_id=graph.goal_id,
+        task_id=None,
+        department=None,
+        event_type="PLANNING",
+        state_before=None,
+        state_after="PLANNED",
+        metadata={
+            "query": query,
+            "graph": graph.to_dict()
+        }
+    )
+        
     return {"goal_graph": graph.to_dict()}
 
 
@@ -924,6 +1040,7 @@ def task_executor_node(state: AriaState):
         from auditor import BipartiteAuditor
     
     start_time = time.time()
+    session_id = state.get("session_id", "default")
     
     graph_dict = state.get("goal_graph")
     if not graph_dict:
@@ -985,9 +1102,29 @@ def task_executor_node(state: AriaState):
             engine.mark_running(task.task_id)
             
             # Layer 5 Bipartite Auditor: Pre-Execution Gatekeeper check
+            log_execution_ledger_event(
+                session_id=session_id,
+                goal_id=goal_graph.goal_id,
+                task_id=task.task_id,
+                department=task.department,
+                event_type="AUDIT_PRE",
+                state_before="RUNNING",
+                state_after="AUDITING_PRE",
+                metadata={"objective": task.objective}
+            )
             passed_pre, reason_pre = auditor.audit_pre(task)
             if not passed_pre:
                 print(f"[EXECUTOR] Pre-execution audit blocked task {task.task_id}: {reason_pre}", flush=True)
+                log_execution_ledger_event(
+                    session_id=session_id,
+                    goal_id=goal_graph.goal_id,
+                    task_id=task.task_id,
+                    department=task.department,
+                    event_type="AUDIT_PRE_FAIL",
+                    state_before="AUDITING_PRE",
+                    state_after="FAILED",
+                    metadata={"objective": task.objective, "reason": reason_pre}
+                )
                 engine.mark_failed(task.task_id, f"Pre-execution Audit Blocked: {reason_pre}")
                 execution_log.append({
                     "task_id": task.task_id,
@@ -997,6 +1134,17 @@ def task_executor_node(state: AriaState):
                     "status": "FAILED"
                 })
                 continue
+                
+            log_execution_ledger_event(
+                session_id=session_id,
+                goal_id=goal_graph.goal_id,
+                task_id=task.task_id,
+                department=task.department,
+                event_type="AUDIT_PRE_PASS",
+                state_before="AUDITING_PRE",
+                state_after="RUNNING",
+                metadata={"objective": task.objective}
+            )
                 
             dept_head = get_department_head(task.department)
             
@@ -1029,8 +1177,6 @@ def task_executor_node(state: AriaState):
                     # Call execution department head _resolve_params method dynamically
                     resolved_params = dept_head._resolve_params(params, upstream_text)
                     
-                    session_id = state.get("session_id", "default")
-                    
                     # Save in pending action lock
                     with _pending_actions_lock:
                         _pending_actions[session_id] = {
@@ -1060,6 +1206,17 @@ def task_executor_node(state: AriaState):
                     tracker = state.get("execution_tracker") or {}
                     tracker["task_manager_duration"] = duration
                     
+                    log_execution_ledger_event(
+                        session_id=session_id,
+                        goal_id=goal_graph.goal_id,
+                        task_id=task.task_id,
+                        department=task.department,
+                        event_type="WAITING_FOR_APPROVAL",
+                        state_before="RUNNING",
+                        state_after="WAITING",
+                        metadata={"action": action, "params": resolved_params}
+                    )
+                    
                     return {
                         "goal_graph": engine.goal.to_dict(),
                         "execution_log": execution_log,
@@ -1071,12 +1228,61 @@ def task_executor_node(state: AriaState):
             
             try:
                 # Dispatch task to the department head
+                log_execution_ledger_event(
+                    session_id=session_id,
+                    goal_id=goal_graph.goal_id,
+                    task_id=task.task_id,
+                    department=task.department,
+                    event_type="EXECUTION_START",
+                    state_before="RUNNING",
+                    state_after="RUNNING",
+                    metadata={"objective": task.objective}
+                )
+                
+                t_dispatch_start = time.time()
                 result, task_tokens = dept_head.dispatch(task, shared_resources, llm_dept)
+                latency = round(time.time() - t_dispatch_start, 2)
+                
+                log_execution_ledger_event(
+                    session_id=session_id,
+                    goal_id=goal_graph.goal_id,
+                    task_id=task.task_id,
+                    department=task.department,
+                    event_type="EXECUTION_DONE",
+                    state_before="RUNNING",
+                    state_after="RUNNING",
+                    metadata={
+                        "objective": task.objective,
+                        "latency": latency,
+                        "tokens": task_tokens,
+                        "result_preview": (result or "")[:500]
+                    }
+                )
                 
                 # Layer 5 Bipartite Auditor: Post-Execution Validator check
+                log_execution_ledger_event(
+                    session_id=session_id,
+                    goal_id=goal_graph.goal_id,
+                    task_id=task.task_id,
+                    department=task.department,
+                    event_type="AUDIT_POST",
+                    state_before="RUNNING",
+                    state_after="AUDITING_POST",
+                    metadata={"objective": task.objective}
+                )
                 passed_post, audit_result = auditor.audit_post(task, result)
                 if not passed_post:
                     print(f"[EXECUTOR] Post-execution audit failed task {task.task_id}: {audit_result}", flush=True)
+                    log_execution_ledger_event(
+                        session_id=session_id,
+                        goal_id=goal_graph.goal_id,
+                        task_id=task.task_id,
+                        department=task.department,
+                        event_type="AUDIT_POST_FAIL",
+                        state_before="AUDITING_POST",
+                        state_after="FAILED",
+                        metadata={"objective": task.objective, "audit_result": audit_result}
+                    )
                     engine.mark_failed(task.task_id, f"Post-execution Audit Failed: {audit_result}")
                     execution_log.append({
                         "task_id": task.task_id,
@@ -1097,6 +1303,16 @@ def task_executor_node(state: AriaState):
                         exception_msg=f"Post-execution Audit Failed: {audit_result}"
                     )
                 else:
+                    log_execution_ledger_event(
+                        session_id=session_id,
+                        goal_id=goal_graph.goal_id,
+                        task_id=task.task_id,
+                        department=task.department,
+                        event_type="AUDIT_POST_PASS",
+                        state_before="AUDITING_POST",
+                        state_after="COMPLETED",
+                        metadata={"objective": task.objective, "audit_result": audit_result}
+                    )
                     engine.mark_completed(task.task_id, audit_result)
                     execution_log.append({
                         "task_id": task.task_id,
@@ -1117,6 +1333,16 @@ def task_executor_node(state: AriaState):
             except Exception as e:
                 err_msg = str(e)
                 print(f"[EXECUTOR ERROR] Task {task.task_id} failed: {err_msg}", flush=True)
+                log_execution_ledger_event(
+                    session_id=session_id,
+                    goal_id=goal_graph.goal_id,
+                    task_id=task.task_id,
+                    department=task.department,
+                    event_type="EXECUTION_FAIL",
+                    state_before="RUNNING",
+                    state_after="FAILED",
+                    metadata={"objective": task.objective, "error": err_msg}
+                )
                 engine.mark_failed(task.task_id, err_msg)
                 execution_log.append({
                     "task_id": task.task_id,

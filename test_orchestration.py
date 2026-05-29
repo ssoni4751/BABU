@@ -462,5 +462,188 @@ class TestBipartiteAuditor(unittest.TestCase):
         self.assertIn("Wikipedia: Quantum mechanics", res)
         self.assertIn("Source: https://en.wikipedia.org/wiki/Quantum_mechanics", res)
 
+
+class TestExecutionLedger(unittest.TestCase):
+    
+    def test_log_event(self):
+        import sqlite3
+        import uuid
+        from aria.bot import log_execution_ledger_event, DB_PATH
+        
+        session_id = f"test_session_{uuid.uuid4().hex[:6]}"
+        goal_id = "G_test_ledger"
+        
+        log_execution_ledger_event(
+            session_id=session_id,
+            goal_id=goal_id,
+            task_id="T1",
+            department="research",
+            event_type="TEST_EVENT",
+            state_before="PENDING",
+            state_after="RUNNING",
+            metadata={"detail": "hello world"}
+        )
+        
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT session_id, goal_id, task_id, department, event_type, state_before, state_after, metadata FROM execution_ledger WHERE session_id = ?",
+            (session_id,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        
+        self.assertIsNotNone(row)
+        self.assertEqual(row[0], session_id)
+        self.assertEqual(row[1], goal_id)
+        self.assertEqual(row[2], "T1")
+        self.assertEqual(row[3], "research")
+        self.assertEqual(row[4], "TEST_EVENT")
+        self.assertEqual(row[5], "PENDING")
+        self.assertEqual(row[6], "RUNNING")
+        self.assertIn("hello world", row[7])
+
+    @patch("aria.departments.get_department_head")
+    @patch("aria.auditor.BipartiteAuditor")
+    def test_executor_node_logging(self, mock_auditor_cls, mock_get_dept_head):
+        import sqlite3
+        import uuid
+        from aria.bot import task_executor_node, AriaState, DB_PATH
+        from aria.task_engine import TaskDTO, GoalGraph, TaskState
+        from langchain_core.messages import HumanMessage
+        
+        # Mock BipartiteAuditor methods to pass
+        mock_auditor = MagicMock()
+        mock_auditor.audit_pre.return_value = (True, "Pre pass")
+        mock_auditor.audit_post.return_value = (True, "Post pass")
+        mock_auditor_cls.return_value = mock_auditor
+        
+        # Mock Department Head to return simple result
+        mock_dept_head = MagicMock()
+        mock_dept_head.dispatch.return_value = ("{'findings': 'some findings'}", {"prompt": 10, "completion": 5, "total": 15})
+        mock_get_dept_head.return_value = mock_dept_head
+        
+        session_id = f"test_session_{uuid.uuid4().hex[:6]}"
+        
+        t1 = TaskDTO(
+            task_id="T1",
+            objective="Retrieve space exploration facts",
+            department="research",
+            depends_on=[],
+            priority=1,
+            state=TaskState.PENDING
+        )
+        goal = GoalGraph(
+            goal_id="G_exec_ledger_test",
+            goal="Exec ledger test",
+            tasks=[t1]
+        )
+        
+        state = AriaState(
+            messages=[HumanMessage(content="Space facts")],
+            gear="LAUNCH",
+            research_data=[],
+            user_query="Space facts",
+            history_text="",
+            session_id=session_id,
+            search_results="",
+            action_result="",
+            detected_action=None,
+            active_goal={"goal_id": "G_exec_ledger_test"},
+            compressed_research="",
+            routing_metadata={},
+            pending_action_notice="",
+            goal_graph=goal.to_dict(),
+            execution_log=[],
+            final_brief="",
+            tokens={"prompt": 0, "completion": 0, "total": 0}
+        )
+        
+        # Run node
+        task_executor_node(state)
+        
+        # Assert database rows exist
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT event_type, state_before, state_after FROM execution_ledger WHERE session_id = ? ORDER BY event_id ASC",
+            (session_id,)
+        )
+        rows = cursor.fetchall()
+        conn.close()
+        
+        event_types = [r[0] for r in rows]
+        self.assertIn("AUDIT_PRE", event_types)
+        self.assertIn("AUDIT_PRE_PASS", event_types)
+        self.assertIn("EXECUTION_START", event_types)
+        self.assertIn("EXECUTION_DONE", event_types)
+        self.assertIn("AUDIT_POST", event_types)
+        self.assertIn("AUDIT_POST_PASS", event_types)
+
+    @patch("aria.bot.is_simple_query")
+    @patch("aria.planner.plan_goal")
+    def test_planner_node_logging(self, mock_plan_goal, mock_is_simple):
+        import sqlite3
+        import uuid
+        from aria.bot import planner_node, AriaState, DB_PATH
+        from aria.task_engine import TaskDTO, GoalGraph, TaskState
+        from langchain_core.messages import HumanMessage
+        
+        mock_is_simple.return_value = False
+        
+        t1 = TaskDTO(
+            task_id="T1",
+            objective="Retrieve space exploration facts",
+            department="research",
+            depends_on=[],
+            priority=1,
+            state=TaskState.PENDING
+        )
+        goal = GoalGraph(
+            goal_id="G_plan_ledger_test",
+            goal="Plan ledger test",
+            tasks=[t1]
+        )
+        mock_plan_goal.return_value = goal
+        
+        session_id = f"test_session_{uuid.uuid4().hex[:6]}"
+        state = AriaState(
+            messages=[HumanMessage(content="Space facts")],
+            gear="LAUNCH",
+            research_data=[],
+            user_query="Space facts",
+            history_text="",
+            session_id=session_id,
+            search_results="",
+            action_result="",
+            detected_action=None,
+            active_goal={"goal_id": "G_plan_ledger_test"},
+            compressed_research="",
+            routing_metadata={},
+            pending_action_notice="",
+            goal_graph=None,
+            execution_log=[],
+            final_brief="",
+            tokens={"prompt": 0, "completion": 0, "total": 0}
+        )
+        
+        # Run node
+        planner_node(state)
+        
+        # Assert database rows exist
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT event_type, state_after FROM execution_ledger WHERE session_id = ? ORDER BY event_id ASC",
+            (session_id,)
+        )
+        rows = cursor.fetchall()
+        conn.close()
+        
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0][0], "PLANNING")
+        self.assertEqual(rows[0][1], "PLANNED")
+
+
 if __name__ == "__main__":
     unittest.main()
