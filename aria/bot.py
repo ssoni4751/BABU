@@ -1010,6 +1010,22 @@ def planner_node(state: AriaState):
         graph = plan_goal(query, "LAUNCH", history_text, profile_text, model_name=CURRENT_DEPT_MODEL, goal_id=pre_goal_id)
         
     session_id = state.get("session_id", "default")
+    
+    # Log GOAL_CREATED lifecycle event
+    log_execution_ledger_event(
+        session_id=session_id,
+        goal_id=graph.goal_id,
+        task_id=None,
+        department=None,
+        event_type="GOAL_CREATED",
+        state_before="NONE",
+        state_after="ACTIVE",
+        metadata={
+            "query": query,
+            "goal": graph.goal
+        }
+    )
+    
     log_execution_ledger_event(
         session_id=session_id,
         goal_id=graph.goal_id,
@@ -1064,6 +1080,39 @@ def task_executor_node(state: AriaState):
     
     print(f"[EXECUTOR] Executing goal DAG: {goal_graph.goal_id}", flush=True)
     
+    # Log DEPENDENCY_WAIT for all downstream tasks initially
+    for task in goal_graph.tasks:
+        if task.depends_on:
+            log_execution_ledger_event(
+                session_id=session_id,
+                goal_id=goal_graph.goal_id,
+                task_id=task.task_id,
+                department=task.department,
+                event_type="DEPENDENCY_WAIT",
+                state_before="PENDING",
+                state_after="PENDING",
+                metadata={"depends_on": task.depends_on}
+            )
+            
+    def track_cascading_blocks(action_fn, *args, **kwargs):
+        pre_blocked = {t.task_id for t in engine.goal.tasks if t.state == TaskState.BLOCKED}
+        action_fn(*args, **kwargs)
+        post_blocked = {t.task_id for t in engine.goal.tasks if t.state == TaskState.BLOCKED}
+        
+        newly_blocked = post_blocked - pre_blocked
+        for b_tid in newly_blocked:
+            b_task = engine._task_map[b_tid]
+            log_execution_ledger_event(
+                session_id=session_id,
+                goal_id=goal_graph.goal_id,
+                task_id=b_tid,
+                department=b_task.department,
+                event_type="DEPENDENCY_BLOCKED",
+                state_before="PENDING",
+                state_after="BLOCKED",
+                metadata={"blocked_by": args[0] if args else "unknown", "reason": "dependency failure propagation"}
+            )
+    
     execution_log = state.get("execution_log") or []
     
     shared_resources = {
@@ -1088,7 +1137,7 @@ def task_executor_node(state: AriaState):
             is_ok, budget_reason = engine.verify_token_budget(task.task_id, accumulated_task_tokens, accumulated_goal_tokens)
             if not is_ok:
                 print(f"[EXECUTOR] Token budget exhausted: {budget_reason}", flush=True)
-                engine.mark_cancelled(task.task_id, f"Token Budget Exhausted: {budget_reason}")
+                track_cascading_blocks(engine.mark_cancelled, task.task_id, f"Token Budget Exhausted: {budget_reason}")
                 execution_log.append({
                     "task_id": task.task_id,
                     "objective": task.objective,
@@ -1125,7 +1174,7 @@ def task_executor_node(state: AriaState):
                     state_after="FAILED",
                     metadata={"objective": task.objective, "reason": reason_pre}
                 )
-                engine.mark_failed(task.task_id, f"Pre-execution Audit Blocked: {reason_pre}")
+                track_cascading_blocks(engine.mark_failed, task.task_id, f"Pre-execution Audit Blocked: {reason_pre}")
                 execution_log.append({
                     "task_id": task.task_id,
                     "objective": task.objective,
@@ -1283,7 +1332,7 @@ def task_executor_node(state: AriaState):
                         state_after="FAILED",
                         metadata={"objective": task.objective, "audit_result": audit_result}
                     )
-                    engine.mark_failed(task.task_id, f"Post-execution Audit Failed: {audit_result}")
+                    track_cascading_blocks(engine.mark_failed, task.task_id, f"Post-execution Audit Failed: {audit_result}")
                     execution_log.append({
                         "task_id": task.task_id,
                         "objective": task.objective,
@@ -1313,7 +1362,26 @@ def task_executor_node(state: AriaState):
                         state_after="COMPLETED",
                         metadata={"objective": task.objective, "audit_result": audit_result}
                     )
+                    
+                    # Track newly ready tasks unlocked by completing this task
+                    pre_ready = {t.task_id for t in engine.get_ready_tasks()}
                     engine.mark_completed(task.task_id, audit_result)
+                    post_ready = {t.task_id for t in engine.get_ready_tasks()}
+                    
+                    newly_ready = post_ready - pre_ready
+                    for n_tid in newly_ready:
+                        n_task = engine._task_map[n_tid]
+                        log_execution_ledger_event(
+                            session_id=session_id,
+                            goal_id=goal_graph.goal_id,
+                            task_id=n_tid,
+                            department=n_task.department,
+                            event_type="DEPENDENCY_SATISFIED",
+                            state_before="PENDING",
+                            state_after="READY",
+                            metadata={"satisfied_by": task.task_id}
+                        )
+                        
                     execution_log.append({
                         "task_id": task.task_id,
                         "objective": task.objective,
@@ -1343,7 +1411,7 @@ def task_executor_node(state: AriaState):
                     state_after="FAILED",
                     metadata={"objective": task.objective, "error": err_msg}
                 )
-                engine.mark_failed(task.task_id, err_msg)
+                track_cascading_blocks(engine.mark_failed, task.task_id, err_msg)
                 execution_log.append({
                     "task_id": task.task_id,
                     "objective": task.objective,
@@ -1370,6 +1438,30 @@ def task_executor_node(state: AriaState):
     
     final_brief = engine.get_execution_summary()
     
+    # Goal lifecycle outcomes logging
+    if engine.is_goal_complete():
+        log_execution_ledger_event(
+            session_id=session_id,
+            goal_id=goal_graph.goal_id,
+            task_id=None,
+            department=None,
+            event_type="GOAL_COMPLETED",
+            state_before="ACTIVE",
+            state_after="COMPLETED",
+            metadata={"latency_sec": duration, "summary": final_brief[:1000]}
+        )
+    elif engine.is_goal_blocked() or not engine.is_goal_complete():
+        log_execution_ledger_event(
+            session_id=session_id,
+            goal_id=goal_graph.goal_id,
+            task_id=None,
+            department=None,
+            event_type="GOAL_FAILED",
+            state_before="ACTIVE",
+            state_after="FAILED",
+            metadata={"latency_sec": duration, "error": "Goal execution blocked or stalled"}
+        )
+        
     # Store action result if there was an execution task
     action_res = ""
     for entry in execution_log:
@@ -2586,6 +2678,19 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if pending:
             action = pending.get("action", "")
             params = resolve_action_params(pending.get("params", {}), research_text="")
+            
+            # Log approval event
+            log_execution_ledger_event(
+                session_id=session_id,
+                goal_id=pending.get("goal_id", "default"),
+                task_id=pending.get("task_id"),
+                department="execution",
+                event_type="APPROVAL_GRANTED",
+                state_before="WAITING",
+                state_after="RUNNING",
+                metadata={"by": "telegram_text", "action": action, "params": params}
+            )
+            
             ok, result_msg = await asyncio.to_thread(execute_google_action, action, params)
             if ok:
                 with _pending_actions_lock:
@@ -2601,6 +2706,20 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
     if pending and _is_reject_message(msg):
+        with _pending_actions_lock:
+            pending = _pending_actions.get(session_id)
+        if pending:
+            # Log rejection event
+            log_execution_ledger_event(
+                session_id=session_id,
+                goal_id=pending.get("goal_id", "default"),
+                task_id=pending.get("task_id"),
+                department="execution",
+                event_type="APPROVAL_DENIED",
+                state_before="WAITING",
+                state_after="CANCELLED",
+                metadata={"by": "telegram_text", "action": pending.get("action", "")}
+            )
         with _pending_actions_lock:
             _pending_actions.pop(session_id, None)
         await update.message.reply_text("Pending action cancelled.")
@@ -2691,6 +2810,57 @@ async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Memory cleared. Fresh start.")
 
 
+async def cmd_goals(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show current active pending goals or actions and provide control buttons."""
+    chat_id = update.effective_chat.id
+    session_id = tg_session(update)
+    
+    pending_post = PENDING_POSTS.get(chat_id)
+    
+    with _pending_actions_lock:
+        pending_action = _pending_actions.get(session_id)
+        
+    if not pending_post and not pending_action:
+        await update.message.reply_text("✅ There are no active pending goals or actions to manage.")
+        return
+        
+    # Build list of active items
+    text_lines = ["📊 *Current Active Goals & Action Approvals*:\n"]
+    keyboard = []
+    
+    if pending_post:
+        topic = pending_post.get("custom_topic") or "Daily Scheduled Post"
+        text_lines.append("📝 *Pending Social Media Post*:")
+        text_lines.append(f"  • *Topic*: {escape_markdown(topic)}")
+        text_lines.append(f"  • *Caption*: _{escape_markdown(pending_post.get('caption', '')[:120])}..._\n")
+        
+        keyboard.append([
+            InlineKeyboardButton("Approve Post", callback_data="post_approve"),
+            InlineKeyboardButton("Cancel Post", callback_data="post_cancel")
+        ])
+        
+    if pending_action:
+        action = pending_action.get("action", "Google Action")
+        text_lines.append("🔧 *Pending Google Workspace Action*:")
+        text_lines.append(f"  • *Action*: `{escape_markdown(action)}`")
+        
+        params = pending_action.get("params", {})
+        param_desc = ", ".join(f"{k}: {v}" for k, v in params.items() if k not in ("body", "content"))
+        if param_desc:
+            text_lines.append(f"  • *Parameters*: _{escape_markdown(param_desc)}_")
+            
+        keyboard.append([
+            InlineKeyboardButton("Approve Action", callback_data=f"action_approve|{session_id}"),
+            InlineKeyboardButton("Cancel Action", callback_data=f"action_cancel|{session_id}")
+        ])
+        
+    await update.message.reply_text(
+        text="\n".join(text_lines),
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard) if keyboard else None
+    )
+
+
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     google_line = "\n- Send email, create calendar event, log to sheet - just ask naturally" if is_google_configured() else ""
     await update.message.reply_text(
@@ -2701,6 +2871,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Marketing Department:\n"
         "- /postnow - Instantly generate and post custom daily tech graphic & copy to Facebook Page\n\n"
         "Extras:\n"
+        "- /goals - Show and manage active pending goals and actions\n"
         "- /clear - Reset conversation memory\n"
         "- /stats - Show runtime diagnostics\n"
         f"- /help - Show this menu{google_line}\n\n"
@@ -2818,6 +2989,19 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             action = pending.get("action", "")
             params = resolve_action_params(pending.get("params", {}), research_text="")
+            
+            # Log approval event
+            log_execution_ledger_event(
+                session_id=session_id,
+                goal_id=pending.get("goal_id", "default"),
+                task_id=pending.get("task_id"),
+                department="execution",
+                event_type="APPROVAL_GRANTED",
+                state_before="WAITING",
+                state_after="RUNNING",
+                metadata={"by": "telegram_callback", "action": action, "params": params}
+            )
+            
             ok, result_msg = await asyncio.to_thread(execute_google_action, action, params)
             if ok:
                 with _pending_actions_lock:
@@ -2834,6 +3018,20 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if data.startswith("action_cancel|"):
             session_id = data.split("|", 1)[1].strip()
+            with _pending_actions_lock:
+                pending = _pending_actions.get(session_id)
+            if pending:
+                # Log rejection event
+                log_execution_ledger_event(
+                    session_id=session_id,
+                    goal_id=pending.get("goal_id", "default"),
+                    task_id=pending.get("task_id"),
+                    department="execution",
+                    event_type="APPROVAL_DENIED",
+                    state_before="WAITING",
+                    state_after="CANCELLED",
+                    metadata={"by": "telegram_callback", "action": pending.get("action", "")}
+                )
             with _pending_actions_lock:
                 _pending_actions.pop(session_id, None)
             await query.edit_message_text("Pending action cancelled.")
@@ -2928,6 +3126,7 @@ if __name__ == "__main__":
     
     bot.add_handler(CommandHandler("launch", cmd_launch))
     bot.add_handler(CommandHandler("clear",  cmd_clear))
+    bot.add_handler(CommandHandler("goals",  cmd_goals))
     bot.add_handler(CommandHandler("help",   cmd_help))
     bot.add_handler(CommandHandler("stats",  cmd_stats))
     bot.add_handler(CommandHandler("model",  cmd_model))
