@@ -2130,13 +2130,27 @@ async def generate_and_send_preview(chat_id: int, bot, custom_topic: str = None,
         # Cache the draft
         PENDING_POSTS[chat_id] = draft
         
-        # Send the image preview with interactive keyboard
+        # 1. Send the Proposed Caption & FLUX Prompt in a separate text message
+        details_text = (
+            f"📝 *Proposed Caption:*\n"
+            f"```\n{escape_markdown(draft['caption'])}\n```\n\n"
+            f"🎨 *FLUX Prompt:*\n"
+            f"_{escape_markdown(draft['image_prompt'])}_"
+        )
+        
+        await bot.send_message(
+            chat_id=chat_id,
+            text=details_text,
+            parse_mode="Markdown",
+            reply_to_message_id=reply_to_message_id
+        )
+        
+        # 2. Send the image preview with interactive keyboard
         with open(draft["image_path"], "rb") as photo_file:
             caption_text = (
-                f"ARIA Marketing Department - Post Preview\n\n"
-                f"Proposed Caption:\n{escape_markdown(draft['caption'])}\n\n"
-                f"FLUX Prompt: \"{escape_markdown(draft['image_prompt'])}\"\n\n"
-                f"Please review the graphic and caption below. Click Approve to publish directly to Facebook."
+                f"📊 *ARIA Marketing Department - Post Preview*\n\n"
+                f"Please review the graphic above and the proposed caption sent in the previous message.\n\n"
+                f"Click Approve to publish directly to Facebook Page."
             )
             
             await bot.send_photo(
@@ -2762,12 +2776,26 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 WAITING_FOR_TOPIC.pop(chat_id, None)
                 
                 await query.edit_message_caption(
-                    caption=f"Successfully published to Facebook Page.\n\n{msg}\n\nCaption:\n{escape_markdown(draft['caption'])}"
+                    caption=f"✅ Successfully published to Facebook Page!\n\n{escape_markdown(msg)}"
+                )
+                
+                await query.message.reply_text(
+                    text=f"📢 *Published Post Details:*\n\n{escape_markdown(msg)}\n\n*Caption:*\n```\n{escape_markdown(draft['caption'])}\n```",
+                    parse_mode="Markdown"
                 )
             else:
                 await query.edit_message_caption(
-                    caption=f"Failed to publish to Facebook:\n{escape_markdown(msg)}\n\nCaption:\n{escape_markdown(draft['caption'])}\n\nYou can click Approve again to retry, Change Topic, or Cancel.",
+                    caption=f"⚠️ Failed to publish to Facebook Page.",
                     reply_markup=get_post_keyboard() # Keep keyboard active so they can try again or change topic!
+                )
+                
+                await query.message.reply_text(
+                    text=(
+                        f"❌ *Failed to publish to Facebook:*\n{escape_markdown(msg)}\n\n"
+                        f"*Caption:*\n```\n{escape_markdown(draft['caption'])}\n```\n\n"
+                        f"You can click Approve again to retry, Change Topic, or Cancel."
+                    ),
+                    parse_mode="Markdown"
                 )
                 
         elif data == "post_change_topic":
