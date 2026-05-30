@@ -2464,6 +2464,17 @@ def escape_markdown(text: str) -> str:
     return re.sub(r'([_*`\[\]])', '', str(text))
 
 
+async def edit_callback_message(query, text: str, reply_markup=None):
+    """Helper to edit a callback message safely whether it has media (caption) or is text-only."""
+    try:
+        await query.edit_message_text(text=text, reply_markup=reply_markup)
+    except Exception:
+        try:
+            await query.edit_message_caption(caption=text, reply_markup=reply_markup)
+        except Exception as e:
+            print(f"[CALLBACK WARNING] Failed to edit callback message: {e}", flush=True)
+
+
 async def cmd_postnow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Force immediately generating and sending today's marketing post preview."""
     chat_id = update.effective_chat.id
@@ -2553,6 +2564,14 @@ def classify_review_intent(text: str) -> Optional[str]:
     text_clean = " ".join(str(text).lower().strip().split())
     if not text_clean:
         return None
+        
+    # Check exact digits or simple keywords first
+    if text_clean in ("1", "one", "approve", "publish", "approve post", "publish post", "approve & publish", "approve and publish"):
+        return "approve"
+    if text_clean in ("0", "zero", "cancel", "cancel post", "discard", "discard post"):
+        return "cancel"
+    if text_clean in ("2", "two", "change", "change topic", "regenerate", "regenerate post"):
+        return "change_topic"
         
     def distance(s1, s2):
         if len(s1) < len(s2):
@@ -3040,10 +3059,10 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if data == "post_approve":
             draft = PENDING_POSTS.get(chat_id)
             if not draft:
-                await query.edit_message_caption(caption="No pending post found to approve. Run /postnow to generate a new draft.")
+                await edit_callback_message(query, "No pending post found to approve. Run /postnow to generate a new draft.")
                 return
             
-            await query.edit_message_caption(caption="Publishing to Facebook Page. Please wait.")
+            await edit_callback_message(query, "Publishing to Facebook Page. Please wait.")
             
             try:
                 from .social_media import publish_to_facebook_page
@@ -3075,8 +3094,9 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 PENDING_POSTS.pop(chat_id, None)
                 WAITING_FOR_TOPIC.pop(chat_id, None)
                 
-                await query.edit_message_caption(
-                    caption=f"✅ Successfully published to Facebook Page!\n\n{escape_markdown(msg)}"
+                await edit_callback_message(
+                    query,
+                    f"✅ Successfully published to Facebook Page!\n\n{escape_markdown(msg)}"
                 )
                 
                 await query.message.reply_text(
@@ -3084,8 +3104,9 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode="Markdown"
                 )
             else:
-                await query.edit_message_caption(
-                    caption=f"⚠️ Failed to publish to Facebook Page.",
+                await edit_callback_message(
+                    query,
+                    "⚠️ Failed to publish to Facebook Page.",
                     reply_markup=get_post_keyboard() # Keep keyboard active so they can try again or change topic!
                 )
                 
@@ -3105,7 +3126,7 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data == "post_cancel":
             PENDING_POSTS.pop(chat_id, None)
             WAITING_FOR_TOPIC.pop(chat_id, None)
-            await query.edit_message_caption(caption="Post draft cancelled.")
+            await edit_callback_message(query, "Post draft cancelled.")
             
     except Exception as e:
         print(f"[CALLBACK CRITICAL ERROR] Exception inside on_post_callback: {e}", flush=True)
