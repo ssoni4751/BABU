@@ -33,10 +33,15 @@ def main():
         print(f"\n✨ Generated Caption:\n{caption}")
         print(f"\n🎨 Generated FLUX Prompt:\n{img_prompt}")
         
-        # 2. Download Image via FLUX
+        # 2. Download Image via FLUX & render Pillow glass card
         print("\n[STEP 2] Downloading custom graphic from Pollinations.ai FLUX...")
-        img_path = generate_flux_graphic(img_prompt)
-        print(f"✅ Graphic saved at: {img_path}")
+        bg_path = generate_flux_graphic(img_prompt)
+        print(f"✅ Backdrop saved at: {bg_path}")
+        
+        print("\n[STEP 2.5] Rendering premium Pillow dashboard graphic card...")
+        from aria.social_media import generate_pillow_graphic
+        img_path = generate_pillow_graphic(card_title, card_tips, background_path=bg_path, category=category)
+        print(f"✅ Finished Graphic saved at: {img_path}")
         print(f"Size of graphic: {os.path.getsize(img_path)} bytes")
         
         # 3. Simulate or Publish to Facebook

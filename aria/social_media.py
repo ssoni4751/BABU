@@ -287,7 +287,7 @@ def generate_pillow_graphic(title: str, tips: list, background_path: str = None,
         img = draw_tech_grid(img, grid_size=60, color=(accent_color[0], accent_color[1], accent_color[2], 12))
         
     # 3. Fonts Loading (Enlarged for supreme visibility and readability)
-    font_brand = get_font("Segoeuib", 32)            # Bold, prominent brand title
+    font_brand = get_font("Segoeuib", 38)            # Bold, prominent brand title
     font_logo = get_font("Segoeuib", 44)             # Authoritative emblem text
     font_title = get_font("Segoeuib", 42)            # Clear card header
     font_tips = get_font("Segoeui", 26)              # Highly visible bullet body
@@ -318,7 +318,7 @@ def generate_pillow_graphic(title: str, tips: list, background_path: str = None,
     draw.text((logo_cx, logo_cy - 2), "A", fill=(255, 255, 255), font=font_logo, anchor="mm")
     
     # Brand title
-    draw.text((160, 90), "ANSHU COMPUTER & TAX CONSULTANCY", fill=(255, 255, 255), font=font_brand, anchor="lm")
+    draw.text((160, 85), "ANSHU COMPUTER & TAX CONSULTANCY", fill=(255, 255, 255), font=font_brand, anchor="lm")
     
     # Header slogan / subtitle (Devanagari Poppins)
     slogan_text = "आस्था भरोसा, हमारी जिम्मेदारी  •  TAX • PF • GST • DIGITAL SOLUTIONS"
@@ -387,22 +387,15 @@ def generate_pillow_graphic(title: str, tips: list, background_path: str = None,
     footer_stats_text = "Rated 5.0  •  23+ Verified Google Reviews  •  Serving Nationwide"
     draw.text((540, 980), footer_stats_text, fill=accent_color, font=font_footer_stats, anchor="mm")
     
-    # Save output
+    # Save output with a unique filename to prevent overwriting/race conditions
+    import uuid
     current_dir = os.path.dirname(os.path.abspath(__file__))
     temp_dir = os.path.join(current_dir, "temp")
     os.makedirs(temp_dir, exist_ok=True)
-    image_path = os.path.join(temp_dir, "daily_post.jpg")
+    unique_id = uuid.uuid4().hex[:8]
+    image_path = os.path.join(temp_dir, f"daily_post_{unique_id}.jpg")
     img.save(image_path, "JPEG", quality=95)
     print(f"[PILLOW] High-fidelity centered floating card saved to: {image_path}", flush=True)
-    return image_path
-    
-    # Save output
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    temp_dir = os.path.join(current_dir, "temp")
-    os.makedirs(temp_dir, exist_ok=True)
-    image_path = os.path.join(temp_dir, "daily_post.jpg")
-    img.save(image_path, "JPEG", quality=95)
-    print(f"[PILLOW] High-fidelity hybrid graphic saved successfully to: {image_path}", flush=True)
     return image_path
 
 
@@ -422,10 +415,13 @@ def generate_flux_graphic(prompt: str) -> str:
                 raise RuntimeError(f"Failed to fetch FLUX image from Pollinations after {attempt} attempts: {e}")
             time.sleep(attempt * 2)
             
+    # Save backdrop with unique filename to prevent conflicts
+    import uuid
     current_dir = os.path.dirname(os.path.abspath(__file__))
     temp_dir = os.path.join(current_dir, "temp")
     os.makedirs(temp_dir, exist_ok=True)
-    image_path = os.path.join(temp_dir, "daily_post.jpg")
+    unique_id = uuid.uuid4().hex[:8]
+    image_path = os.path.join(temp_dir, f"flux_backdrop_{unique_id}.jpg")
     with open(image_path, "wb") as f:
         f.write(resp.content)
     return image_path
@@ -464,8 +460,27 @@ def publish_to_facebook_page(image_path: str, caption: str) -> tuple[bool, str]:
         return False, f"Failed to publish to Facebook: {e}"
 
 
+def clean_old_temp_files(temp_dir: str):
+    """Clean up files in temp directory older than 12 hours."""
+    try:
+        import time
+        now = time.time()
+        for f in os.listdir(temp_dir):
+            path = os.path.join(temp_dir, f)
+            if os.path.isfile(path) and (f.startswith("daily_post_") or f.startswith("flux_backdrop_")):
+                if now - os.path.getmtime(path) > 43200:
+                    os.remove(path)
+    except Exception as e:
+        print(f"[CLEANUP WARNING] Failed to clean old temp files: {e}", flush=True)
+
+
 def generate_social_post_draft(custom_topic: str = None) -> dict:
     """Scrape trends (or use custom topic), generate caption, image prompt, download FLUX backdrop, and render Pillow glass card."""
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    temp_dir = os.path.join(current_dir, "temp")
+    if os.path.exists(temp_dir):
+        clean_old_temp_files(temp_dir)
+        
     caption, img_prompt, card_title, card_tips, category = generate_daily_post(custom_topic)
     
     bg_path = None
