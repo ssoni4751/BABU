@@ -2245,11 +2245,12 @@ async def scheduler_async_loop(application):
 
                     await generate_and_send_preview(chat_id, application.bot)
                     
-                    # Store timestamp of preview generation in draft dict for auto-publish timeout
+                    # Store timestamp and auto-scheduled flag of preview generation in draft dict for auto-publish timeout
                     if chat_id in PENDING_POSTS:
                         import time
                         PENDING_POSTS[chat_id]["scheduled_at"] = time.time()
-                        print(f"[SCHEDULER] Timestamped pending post for chat {chat_id} at {today_str}", flush=True)
+                        PENDING_POSTS[chat_id]["is_auto_scheduled"] = True
+                        print(f"[SCHEDULER] Timestamped auto-scheduled pending post for chat {chat_id} at {today_str}", flush=True)
                 else:
                     print("[SCHEDULER] It's time to post, but no Telegram chat ID is registered yet. Waiting for user interaction...", flush=True)
             
@@ -2259,7 +2260,8 @@ async def scheduler_async_loop(application):
             for p_chat_id in list(PENDING_POSTS.keys()):
                 draft = PENDING_POSTS[p_chat_id]
                 scheduled_at = draft.get("scheduled_at")
-                if scheduled_at and (now_ts - scheduled_at >= 3600):
+                is_auto_scheduled = draft.get("is_auto_scheduled", False)
+                if is_auto_scheduled and scheduled_at and (now_ts - scheduled_at >= 3600):
                     print(f"[SCHEDULER] Auto-publishing timed-out post for chat {p_chat_id}...", flush=True)
                     
                     try:
