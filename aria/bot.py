@@ -2225,6 +2225,17 @@ async def scheduler_async_loop(application):
     print("[SCHEDULER] Autonomous social posting scheduler thread started.", flush=True)
     ist_tz = timezone(timedelta(hours=5, minutes=30))
     
+    # Avoid triggering retroactively if the bot starts up/restarts after 9:00 AM IST
+    try:
+        now_ist = datetime.now(timezone.utc).astimezone(ist_tz)
+        if now_ist.hour >= 9:
+            today_str = now_ist.strftime("%Y-%m-%d")
+            if get_last_preview_date() != today_str:
+                print(f"[SCHEDULER] Startup time {now_ist.strftime('%H:%M:%S')} is past 9:00 AM IST. Marking today ({today_str}) as previewed to prevent retroactive run.", flush=True)
+                set_last_preview_date(today_str)
+    except Exception as e:
+        print(f"[SCHEDULER ERROR] Failed to run startup initialization: {e}", flush=True)
+        
     while True:
         try:
             now_ist = datetime.now(timezone.utc).astimezone(ist_tz)
