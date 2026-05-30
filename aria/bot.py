@@ -2340,6 +2340,71 @@ def transcribe_audio(file_path: str) -> str:
         return f"[Error transcribing audio: {e}]"
 
 
+def classify_review_intent(text: str) -> Optional[str]:
+    """Classify user's text message into social media review intents (approve, cancel, change_topic), robust to spelling mistakes."""
+    text_clean = " ".join(str(text).lower().strip().split())
+    if not text_clean:
+        return None
+        
+    def distance(s1, s2):
+        if len(s1) < len(s2):
+            return distance(s2, s1)
+        if len(s2) == 0:
+            return len(s1)
+        prev = range(len(s2) + 1)
+        for i, c1 in enumerate(s1):
+            curr = [i + 1]
+            for j, c2 in enumerate(s2):
+                curr.append(min(prev[j + 1] + 1, curr[j] + 1, prev[j] + (c1 != c2)))
+            prev = curr
+        return prev[-1]
+        
+    words = text_clean.split()
+    
+    # 1. Exact or substring checks (very fast)
+    approve_phrases = ["approve and publish", "approve & publish", "approve post", "publish post", "publish the post", "approve draft", "publish draft", "yes", "confirm", "publish", "approve"]
+    cancel_phrases = ["cancel post", "cancel draft", "discard post", "discard draft", "cancel", "discard"]
+    change_phrases = ["change topic", "change the topic", "regenerate post", "regenerate draft", "change topic of post", "change details", "regenerate", "change"]
+    
+    for t in approve_phrases:
+        if t in text_clean:
+            return "approve"
+    for t in cancel_phrases:
+        if t in text_clean:
+            return "cancel"
+    for t in change_phrases:
+        if t in text_clean:
+            return "change_topic"
+            
+    # 2. Fuzzy match single words (distance threshold of 1 or 2 characters)
+    for word in words:
+        for target in ["approve", "publish", "confirm", "yes"]:
+            max_dist = 2 if len(target) > 5 else 1
+            if distance(word, target) <= max_dist:
+                return "approve"
+        for target in ["cancel", "discard", "abort"]:
+            max_dist = 2 if len(target) > 5 else 1
+            if distance(word, target) <= max_dist:
+                return "cancel"
+        for target in ["regenerate", "change", "topic"]:
+            max_dist = 2 if len(target) > 5 else 1
+            if distance(word, target) <= max_dist:
+                return "change_topic"
+                
+    # 3. Fuzzy match multi-word phrases (distance threshold of 2 or 3 characters)
+    for target in approve_phrases:
+        if len(target) > 5 and distance(text_clean, target) <= 3:
+            return "approve"
+    for target in cancel_phrases:
+        if len(target) > 5 and distance(text_clean, target) <= 2:
+            return "cancel"
+    for target in change_phrases:
+        if len(target) > 5 and distance(text_clean, target) <= 3:
+            return "change_topic"
+            
+    return None
+
+
 async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     if WAITING_FOR_TOPIC.get(chat_id):
@@ -2430,6 +2495,65 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     print(f"[TG MSG] {update.message.from_user.id}: {msg[:80]}", flush=True)
+
+    # Text-based Social Media Review Interceptor
+    review_intent = classify_review_intent(msg)
+    
+    if review_intent == "approve" and chat_id in PENDING_POSTS:
+        draft = PENDING_POSTS.get(chat_id)
+        if draft:
+            await update.message.reply_text("Interpreted text approval. Publishing to Facebook Page. Please wait...")
+            try:
+                from .social_media import publish_to_facebook_page
+            except ImportError:
+                from social_media import publish_to_facebook_page
+                
+            ok, res_msg = await asyncio.to_thread(publish_to_facebook_page, draft["image_path"], draft["caption"])
+            
+            # Log work progress atomically to profile
+            try:
+                try:
+                    from .memory import append_to_profile_ledger
+                except ImportError:
+                    from memory import append_to_profile_ledger
+                append_to_profile_ledger("work_summaries", {
+                    "task_name": "Daily FB Marketing Post",
+                    "status": "SUCCESS" if ok else "FAILED",
+                    "details": f"Message: {res_msg} | Topic: {draft.get('custom_topic')}"
+                })
+            except Exception as e:
+                print(f"[CALLBACK WARNING] Failed to write ledger: {e}", flush=True)
+                
+            if ok:
+                # Set last post date if it was scheduled or today
+                ist_tz = timezone(timedelta(hours=5, minutes=30))
+                today_str = datetime.now(timezone.utc).astimezone(ist_tz).strftime("%Y-%m-%d")
+                set_last_post_date(today_str)
+                
+                # Clean up pending states
+                PENDING_POSTS.pop(chat_id, None)
+                WAITING_FOR_TOPIC.pop(chat_id, None)
+                
+                await update.message.reply_text(
+                    f"Successfully published to Facebook Page!\n\n{res_msg}\n\nCaption:\n{escape_markdown(draft['caption'])}"
+                )
+            else:
+                await update.message.reply_text(
+                    f"Failed to publish to Facebook:\n{escape_markdown(res_msg)}\n\nCaption:\n{escape_markdown(draft['caption'])}\n\nYou can reply with 'Approve and publish' to retry, or 'Cancel post' to discard."
+                )
+            return
+
+    elif review_intent == "cancel" and chat_id in PENDING_POSTS:
+        PENDING_POSTS.pop(chat_id, None)
+        WAITING_FOR_TOPIC.pop(chat_id, None)
+        await update.message.reply_text("Post draft cancelled.")
+        return
+        
+    elif review_intent == "change_topic" and chat_id in PENDING_POSTS:
+        WAITING_FOR_TOPIC[chat_id] = True
+        await update.message.reply_text("Please reply with your new custom topic (e.g. Epf claims, Gst registration, Income tax returns) to regenerate the post.")
+        return
+
     await run_aria(update, msg, session_id)
 
 
