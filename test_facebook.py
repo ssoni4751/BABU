@@ -29,7 +29,7 @@ def main():
     try:
         # 1. Generate Caption and Image Prompt
         print("\n[STEP 1] Generating caption and FLUX prompt via Groq...")
-        caption, img_prompt, card_title, card_tips = generate_daily_post()
+        caption, img_prompt, card_title, card_tips, category = generate_daily_post()
         print(f"\n✨ Generated Caption:\n{caption}")
         print(f"\n🎨 Generated FLUX Prompt:\n{img_prompt}")
         

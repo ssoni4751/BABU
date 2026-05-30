@@ -2559,94 +2559,105 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle callback button clicks (Approve, Change Topic, Cancel) for social post reviews."""
     query = update.callback_query
     await query.answer()
-    chat_id = query.message.chat_id
-    data = query.data
-
-    if data.startswith("action_approve|"):
-        session_id = data.split("|", 1)[1].strip()
-        with _pending_actions_lock:
-            pending = _pending_actions.get(session_id)
-        if not pending:
-            await query.edit_message_text("No pending action found to approve.")
+    
+    try:
+        if not query.message:
+            print("[CALLBACK ERROR] Callback query message is None", flush=True)
             return
-        action = pending.get("action", "")
-        params = resolve_action_params(pending.get("params", {}), research_text="")
-        ok, result_msg = await asyncio.to_thread(execute_google_action, action, params)
-        if ok:
+            
+        chat_id = query.message.chat.id
+        data = query.data
+        print(f"[CALLBACK UPDATE] received callback_data='{data}' for chat_id={chat_id}", flush=True)
+
+        if data.startswith("action_approve|"):
+            session_id = data.split("|", 1)[1].strip()
+            with _pending_actions_lock:
+                pending = _pending_actions.get(session_id)
+            if not pending:
+                await query.edit_message_text("No pending action found to approve.")
+                return
+            action = pending.get("action", "")
+            params = resolve_action_params(pending.get("params", {}), research_text="")
+            ok, result_msg = await asyncio.to_thread(execute_google_action, action, params)
+            if ok:
+                with _pending_actions_lock:
+                    _pending_actions.pop(session_id, None)
+                status = "Action executed successfully."
+                await query.edit_message_text(f"{status}\n\n{result_msg}")
+            else:
+                status = "Action execution failed."
+                await query.edit_message_text(
+                    f"{status}\n\n{result_msg}\n\nYou can click Approve again to retry, or Cancel.",
+                    reply_markup=get_action_approval_keyboard(session_id)
+                )
+            return
+
+        if data.startswith("action_cancel|"):
+            session_id = data.split("|", 1)[1].strip()
             with _pending_actions_lock:
                 _pending_actions.pop(session_id, None)
-            status = "Action executed successfully."
-            await query.edit_message_text(f"{status}\n\n{result_msg}")
-        else:
-            status = "Action execution failed."
-            await query.edit_message_text(
-                f"{status}\n\n{result_msg}\n\nYou can click Approve again to retry, or Cancel.",
-                reply_markup=get_action_approval_keyboard(session_id)
-            )
-        return
-
-    if data.startswith("action_cancel|"):
-        session_id = data.split("|", 1)[1].strip()
-        with _pending_actions_lock:
-            _pending_actions.pop(session_id, None)
-        await query.edit_message_text("Pending action cancelled.")
-        return
-    
-    if data == "post_approve":
-        draft = PENDING_POSTS.get(chat_id)
-        if not draft:
-            await query.edit_message_caption(caption="No pending post found to approve. Run /postnow to generate a new draft.")
+            await query.edit_message_text("Pending action cancelled.")
             return
         
-        await query.edit_message_caption(caption="Publishing to Facebook Page. Please wait.")
-        
-        try:
-            from .social_media import publish_to_facebook_page
-        except ImportError:
-            from social_media import publish_to_facebook_page
-        ok, msg = await asyncio.to_thread(publish_to_facebook_page, draft["image_path"], draft["caption"])
-        
-        # Log work progress atomically to profile
-        try:
+        if data == "post_approve":
+            draft = PENDING_POSTS.get(chat_id)
+            if not draft:
+                await query.edit_message_caption(caption="No pending post found to approve. Run /postnow to generate a new draft.")
+                return
+            
+            await query.edit_message_caption(caption="Publishing to Facebook Page. Please wait.")
+            
             try:
-                from .memory import append_to_profile_ledger
+                from .social_media import publish_to_facebook_page
             except ImportError:
-                from memory import append_to_profile_ledger
-            append_to_profile_ledger("work_summaries", {
-                "task_name": "Daily FB Marketing Post",
-                "status": "SUCCESS" if ok else "FAILED",
-                "details": f"Message: {msg} | Topic: {draft.get('custom_topic')}"
-            })
-        except Exception as e:
-            print(f"[CALLBACK WARNING] Failed to write ledger: {e}", flush=True)
+                from social_media import publish_to_facebook_page
+            ok, msg = await asyncio.to_thread(publish_to_facebook_page, draft["image_path"], draft["caption"])
             
-        if ok:
-            # Set last post date if it was scheduled or today
-            ist_tz = timezone(timedelta(hours=5, minutes=30))
-            today_str = datetime.now(timezone.utc).astimezone(ist_tz).strftime("%Y-%m-%d")
-            set_last_post_date(today_str)
+            # Log work progress atomically to profile
+            try:
+                try:
+                    from .memory import append_to_profile_ledger
+                except ImportError:
+                    from memory import append_to_profile_ledger
+                append_to_profile_ledger("work_summaries", {
+                    "task_name": "Daily FB Marketing Post",
+                    "status": "SUCCESS" if ok else "FAILED",
+                    "details": f"Message: {msg} | Topic: {draft.get('custom_topic')}"
+                })
+            except Exception as e:
+                print(f"[CALLBACK WARNING] Failed to write ledger: {e}", flush=True)
+                
+            if ok:
+                # Set last post date if it was scheduled or today
+                ist_tz = timezone(timedelta(hours=5, minutes=30))
+                today_str = datetime.now(timezone.utc).astimezone(ist_tz).strftime("%Y-%m-%d")
+                set_last_post_date(today_str)
+                
+                # Clean up pending states
+                PENDING_POSTS.pop(chat_id, None)
+                WAITING_FOR_TOPIC.pop(chat_id, None)
+                
+                await query.edit_message_caption(
+                    caption=f"Successfully published to Facebook Page.\n\n{msg}\n\nCaption:\n{escape_markdown(draft['caption'])}"
+                )
+            else:
+                await query.edit_message_caption(
+                    caption=f"Failed to publish to Facebook:\n{escape_markdown(msg)}\n\nCaption:\n{escape_markdown(draft['caption'])}\n\nYou can click Approve again to retry, Change Topic, or Cancel.",
+                    reply_markup=get_post_keyboard() # Keep keyboard active so they can try again or change topic!
+                )
+                
+        elif data == "post_change_topic":
+            WAITING_FOR_TOPIC[chat_id] = True
+            await query.message.reply_text("Please reply with your new custom topic (e.g. health and yoga, cybersecurity tips, computer repair services) to regenerate the post.")
             
-            # Clean up pending states
+        elif data == "post_cancel":
             PENDING_POSTS.pop(chat_id, None)
             WAITING_FOR_TOPIC.pop(chat_id, None)
+            await query.edit_message_caption(caption="Post draft cancelled.")
             
-            await query.edit_message_caption(
-                caption=f"Successfully published to Facebook Page.\n\n{msg}\n\nCaption:\n{escape_markdown(draft['caption'])}"
-            )
-        else:
-            await query.edit_message_caption(
-                caption=f"Failed to publish to Facebook:\n{escape_markdown(msg)}\n\nCaption:\n{escape_markdown(draft['caption'])}\n\nYou can click Approve again to retry, Change Topic, or Cancel.",
-                reply_markup=get_post_keyboard() # Keep keyboard active so they can try again or change topic!
-            )
-            
-    elif data == "post_change_topic":
-        WAITING_FOR_TOPIC[chat_id] = True
-        await query.message.reply_text("Please reply with your new custom topic (e.g. health and yoga, cybersecurity tips, computer repair services) to regenerate the post.")
-        
-    elif data == "post_cancel":
-        PENDING_POSTS.pop(chat_id, None)
-        WAITING_FOR_TOPIC.pop(chat_id, None)
-        await query.edit_message_caption(caption="Post draft cancelled.")
+    except Exception as e:
+        print(f"[CALLBACK CRITICAL ERROR] Exception inside on_post_callback: {e}", flush=True)
+        traceback.print_exc(file=sys.stdout)
 
 
 # â”€â”€ Entry point â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

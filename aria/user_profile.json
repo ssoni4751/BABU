@@ -14,21 +14,83 @@
     }
   },
   "business_context": {
-    "business_name": "Anshu Computers Orai",
-    "classification": "Computer Service / Digital Assistance Center",
-    "operational_schedule": {
-      "opening_time": "11:00 AM",
-      "closing_time": "06:00 PM"
+    "business_name": "Anshu Computer & Tax Consultancy",
+    "legacy_name": "Anshu Computer and CSC Centre",
+    "business_type": "Tax, Compliance and E-Governance Consultancy",
+    "location": {
+      "office": "Kaushal Market, Rath Road, Orai, Uttar Pradesh, India",
+      "service_area": "India"
     },
-    "workplace_address": {
-      "shop_number": "3",
-      "market_name": "Kaushal Market",
-      "city": "Orai",
-      "district": "Jalaun",
-      "postal_code": "285001",
-      "state": "Uttar Pradesh",
-      "country": "India"
-    }
+    "contact": {
+      "website": "https://anshu-computer-and-tax-consultants.onrender.com",
+      "email": "anshucomputerorai@gmail.com",
+      "whatsapp": "+91 7217646673",
+      "x_twitter": "@ssoni0007"
+    },
+    "core_services": {
+      "pf_consultancy": [
+        "PF Claim Settlement",
+        "UAN Consolidation",
+        "KYC Correction",
+        "Name/DOB Correction",
+        "Joint Declaration",
+        "Ex-Employer Cases",
+        "PF Transfer"
+      ],
+      "tax_services": [
+        "ITR Filing",
+        "Tax Computation",
+        "Tax Compliance",
+        "Tax Notice Assistance"
+      ],
+      "gst_services": [
+        "GST Registration",
+        "GST Filing",
+        "GSTR-1",
+        "GSTR-3B",
+        "GST Compliance"
+      ],
+      "csc_e_governance_services": [
+        "Digital Citizen Services",
+        "Jeevan Pramaan",
+        "Government Registrations",
+        "Online Applications",
+        "Document Services"
+      ]
+    },
+    "target_customers": [
+      "Salaried Employees",
+      "Small Business Owners",
+      "Shopkeepers",
+      "PF Claimants",
+      "Pensioners",
+      "MSMEs"
+    ],
+    "business_positioning": {
+      "primary": "Tax and Compliance Consultancy",
+      "secondary": "CSC E-Governance Services",
+      "specialization": "PF Consultancy and Compliance Resolution"
+    },
+    "brand_principles": [
+      "Accuracy First",
+      "Compliance Focused",
+      "Trust Based Service",
+      "Problem Solving Approach",
+      "Digital First Operations"
+    ],
+    "marketing_identity": {
+      "preferred_brand": "Anshu Computer & Tax Consultancy",
+      "avoid_positioning_as": "Only a CSC Centre",
+      "tagline": "PF, Tax & Compliance Solutions"
+    },
+    "growth_focus": [
+      "PF Consultancy Expansion",
+      "GST Retainer Services",
+      "Annual ITR Clients",
+      "Local SEO",
+      "WhatsApp Lead Generation",
+      "Nationwide Digital Consultancy"
+    ]
   },
   "family_graph": {
     "parents": {
@@ -245,6 +307,54 @@
           "Proceed with Phase 3 integration"
         ],
         "timestamp": "2026-05-28T08:17:34.311442+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-28T13:17:10.315568+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-28T13:18:07.461604+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-28T13:29:26.645385+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-29T08:23:37.436844+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-29T09:52:32.598589+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-29T09:55:09.268638+00:00"
       }
     ],
     "work_summaries": [
@@ -331,6 +441,42 @@
         "status": "FAILED",
         "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A futuristic illustration of a person sitting in front of a computer with a shie...",
         "timestamp": "2026-05-28T08:18:10.365199+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A futuristic illustration of a shield protecting a computer from cyber threats, ...",
+        "timestamp": "2026-05-28T13:17:28.006837+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A futuristic illustration of a person safely navigating through a city filled wi...",
+        "timestamp": "2026-05-28T13:18:57.231214+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A futuristic illustration of a mobile device with a cityscape in the background,...",
+        "timestamp": "2026-05-28T13:29:48.429928+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A futuristic illustration of a person safely navigating through a cyber city wit...",
+        "timestamp": "2026-05-29T08:24:25.249664+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A modern illustration of a cricket player holding a smartphone with a shield ico...",
+        "timestamp": "2026-05-29T09:52:51.640891+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A futuristic illustration of a person safely browsing the internet on their lapt...",
+        "timestamp": "2026-05-29T09:55:27.643083+00:00"
       }
     ]
   }

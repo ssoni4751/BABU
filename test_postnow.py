@@ -97,7 +97,7 @@ def main():
     # Step 1: Generate caption and image prompt
     print("\n[STEP 1] Generating daily post via Gemini (with model fallback)...")
     try:
-        caption, img_prompt, card_title, card_tips = generate_daily_post()
+        caption, img_prompt, card_title, card_tips, category = generate_daily_post()
     except Exception as e:
         print(f"❌ Post generation failed: {e}")
         sys.exit(1)
@@ -106,6 +106,7 @@ def main():
     print(f"\n🎨 FLUX Prompt:\n{img_prompt}")
     print(f"\n🏷️ Card Title:\n{card_title}")
     print(f"\n💡 Card Tips:\n{card_tips}")
+    print(f"\n🏷️ Category:\n{category}")
 
     # Step 2: Generate Infographic Card
     print("\n[STEP 2] Generating high-fidelity hybrid graphic card...")
@@ -117,7 +118,7 @@ def main():
         print(f"[SOCIAL WARNING] Rich background generation failed: {e}. Falling back to default layout.", flush=True)
         
     try:
-        img_path = generate_pillow_graphic(card_title, card_tips, background_path=bg_path)
+        img_path = generate_pillow_graphic(card_title, card_tips, background_path=bg_path, category=category)
     except Exception as e:
         print(f"❌ Graphic rendering failed: {e}")
         sys.exit(1)
