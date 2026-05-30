@@ -2128,6 +2128,9 @@ async def generate_and_send_preview(chat_id: int, bot, custom_topic: str = None,
         draft["custom_topic"] = custom_topic
         
         # Cache the draft
+        import time
+        draft["scheduled_at"] = time.time()
+        draft["is_auto_scheduled"] = False  # Explicitly mark manual ad-hoc preview
         PENDING_POSTS[chat_id] = draft
         
         # 1. Send the Proposed Caption & FLUX Prompt in a separate text message
@@ -2322,6 +2325,18 @@ async def scheduler_async_loop(application):
                             )
                         except Exception as err:
                             print(f"[SCHEDULER ERROR] Failed to send failure notification: {err}", flush=True)
+                elif not is_auto_scheduled and scheduled_at and (now_ts - scheduled_at >= 3600):
+                    print(f"[SCHEDULER] Auto-cancelling manual post for chat {p_chat_id} due to timeout...", flush=True)
+                    try:
+                        await application.bot.send_message(
+                            chat_id=p_chat_id,
+                            text="⏰ *Manual post draft review period has expired. Discarding the draft to clear pending states.*",
+                            parse_mode="Markdown"
+                        )
+                    except Exception as err:
+                        print(f"[SCHEDULER ERROR] Failed to send cancel notification: {err}", flush=True)
+                    PENDING_POSTS.pop(p_chat_id, None)
+                    WAITING_FOR_TOPIC.pop(p_chat_id, None)
             
         except Exception as e:
             print(f"[SCHEDULER ERROR] Exception in loop: {e}", flush=True)
