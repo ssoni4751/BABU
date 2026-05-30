@@ -113,15 +113,64 @@ def generate_daily_post(custom_topic: str = None) -> tuple[str, str, str, list, 
     return caption, image_prompt, card_title, card_tips, category
 
 
+def ensure_poppins_fonts():
+    """Ensure Poppins-Regular and Poppins-Bold are downloaded and available in aria/temp/fonts."""
+    import os
+    import requests
+    
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    font_dir = os.path.join(base_dir, "temp", "fonts")
+    os.makedirs(font_dir, exist_ok=True)
+    
+    urls = {
+        "Poppins-Regular.ttf": "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-Regular.ttf",
+        "Poppins-Bold.ttf": "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-Bold.ttf"
+    }
+    
+    for name, url in urls.items():
+        dest = os.path.join(font_dir, name)
+        if not os.path.exists(dest) or os.path.getsize(dest) < 10000:
+            print(f"[FONTS] Downloading missing professional font {name} from Google Fonts...", flush=True)
+            try:
+                r = requests.get(url, timeout=30)
+                if r.status_code == 200:
+                    with open(dest, "wb") as f:
+                        f.write(r.content)
+                    print(f"[FONTS SUCCESS] Saved {name} to {dest}.", flush=True)
+                else:
+                    print(f"[FONTS WARNING] Failed to download {name}: Status {r.status_code}", flush=True)
+            except Exception as e:
+                print(f"[FONTS WARNING] Error downloading {name}: {e}", flush=True)
+
+
 def get_font(font_name: str, size: int):
-    """Retrieve TrueType font from Windows system fonts folder or fall back to default."""
-    paths = [
+    """Retrieve TrueType font from bundled Poppins fonts, Windows system fonts, or fall back to default."""
+    ensure_poppins_fonts()
+    
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    font_dir = os.path.join(base_dir, "temp", "fonts")
+    
+    poppins_regular = os.path.join(font_dir, "Poppins-Regular.ttf")
+    poppins_bold = os.path.join(font_dir, "Poppins-Bold.ttf")
+    
+    is_bold = "bd" in font_name.lower() or "bold" in font_name.lower() or "nirmalab" in font_name.lower() or "segoeuib" in font_name.lower()
+    
+    paths = []
+    # 1. Prefer Poppins for high-fidelity bilingual display
+    if is_bold and os.path.exists(poppins_bold):
+        paths.append(poppins_bold)
+    elif os.path.exists(poppins_regular):
+        paths.append(poppins_regular)
+        
+    # 2. Local OS fallbacks
+    paths.extend([
         f"C:\\Windows\\Fonts\\{font_name}.ttf",
         f"C:\\Windows\\Fonts\\{font_name.lower()}.ttf",
         f"C:\\Windows\\Fonts\\{font_name}bd.ttf",
         f"C:\\Windows\\Fonts\\{font_name.lower()}b.ttf",
         f"/usr/share/fonts/truetype/dejavu/{font_name}.ttf"
-    ]
+    ])
+    
     for p in paths:
         if os.path.exists(p):
             try:
@@ -129,6 +178,7 @@ def get_font(font_name: str, size: int):
                 return ImageFont.truetype(p, size)
             except Exception:
                 pass
+                
     from PIL import ImageFont
     return ImageFont.load_default()
 
@@ -168,10 +218,14 @@ def draw_glass_card(image, x, y, w, h, bg_color=(20, 24, 30, 200), border_color=
 
 
 def generate_pillow_graphic(title: str, tips: list, background_path: str = None, category: str = "itr") -> str:
-    """Generate a clean, professional social media graphic card using PIL.
+    """Generate a high-fidelity fintech dashboard graphic card using PIL.
     
-    If background_path is provided (from FLUX model), opens it and overlays the floating glass card.
-    Otherwise, draws a premium dark gradient tech-grid background locally.
+    Loads the creative FLUX backdrop and overlays a floating, highly translucent
+    bilingual header bar at the top, and a sleek, compact horizontal glass panel 
+    at the bottom. This bottom panel includes bullet points and a custom-drawn
+    compliance dial/ring gauge, leaving the center of the image completely open
+    to display the gorgeous FLUX AI illustration. All text sizes are maximized
+    to provide a bold, premium branding presence visible in plain sight.
     """
     from PIL import Image, ImageDraw, ImageFont
     import math
@@ -232,14 +286,19 @@ def generate_pillow_graphic(title: str, tips: list, background_path: str = None,
         # Draw tech grid
         img = draw_tech_grid(img, grid_size=60, color=(accent_color[0], accent_color[1], accent_color[2], 12))
         
-    # 3. Centered Floating Glassmorphic Card (x = 60, y = 100, width = 960, height = 880)
-    card_x, card_y = 60, 100
-    card_w, card_h = 960, 880
+    # 3. Fonts Loading (Enlarged for supreme visibility and readability)
+    font_brand = get_font("Segoeuib", 32)            # Bold, prominent brand title
+    font_logo = get_font("Segoeuib", 44)             # Authoritative emblem text
+    font_title = get_font("Segoeuib", 42)            # Clear card header
+    font_tips = get_font("Segoeui", 26)              # Highly visible bullet body
+    font_tips_bold = get_font("Segoeuib", 26)         # Step digits
+    font_footer_details = get_font("Segoeui", 20)     # Clean contact info
+    font_footer_stats = get_font("Segoeui", 18)       # Crisp trust stats
+    font_hindi_slogan = get_font("Nirmala", 20)       # Clear, visible Devanagari slogan
     
-    # Semi-translucent glassy navy backdrop
-    bg_rgba = (10, 16, 28, 215)
-    border_rgba = (accent_color[0], accent_color[1], accent_color[2], 180)
-    img = draw_glass_card(img, card_x, card_y, card_w, card_h, bg_color=bg_rgba, border_color=border_rgba, border_width=3, radius=24)
+    # 4. Draw Floating Header Bar (y = 30 to 190, expanded height = 160)
+    # Background glass panel for header (45% opacity for solid contrast against busy visuals)
+    img = draw_glass_card(img, 40, 30, 1000, 160, bg_color=(10, 16, 28, 115), border_color=(accent_color[0], accent_color[1], accent_color[2], 130), border_width=2, radius=20)
     
     draw = ImageDraw.Draw(img)
     
@@ -253,99 +312,80 @@ def generate_pillow_graphic(title: str, tips: list, background_path: str = None,
             pts.append((px, py))
         d.polygon(pts, fill=f, outline=o, width=w)
         
-    # Hexagon Logo (Matching official flyer style)
-    logo_cx, logo_cy = 120, 180
-    draw_hexagon(draw, logo_cx, logo_cy, 35, f=(19, 115, 51), o=(255, 255, 255), w=2)
-    
-    # Fonts
-    font_brand = get_font("Segoeuib", 30)
-    if font_brand == ImageFont.load_default(): font_brand = get_font("Arialbd", 30)
-    
-    font_logo = get_font("Segoeuib", 38)
-    if font_logo == ImageFont.load_default(): font_logo = get_font("Arialbd", 38)
-    
-    font_title = get_font("Segoeuib", 50)
-    if font_title == ImageFont.load_default(): font_title = get_font("Arialbd", 50)
-    
-    font_tips = get_font("Segoeui", 32)
-    if font_tips == ImageFont.load_default(): font_tips = get_font("Arial", 32)
-    
-    font_tips_bold = get_font("Segoeuib", 36)
-    if font_tips_bold == ImageFont.load_default(): font_tips_bold = get_font("Arialbd", 36)
-    
-    font_footer_details = get_font("Segoeui", 20)
-    font_footer_stats = get_font("Segoeui", 18)
-    
-    # Try loading Nirmala UI (Windows standard high-quality Hindi/Devanagari font)
-    font_hindi_slogan = get_font("Nirmala", 20)
-    font_hindi_slogan_b = get_font("Nirmalab", 20)
-    font_footer_hindi = get_font("Nirmalab", 24)
-    
-    # Logo text "A"
+    # Hexagon Logo emblem
+    logo_cx, logo_cy = 100, 110
+    draw_hexagon(draw, logo_cx, logo_cy, 36, (19, 115, 51), o=(255, 255, 255), w=2)
     draw.text((logo_cx, logo_cy - 2), "A", fill=(255, 255, 255), font=font_logo, anchor="mm")
     
     # Brand title
-    draw.text((170, 160), "ANSHU COMPUTER & TAX CONSULTANCY", fill=(255, 255, 255), font=font_brand, anchor="lm")
+    draw.text((160, 90), "ANSHU COMPUTER & TAX CONSULTANCY", fill=(255, 255, 255), font=font_brand, anchor="lm")
     
-    # Header slogan / subtitle
-    if font_hindi_slogan != ImageFont.load_default():
-        slogan_text = "आस्था भरोसा, हमारी जिम्मेदारी  •  TAX • PF • GST • DIGITAL SOLUTIONS"
-        draw.text((170, 202), slogan_text, fill=accent_color, font=font_hindi_slogan, anchor="lm")
-    else:
-        slogan_text = "TRUST & RESPONSIBILITY  •  TAX • PF • GST • DIGITAL SOLUTIONS"
-        draw.text((170, 202), slogan_text, fill=accent_color, font=get_font("Segoeui", 18), anchor="lm")
-        
-    # Thin divider line below header
-    draw.line([(100, 245), (980, 245)], fill=(255, 255, 255, 40), width=1)
+    # Header slogan / subtitle (Devanagari Poppins)
+    slogan_text = "आस्था भरोसा, हमारी जिम्मेदारी  •  TAX • PF • GST • DIGITAL SOLUTIONS"
+    draw.text((160, 138), slogan_text, fill=accent_color, font=font_hindi_slogan, anchor="lm")
     
     # Category capsule badge in top-right
-    badge_w, badge_h = 180, 42
-    badge_x, badge_y = 940 - badge_w, 158
-    badge_rgba = (theme_color[0], theme_color[1], theme_color[2], 120)
-    draw.rounded_rectangle([badge_x, badge_y, badge_x + badge_w, badge_y + badge_h], radius=21, fill=badge_rgba, outline=accent_color, width=2)
+    badge_w, badge_h = 200, 44
+    badge_x, badge_y = 1010 - badge_w, 88
+    badge_rgba = (theme_color[0], theme_color[1], theme_color[2], 160)
+    draw.rounded_rectangle([badge_x, badge_y, badge_x + badge_w, badge_y + badge_h], radius=22, fill=badge_rgba, outline=accent_color, width=2)
     draw.text((badge_x + badge_w/2, badge_y + badge_h/2), f"{theme['name']} SERVICE", fill=(255, 255, 255), font=get_font("Segoeuib", 18), anchor="mm")
     
-    # Category specific tagline
-    draw.text((540, 290), category_tagline, fill=accent_color, font=get_font("Segoeuib", 24), anchor="mm")
+    # 5. Draw Bottom Info Dashboard (y = 560 to 1030, height = 470)
+    # Lighter glass panel for bottom dashboard (55% opacity)
+    img = draw_glass_card(img, 40, 560, 1000, 470, bg_color=(10, 16, 28, 140), border_color=(accent_color[0], accent_color[1], accent_color[2], 150), border_width=3, radius=24)
     
-    # Large Card Title
-    draw.text((540, 350), title, fill=(255, 255, 255), font=font_title, anchor="mm")
-    # Neon highlight line under title
-    draw.line([(540 - 220, 390), (540 + 220, 390)], fill=accent_color, width=3)
+    # Refresh draw interface
+    draw = ImageDraw.Draw(img)
+    
+    # --- Left Column (Text & Tips) ---
+    # Section Tagline
+    draw.text((80, 600), category_tagline.upper(), fill=accent_color, font=get_font("Segoeuib", 18), anchor="lm")
+    # Large Section Title
+    draw.text((80, 640), title, fill=(255, 255, 255), font=font_title, anchor="lm")
     
     # Draw checkmark bullet points
-    start_y = 460
-    spacing = 110
+    start_y = 705
+    spacing = 70
     for idx, tip in enumerate(tips[:3]):
         y_pos = start_y + idx * spacing
-        cx, cy = 140, y_pos
+        cx, cy = 100, y_pos
         
         # Draw checkmark circle in theme color
-        draw.ellipse([cx - 20, cy - 20, cx + 20, cy + 20], fill=theme_color, outline=accent_color, width=2)
+        draw.ellipse([cx - 15, cy - 15, cx + 15, cy + 15], fill=theme_color, outline=accent_color, width=2)
         # Draw custom tick symbol programmatically
-        draw.line([(cx - 8, cy), (cx - 2, cy + 6)], fill=(255, 255, 255), width=3)
-        draw.line([(cx - 2, cy + 6), (cx + 10, cy - 6)], fill=(255, 255, 255), width=3)
+        draw.line([(cx - 6, cy), (cx - 2, cy + 4)], fill=(255, 255, 255), width=2)
+        draw.line([(cx - 2, cy + 4), (cx + 8, cy - 4)], fill=(255, 255, 255), width=2)
         
         # Step number in accent color
-        draw.text((190, y_pos), f"0{idx+1}.", fill=accent_color, font=font_tips_bold, anchor="lm")
+        draw.text((140, y_pos), f"0{idx+1}.", fill=accent_color, font=font_tips_bold, anchor="lm")
         # Tip body text in white
-        draw.text((260, y_pos), tip, fill=(255, 255, 255), font=font_tips, anchor="lm")
+        draw.text((190, y_pos), tip, fill=(255, 255, 255), font=font_tips, anchor="lm")
         
-    # Card bottom footer divider
-    draw.line([(100, 810), (980, 810)], fill=(255, 255, 255, 30), width=1)
+    # --- Right Column (Creative circular progress dial) ---
+    # Center of dial
+    dial_cx, dial_cy = 840, 735
+    dial_r = 75
+    # Background track arc
+    draw.arc([dial_cx - dial_r, dial_cy - dial_r, dial_cx + dial_r, dial_cy + dial_r], start=-225, end=45, fill=(255, 255, 255, 30), width=12)
+    # Glowing active track (98% compliance = spanning 260 degrees of arc)
+    draw.arc([dial_cx - dial_r, dial_cy - dial_r, dial_cx + dial_r, dial_cy + dial_r], start=-225, end=35, fill=accent_color, width=12)
     
-    # Footer slogan (Hindi Devanagari with English fallback)
-    if font_footer_hindi != ImageFont.load_default():
-        footer_slogan = "कंप्लायंस सही, भविष्य सुरक्षित।"
-        draw.text((540, 845), footer_slogan, fill=(255, 215, 0), font=font_footer_hindi, anchor="mm")
-    else:
-        footer_slogan = "ACCURATE COMPLIANCE, SECURE FUTURE"
-        draw.text((540, 845), footer_slogan, fill=(255, 215, 0), font=get_font("Segoeuib", 22), anchor="mm")
-        
-    # Contact Details Line
-    draw.text((540, 890), "📞 +91 7217646673   |   🌐 https://anshu-computer-and-tax-consultants.onrender.com", fill=(170, 185, 200), font=font_footer_details, anchor="mm")
-    # Trust statistics Line
-    draw.text((540, 925), "⭐ 5.0 Rated  •  23+ Verified Google Reviews  •  Serving Nationwide", fill=accent_color, font=font_footer_stats, anchor="mm")
+    # Inner Dial Text
+    draw.text((dial_cx, dial_cy - 10), "98%", fill=(255, 255, 255), font=get_font("Segoeuib", 32), anchor="mm")
+    draw.text((dial_cx, dial_cy + 22), "Accuracy", fill=accent_color, font=get_font("Segoeui", 16), anchor="mm")
+    # Under Dial Label
+    draw.text((dial_cx, dial_cy + 95), "Compliance Score", fill=(170, 185, 200), font=get_font("Segoeuib", 16), anchor="mm")
+    
+    # --- Footer Area ---
+    # Thin divider line
+    draw.line([(80, 915), (1000, 915)], fill=(255, 255, 255, 30), width=1)
+    
+    # Contact Details Line (Bilingual + Trust stats)
+    draw.text((540, 945), "Phone: +91 7217646673    |    Web: anshu-computer-and-tax-consultants.onrender.com", fill=(170, 185, 200), font=font_footer_details, anchor="mm")
+    
+    footer_stats_text = "Rated 5.0  •  23+ Verified Google Reviews  •  Serving Nationwide"
+    draw.text((540, 980), footer_stats_text, fill=accent_color, font=font_footer_stats, anchor="mm")
     
     # Save output
     current_dir = os.path.dirname(os.path.abspath(__file__))
