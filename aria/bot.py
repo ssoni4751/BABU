@@ -1701,7 +1701,7 @@ def pa_node(state: AriaState):
     }
     is_fresh_greeting = lowered_query in greetings or any(lowered_query.startswith(g + " ") for g in greetings)
     
-    if is_fresh_greeting:
+    if is_fresh_greeting or gear in ("SPRINT", "LAUNCH"):
         history = ""
 
     if pending_action_notice:

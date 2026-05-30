@@ -241,6 +241,16 @@ def plan_goal(
             task_context["action"] = t["action"]
             task_context["params"] = t.get("params", {})
 
+        # Dynamic per-department token budget allocation
+        dept_budgets = {
+            "research": 4500,
+            "writing": 3500,
+            "analysis": 3000,
+            "execution": 2000,
+            "pa": 3000
+        }
+        token_budget = dept_budgets.get(department, 1500)
+
         tasks.append(
             TaskDTO(
                 task_id=task_id,
@@ -250,6 +260,7 @@ def plan_goal(
                 priority=priority,
                 state=state,
                 context=task_context,
+                token_budget=token_budget,
                 compliance_checklist=compliance_checklist,
             )
         )
@@ -334,6 +345,7 @@ def build_walk_graph(query: str, goal_id: Optional[str] = None) -> GoalGraph:
                 depends_on=[],
                 priority=1,
                 state=TaskState.READY,
+                token_budget=3000,
             )
         ],
         created_at=now_iso,
@@ -376,6 +388,7 @@ def build_action_graph(query: str, detected_action: dict, goal_id: Optional[str]
             priority=1,
             state=TaskState.READY,
             context={"action": action_name, "params": params},
+            token_budget=2000,
         ),
         TaskDTO(
             task_id="T2",
@@ -384,6 +397,7 @@ def build_action_graph(query: str, detected_action: dict, goal_id: Optional[str]
             depends_on=["T1"],
             priority=2,
             state=TaskState.PENDING,
+            token_budget=3000,
         ),
     ]
 
