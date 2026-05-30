@@ -2227,7 +2227,7 @@ async def scheduler_async_loop(application):
             now_ist = datetime.now(timezone.utc).astimezone(ist_tz)
             today_str = now_ist.strftime("%Y-%m-%d")
             
-            # Trigger if it is 9:00 AM IST or later, and we haven't sent a preview today yet
+            # 1. Trigger if it is 9:00 AM IST or later, and we haven't sent a preview today yet
             if now_ist.hour >= 9 and get_last_preview_date() != today_str:
                 chat_id = get_persisted_chat_id()
                 if chat_id:
@@ -2244,8 +2244,82 @@ async def scheduler_async_loop(application):
                         print(f"[SCHEDULER ERROR] Failed to send starting notification: {err}", flush=True)
 
                     await generate_and_send_preview(chat_id, application.bot)
+                    
+                    # Store timestamp of preview generation in draft dict for auto-publish timeout
+                    if chat_id in PENDING_POSTS:
+                        import time
+                        PENDING_POSTS[chat_id]["scheduled_at"] = time.time()
+                        print(f"[SCHEDULER] Timestamped pending post for chat {chat_id} at {today_str}", flush=True)
                 else:
                     print("[SCHEDULER] It's time to post, but no Telegram chat ID is registered yet. Waiting for user interaction...", flush=True)
+            
+            # 2. Check for pending drafts that have timed out without user feedback (1 hour = 3600 seconds)
+            import time
+            now_ts = time.time()
+            for p_chat_id in list(PENDING_POSTS.keys()):
+                draft = PENDING_POSTS[p_chat_id]
+                scheduled_at = draft.get("scheduled_at")
+                if scheduled_at and (now_ts - scheduled_at >= 3600):
+                    print(f"[SCHEDULER] Auto-publishing timed-out post for chat {p_chat_id}...", flush=True)
+                    
+                    try:
+                        await application.bot.send_message(
+                            chat_id=p_chat_id,
+                            text="⏰ *No review response received within 1 hour. Automatically publishing the scheduled post to your Facebook Page...*",
+                            parse_mode="Markdown"
+                        )
+                    except Exception as err:
+                        print(f"[SCHEDULER ERROR] Failed to send timeout notification: {err}", flush=True)
+                        
+                    try:
+                        from .social_media import publish_to_facebook_page
+                    except ImportError:
+                        from social_media import publish_to_facebook_page
+                        
+                    ok, res_msg = await asyncio.to_thread(publish_to_facebook_page, draft["image_path"], draft["caption"])
+                    
+                    # Log progress atomically
+                    try:
+                        try:
+                            from .memory import append_to_profile_ledger
+                        except ImportError:
+                            from memory import append_to_profile_ledger
+                        append_to_profile_ledger("work_summaries", {
+                            "task_name": "Daily FB Marketing Post (Auto-Published)",
+                            "status": "SUCCESS" if ok else "FAILED",
+                            "details": f"Message: {res_msg} | Topic: {draft.get('custom_topic')}"
+                        })
+                    except Exception as e:
+                        print(f"[SCHEDULER WARNING] Failed to write ledger: {e}", flush=True)
+                        
+                    if ok:
+                        # Set last post date
+                        set_last_post_date(today_str)
+                        
+                        # Clean up states
+                        PENDING_POSTS.pop(p_chat_id, None)
+                        WAITING_FOR_TOPIC.pop(p_chat_id, None)
+                        
+                        try:
+                            await application.bot.send_message(
+                                chat_id=p_chat_id,
+                                text=f"✅ *Successfully auto-published to Facebook Page!*\n\n{escape_markdown(res_msg)}\n\n*Caption:*\n```\n{escape_markdown(draft['caption'])}\n```",
+                                parse_mode="Markdown"
+                            )
+                        except Exception as err:
+                            print(f"[SCHEDULER ERROR] Failed to send success notification: {err}", flush=True)
+                    else:
+                        try:
+                            await application.bot.send_message(
+                                chat_id=p_chat_id,
+                                text=(
+                                    f"❌ *Failed to auto-publish to Facebook:*\n{escape_markdown(res_msg)}\n\n"
+                                    f"You can reply with 'Approve and publish' to retry, or 'Cancel post' to discard."
+                                ),
+                                parse_mode="Markdown"
+                            )
+                        except Exception as err:
+                            print(f"[SCHEDULER ERROR] Failed to send failure notification: {err}", flush=True)
             
         except Exception as e:
             print(f"[SCHEDULER ERROR] Exception in loop: {e}", flush=True)
