@@ -2268,14 +2268,7 @@ async def generate_and_send_preview(chat_id: int, bot, custom_topic: str = None,
             print(f"[PREVIEW ERROR] Failed to report error to chat {chat_id}: {msg_err}", flush=True)
 
 def get_persisted_chat_id() -> Optional[int]:
-    """Load the user's Telegram chat ID from environment or local state file."""
-    env_id = os.environ.get("TELEGRAM_USER_CHAT_ID")
-    if env_id:
-        try:
-            return int(env_id)
-        except ValueError:
-            pass
-            
+    """Load the user's Telegram chat ID from local state file or environment."""
     if os.path.exists(CHAT_ID_FILE):
         try:
             with open(CHAT_ID_FILE, "r", encoding="utf-8") as f:
@@ -2283,6 +2276,13 @@ def get_persisted_chat_id() -> Optional[int]:
                 if content:
                     return int(content)
         except Exception:
+            pass
+            
+    env_id = os.environ.get("TELEGRAM_USER_CHAT_ID")
+    if env_id:
+        try:
+            return int(env_id)
+        except ValueError:
             pass
     return None
 
