@@ -358,7 +358,7 @@ class TestBipartiteAuditor(unittest.TestCase):
         
         domain = "test.autoimmune_decay"
         method = "test_method"
-        err = "Mock connection timeout"
+        err = "Mock validation mismatch"
         
         # 1. Log failure
         success = log_execution_failure(domain, method, err)

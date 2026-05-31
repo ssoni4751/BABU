@@ -84,6 +84,17 @@ def log_execution_failure(domain: str, method: str, exception_msg: str) -> bool:
     uses Groq to synthesize a strict anti-pattern rule, and
     appends it directly to failures.json in under 1 second.
     """
+    # Gating infrastructure/rate limits/network errors to prevent immune auto-immune contamination
+    msg_lower = exception_msg.lower()
+    is_infra_failure = (
+        any(k in msg_lower for k in ("429", "rate limit", "rate_limit_exceeded", "too many requests", "tpd", "tpm")) or
+        any(k in msg_lower for k in ("timeout", "connection refused", "network", "http error", "503", "502", "504", "socket", "dns", "urllib3", "requests.exceptions", "unreachable", "disconnected")) or
+        any(k in msg_lower for k in ("token budget", "token limit", "out of memory", "disk full", "no space", "filesystem", "permission denied"))
+    )
+    if is_infra_failure:
+        print(f"[IMMUNE SYSTEM GATE] Bypassing immune learning for infrastructure/rate-limit/network/resource exception: {exception_msg}", flush=True)
+        return False
+
     if not GROQ_KEY:
         print("[IMMUNE SYSTEM ERROR] GROQ_API_KEY not configured. Bypassing failure logging.", flush=True)
         return False
