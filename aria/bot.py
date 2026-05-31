@@ -99,6 +99,25 @@ def seal_epoch(epoch_id: str):
     except Exception as e:
         print(f"[DB ERROR] seal_epoch failed: {e}", flush=True)
 
+
+def get_last_goal_graph(session_id: str) -> Optional[dict]:
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT metadata FROM execution_ledger
+            WHERE session_id = ? AND event_type = 'PLANNING'
+            ORDER BY event_id DESC LIMIT 1
+        """, (session_id,))
+        res = cursor.fetchone()
+        conn.close()
+        if res and res[0]:
+            meta = json.loads(res[0])
+            return meta.get("graph")
+    except Exception as e:
+        print(f"[DB ERROR] get_last_goal_graph failed: {e}", flush=True)
+    return None
+
 # ── Part 3: State Execution Ledger Helpers ───────────────────────────────
 
 def log_execution_ledger_event(session_id: str, goal_id: str, task_id: Optional[str], department: Optional[str], event_type: str, state_before: Optional[str] = None, state_after: Optional[str] = None, metadata: Optional[dict] = None):
@@ -195,25 +214,55 @@ llm_pa   = build_llm(CURRENT_PA_MODEL,   0.2)
 llm_dept = build_llm(CURRENT_DEPT_MODEL, 0.7)
 
 USER_PROFILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "user_profile.json")
+_profile_lock = threading.Lock()
 
 def load_user_profile() -> dict:
-    if os.path.exists(USER_PROFILE_PATH):
-        try:
-            with open(USER_PROFILE_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"[PROFILE LOAD ERROR] {e}", flush=True)
-    return {}
+    with _profile_lock:
+        if os.path.exists(USER_PROFILE_PATH):
+            try:
+                with open(USER_PROFILE_PATH, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f"[PROFILE LOAD ERROR] {e}", flush=True)
+        return {}
 
 USER_PROFILE = load_user_profile()
 
+def get_current_profile() -> dict:
+    """Dynamically load fresh user profile from disk to guarantee live state access."""
+    return load_user_profile()
+
+def is_profile_relevant_query(query: str) -> bool:
+    """Determine if a query is related to the user's personal identity, family, business, or background."""
+    if not query:
+        return False
+    q = query.lower()
+    
+    # User nicknames, names, and business identifiers
+    personal_keywords = {
+        "anshu", "shubham", "swarnkar", "ash", "ssoni", "computer", "consultancy", 
+        "tax", "consultant", "consultants", "compliance", "e-governance", "csc",
+        "who am i", "who i am", "my name", "my nickname", "my business", "my company", 
+        "my work", "my job", "my shop", "my family", "my father", "my mother", 
+        "my brother", "my sibling", "my parents", "my cousin", "my background", 
+        "my journey", "my education", "my career", "my email", "my phone", 
+        "my number", "my address", "my location", "where i live", "where do i live",
+        "tell me about me", "my profile", "my biography", "my bio", "who is speaking",
+        "who is talking", "about me", "know about me", "know about my", "pf", "itr", "gst",
+        "orai", "jalaun"
+    }
+    
+    # Check exact keyword matching or substring match
+    return any(kw in q for kw in personal_keywords)
+
 def get_user_profile_text(gear: str = "LAUNCH") -> str:
     """Return L1 Daily Profile Context, selectively retrieving context based on gear."""
-    if not USER_PROFILE:
+    profile = get_current_profile()
+    if not profile:
         return ""
     
-    details = USER_PROFILE.get("personal_details", {})
-    prefs = USER_PROFILE.get("preferences", {})
+    details = profile.get("personal_details", {})
+    prefs = profile.get("preferences", {})
     nickname = details.get("primary_nickname", "") or details.get("full_name", "Anshu")
     
     if gear == "WALK":
@@ -225,8 +274,8 @@ def get_user_profile_text(gear: str = "LAUNCH") -> str:
         ]
         return "\n".join(lines)
         
-    business = USER_PROFILE.get("business_context", {})
-    name = details.get("full_name", "") or details.get("primary_nickname", "")
+    name = details.get("full_name", "")
+    business = profile.get("business_context", {})
     
     lines = ["[USER PROFILE & CONTEXT]"]
     if name:
@@ -235,24 +284,75 @@ def get_user_profile_text(gear: str = "LAUNCH") -> str:
         lines.append(f"  • Personal Email: {details.get('personal_email')}")
     if details.get("official_email"):
         lines.append(f"  • Official Email: {details.get('official_email')}")
+    if details.get("mobile_number"):
+        lines.append(f"  • Mobile Number: {details.get('mobile_number')}")
+    if details.get("residential_address"):
+        addr = details.get("residential_address", {})
+        if isinstance(addr, dict):
+            addr_str = f"{addr.get('address', '')}, {addr.get('city', '')}, {addr.get('state', '')}, {addr.get('country', '')}"
+            lines.append(f"  • Residential Address: {addr_str.strip(', ')}")
+        else:
+            lines.append(f"  • Residential Address: {addr}")
+
     if business:
-        lines.append(f"  • Business: {business.get('business_name', '')} ({business.get('classification', '')})")
+        lines.append("  • Business Details:")
+        lines.append(f"    - Name: {business.get('business_name', '')}")
+        lines.append(f"    - Type: {business.get('business_type', '') or business.get('legacy_name', '')}")
+        if business.get("location"):
+            lines.append(f"    - Location: {business.get('location', {}).get('office', '')}")
+        if business.get("contact"):
+            contact = business.get("contact", {})
+            lines.append(f"    - Website: {contact.get('website', '')}")
+            lines.append(f"    - Contact Email: {contact.get('email', '')}")
+        if business.get("marketing_identity"):
+            lines.append(f"    - Tagline: {business.get('marketing_identity', {}).get('tagline', '')}")
+        if business.get("core_services"):
+            lines.append("    - Core Services:")
+            for srv_cat, srv_list in business.get("core_services", {}).items():
+                lines.append(f"      * {srv_cat.replace('_', ' ').title()}: {', '.join(srv_list)}")
+        if business.get("growth_focus"):
+            lines.append(f"    - Growth Focus: {', '.join(business.get('growth_focus', []))}")
+            
     if prefs:
         lines.append(f"  • Timezone: {prefs.get('timezone', 'Asia/Kolkata')}")
         lines.append(f"  • Communication Style: {prefs.get('communication_style', 'Logical and warm')}")
         
+    # Append family graph summary
+    family = profile.get("family_graph", {})
+    if family:
+        lines.append("  • Family Relations:")
+        for rel_cat, rel_val in family.items():
+            if isinstance(rel_val, dict):
+                members = ", ".join(f"{k.replace('_', ' ').title()}: {v}" for k, v in rel_val.items() if v)
+                lines.append(f"    - {rel_cat.replace('_', ' ').title()}: {members}")
+            else:
+                lines.append(f"    - {rel_cat.replace('_', ' ').title()}: {rel_val}")
+
+    # Append mindset & journey highlights
+    journey = profile.get("mindset_and_journey", {})
+    if journey:
+        lines.append("  • Mindset & Journey Highlights:")
+        for k, v in journey.get("life_journey_highlights", {}).items():
+            lines.append(f"    - {k.replace('_', ' ').title()}: {v}")
+        cognitive = journey.get("cognitive_profile", {})
+        if cognitive:
+            lines.append("    - Cognitive Profile:")
+            for ck, cv in cognitive.items():
+                lines.append(f"      * {ck.replace('_', ' ').title()}: {cv}")
+
     return "\n".join(lines)
 
 
 def get_profile_fact_answer(query: str) -> str:
     """Deterministic profile answers for high-frequency identity questions."""
-    if not USER_PROFILE:
+    profile = get_current_profile()
+    if not profile:
         return ""
 
     q = (query or "").lower()
-    details = USER_PROFILE.get("personal_details", {})
-    business = USER_PROFILE.get("business_context", {})
-    family = USER_PROFILE.get("family_graph", {})
+    details = profile.get("personal_details", {})
+    business = profile.get("business_context", {})
+    family = profile.get("family_graph", {})
 
     full_name = details.get("full_name", "") or details.get("primary_nickname", "")
     nickname = details.get("primary_nickname", "")
@@ -307,9 +407,10 @@ def is_action_status_query(query: str) -> bool:
     return any(m in q for m in markers)
 
 
-def search_profile(query: str) -> str:
-    """Perform a local directory search on L2 (Family Graph) and L3 (Legacy Memory) to retrieve specific context."""
-    if not USER_PROFILE:
+def search_profile(query: str, bypass_filter: bool = False) -> str:
+    """Perform a local directory search on L1 (Personal Details/Business), L2 (Family Graph) and L3 (Legacy Memory) to retrieve specific context."""
+    profile = get_current_profile()
+    if not profile:
         return ""
     
     cleaned = clean_search_query(query)
@@ -322,7 +423,7 @@ def search_profile(query: str) -> str:
     
     # Programmatic Query vs Statement Classifier:
     # If the user is just sharing a conversational statement, diary entry, or thought, do NOT search the database!
-    if not is_general_profile:
+    if not bypass_filter and not is_general_profile:
         question_starters = (
             "who", "what", "when", "where", "why", "how", "is", "are", "was", "were", 
             "can", "could", "should", "would", "do", "does", "did", "tell", "show", 
@@ -344,38 +445,46 @@ def search_profile(query: str) -> str:
         results = []
         
         # Load L1 Daily Details
-        details = USER_PROFILE.get("personal_details", {})
+        details = profile.get("personal_details", {})
         if details:
             results.append("Personal Details:")
             for k, v in details.items():
                 if v and not str(v).startswith("["):
-                    results.append(f"  â€¢ {k.replace('_', ' ').title()}: {v}")
+                    results.append(f"  • {k.replace('_', ' ').title()}: {v}")
                     
+        # Load L1 Business Context
+        business = profile.get("business_context", {})
+        if business:
+            results.append("Business Context:")
+            for k, v in business.items():
+                if v and not str(v).startswith("["):
+                    results.append(f"  • {k.replace('_', ' ').title()}: {v}")
+
         # Load L2 Family Graph Summary
-        family = USER_PROFILE.get("family_graph", {})
+        family = profile.get("family_graph", {})
         if family:
             results.append("Family structure:")
             for rel, d in family.items():
                 if isinstance(d, dict):
                     members = ", ".join(f"{k.replace('_', ' ').title()}: {v}" for k, v in d.items() if v and not str(v).startswith("["))
                     if members:
-                        results.append(f"  â€¢ {rel.replace('_', ' ').title()}: {members}")
+                        results.append(f"  • {rel.replace('_', ' ').title()}: {members}")
                         
         # Load L3 Legacy Autobiographical History & Journey
-        journey = USER_PROFILE.get("mindset_and_journey", {})
+        journey = profile.get("mindset_and_journey", {})
         for cat, det in journey.items():
             results.append(f"{cat.replace('_', ' ').title()} Background:")
             if isinstance(det, dict):
                 for k, v in det.items():
-                    results.append(f"  â€¢ {k.replace('_', ' ').title()}: {v}")
+                    results.append(f"  • {k.replace('_', ' ').title()}: {v}")
             else:
-                results.append(f"  â€¢ {det}")
+                results.append(f"  • {det}")
                 
-        edu_career = USER_PROFILE.get("education_and_career", {})
+        edu_career = profile.get("education_and_career", {})
         for edu in edu_career.get("education", []):
-            results.append(f"  â€¢ Education Record: {edu}")
+            results.append(f"  • Education Record: {edu}")
         for emp in edu_career.get("employment_history", []):
-            results.append(f"  â€¢ Employment Record: {emp}")
+            results.append(f"  • Employment Record: {emp}")
             
         return "[Local User Profile (Full Personal Directory Loaded)]\n" + "\n".join(results)
 
@@ -394,26 +503,53 @@ def search_profile(query: str) -> str:
         t_lower = text.lower()
         return any(re.search(r'\b' + re.escape(w) + r'\b', t_lower) for w in search_words)
 
-    # 1. Search L2: Family Graph
-    family = USER_PROFILE.get("family_graph", {})
-    for relation, details in family.items():
+    # 1. Search L1: Personal Details
+    details = profile.get("personal_details", {})
+    if details:
+        details_clean = str(details).lower()
+        if "personal" in q or "email" in q or "contact" in q or "phone" in q or "mobile" in q or matches_word(details_clean):
+            results.append(f"• Personal Details: Name: {details.get('full_name', '')} - Nickname: {details.get('primary_nickname', '')} - Email: {details.get('personal_email', '')} - Official Email: {details.get('official_email', '')} - Mobile: {details.get('mobile_number', '')}")
+
+    # 2. Search L1: Business Context
+    business = profile.get("business_context", {})
+    if business:
+        business_name = business.get("business_name", "").lower()
+        business_type = business.get("business_type", "").lower()
+        if "business" in q or "company" in q or "consultancy" in q or "anshu" in q or matches_word(business_name) or matches_word(business_type):
+            results.append(f"• Business Name: {business.get('business_name', '')}")
+            results.append(f"• Business Type: {business.get('business_type', '')}")
+            if business.get("location"):
+                results.append(f"• Business Location: {business.get('location', {}).get('office', '')}")
+            if business.get("contact"):
+                contact = business.get("contact", {})
+                results.append(f"• Business Contact: Website: {contact.get('website', '')}, Email: {contact.get('email', '')}")
+            if business.get("core_services"):
+                results.append(f"• Business Services: {json.dumps(business.get('core_services', {}))}")
+            if business.get("marketing_identity"):
+                results.append(f"• Business Tagline: {business.get('marketing_identity', {}).get('tagline', '')}")
+            if business.get("growth_focus"):
+                results.append(f"• Business Growth Focus: {', '.join(business.get('growth_focus', []))}")
+
+    # 3. Search L2: Family Graph
+    family = profile.get("family_graph", {})
+    for relation, details_val in family.items():
         relation_clean = relation.lower().replace("_", " ")
-        if isinstance(details, dict):
-            for member_key, member_val in details.items():
+        if isinstance(details_val, dict):
+            for member_key, member_val in details_val.items():
                 member_key_clean = member_key.lower().replace("_", " ")
                 # Match if key is in query, or query is in key, or any search word matches key/value as a whole word
                 if member_key_clean in q or q in member_key_clean or matches_word(member_key_clean) or matches_word(str(member_val)):
                     results.append(f"• Family Connection ({relation.replace('_', ' ').title()} - {member_key.replace('_', ' ').title()}): {member_val}")
-        elif isinstance(details, list):
-            for item in details:
+        elif isinstance(details_val, list):
+            for item in details_val:
                 if q in str(item).lower() or matches_word(str(item)):
                     results.append(f"• Family connection ({relation.replace('_', ' ').title()}): {item}")
         else:
-            if relation_clean in q or q in relation_clean or matches_word(str(details)):
-                results.append(f"• Family connection ({relation.replace('_', ' ').title()}): {details}")
+            if relation_clean in q or q in relation_clean or matches_word(str(details_val)):
+                results.append(f"• Family connection ({relation.replace('_', ' ').title()}): {details_val}")
                 
-    # 2. Search L3: Legacy & Autobiographical Memory
-    edu_career = USER_PROFILE.get("education_and_career", {})
+    # 4. Search L3: Legacy & Autobiographical Memory
+    edu_career = profile.get("education_and_career", {})
     for edu in edu_career.get("education", []):
         edu_str = str(edu).lower()
         if q in edu_str or matches_word(edu_str):
@@ -424,22 +560,20 @@ def search_profile(query: str) -> str:
         if q in emp_str or matches_word(emp_str):
             results.append(f"• Employment Record: {emp}")
             
-    journey = USER_PROFILE.get("mindset_and_journey", {})
-    for category, details in journey.items():
+    journey = profile.get("mindset_and_journey", {})
+    for category, details_val in journey.items():
         category_clean = category.lower().replace("_", " ")
-        if isinstance(details, dict):
-            for k, v in details.items():
+        if isinstance(details_val, dict):
+            for k, v in details_val.items():
                 k_clean = k.lower().replace("_", " ")
                 if k_clean in q or category_clean in q or q in k_clean or q in str(v).lower() or matches_word(str(v)):
                     results.append(f"• Background History ({category.replace('_', ' ').title()} - {k.replace('_', ' ').title()}): {v}")
         else:
-            if category_clean in q or q in category_clean or q in str(details).lower() or matches_word(str(details)):
-                results.append(f"• Background History ({category.replace('_', ' ').title()}): {details}")
+            if category_clean in q or q in category_clean or q in str(details_val).lower() or matches_word(str(details_val)):
+                results.append(f"• Background History ({category.replace('_', ' ').title()}): {details_val}")
                 
     if results:
         return "[Local User Profile Matches]\n" + "\n".join(results)
-    return ""
-
 # â”€â”€ Knowledge base â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 KNOWLEDGE_BASE = {
@@ -698,7 +832,7 @@ def detect_action(message: str, history_text: str = "") -> Optional[dict]:
     # Stage 2: LLM detection â€” only reached if keyword gate passed
     try:
         content = ""
-        profile_text = get_user_profile_text()
+        profile_text = get_user_profile_text() if is_profile_relevant_query(message) else ""
         if profile_text:
             content += f"{profile_text}\n\n"
         if history_text:
@@ -840,40 +974,39 @@ def _is_reject_message(text: str) -> bool:
 
 # â”€â”€ Nodes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-def should_escalate_to_workflow(text: str) -> bool:
+def should_escalate_to_workflow(text: str, history_text: str = "") -> bool:
     """Classify user query to separate conversational interactions from complex workflows.
     
-    Returns True ONLY if query demands physical mutation actions or explicit complex workflows.
+    Returns True ONLY if the query explicitly requests swarm orchestration, or is detected
+    as a dynamic correction/rerun of a previous orchestration workflow in history.
     """
     t = (text or "").lower().strip()
-    t = t.removeprefix("/").removeprefix("!")
     
-    # Explicit launch/sprint command overrides
-    if t.startswith("launch") or t.startswith("sprint"):
-        return True
-        
-    # Greetings, tutoring/coaching, and direct conversational pattern gates
-    coaching_patterns = {
-        "teach", "learn", "speak", "practice", "how are you", "who are you",
-        "what are you", "feeling", "hello", "hi", "hey", "good morning",
-        "good afternoon", "good evening", "help", "clear", "stats", "model", "doing"
-    }
-    if any(p in t for p in coaching_patterns):
+    # Check slash/exclamation command prefixes
+    if t.startswith("/") or t.startswith("!"):
+        cmd = t.removeprefix("/").removeprefix("!")
+        if cmd.startswith("launch") or cmd.startswith("sprint") or cmd.startswith("postnow"):
+            return True
         return False
         
-    # Explicit action triggers demanding Google Workspace or Facebook mutations
-    action_triggers = {
-        "send email", "send an email", "email my", "mail my",
-        "create doc", "create a doc", "write a document", "draft a document",
-        "save to drive", "copy to drive", "backup to drive",
-        "post to facebook", "publish to facebook", "post to page",
-        "log to sheet", "add to sheet", "log to spreadsheet", "add to spreadsheet",
-        "create event", "schedule an event", "add to calendar", "schedule event"
-    }
-    if any(trigger in t for trigger in action_triggers):
+    # Check raw keyword prefix triggers
+    if t.startswith("launch") or t.startswith("sprint") or t.startswith("postnow"):
         return True
         
-    # Default to Lightweight Conversational Fast Path (WALK) for all natural dialogue
+    # Dynamic Goal Correction & Rerun Detection:
+    # If the user has a recent workflow in history, scan for corrective pattern keywords
+    history_lower = (history_text or "").lower()
+    has_recent_workflow = "launch" in history_lower or "sprint" in history_lower or "goal" in history_lower or "graph" in history_lower
+    if has_recent_workflow:
+        correction_keywords = {
+            "meant", "instead", "no not", "correct to", "change to", "wrong", 
+            "typo", "error", "re-run", "rerun", "relaunch", "run again",
+            "correct the topic", "not monetary", "should be"
+        }
+        if any(kw in t for kw in correction_keywords):
+            print(f"[ROUTER] Dynamic escalation: Detected goal correction pattern in query: '{text}'", flush=True)
+            return True
+        
     return False
 
 
@@ -884,7 +1017,7 @@ def intent_router(state: AriaState):
     session_id = state.get("session_id", "default")
 
     # Dynamic Interaction Mode Classification
-    is_workflow = should_escalate_to_workflow(query)
+    is_workflow = should_escalate_to_workflow(query, history_text=history_text)
     manual_gear = "LAUNCH" if is_workflow else "WALK"
 
     # Strip command prefix overrides to keep the processed query clean
@@ -997,7 +1130,8 @@ def planner_node(state: AriaState):
         
     query = state["user_query"]
     history_text = state.get("history_text", "")
-    profile_text = get_user_profile_text()
+    profile_text = get_user_profile_text() if is_profile_relevant_query(query) else ""
+    session_id = state.get("session_id", "default")
     
     active_goal = state.get("active_goal") or {}
     pre_goal_id = active_goal.get("goal_id")
@@ -1007,10 +1141,37 @@ def planner_node(state: AriaState):
     if is_simple_query(query):
         graph = build_walk_graph(query, goal_id=pre_goal_id)
     else:
-        graph = plan_goal(query, "LAUNCH", history_text, profile_text, model_name=CURRENT_DEPT_MODEL, goal_id=pre_goal_id)
+        # Check if this query is a correction referencing a recent workflow
+        is_correction = False
+        last_goal_text = None
+        last_graph = get_last_goal_graph(session_id)
+        if last_graph:
+            last_goal_text = last_graph.get("goal")
+            # If the escalation router classified this as a workflow escalation, AND it doesn't explicitly start with a command trigger keyword,
+            # it is a corrective query referencing the last goal.
+            t_clean = query.lower().strip()
+            has_command_trigger = (
+                t_clean.startswith("/") or 
+                t_clean.startswith("!") or 
+                t_clean.startswith("launch") or 
+                t_clean.startswith("sprint") or 
+                t_clean.startswith("postnow")
+            )
+            if should_escalate_to_workflow(query, history_text=history_text) and not has_command_trigger:
+                is_correction = True
+                print(f"[PLANNER NODE] Correction detected. Previous goal: '{last_goal_text}'", flush=True)
+
+        graph = plan_goal(
+            query,
+            "LAUNCH",
+            history_text,
+            profile_text,
+            model_name=CURRENT_DEPT_MODEL,
+            goal_id=pre_goal_id,
+            is_correction=is_correction,
+            last_goal_text=last_goal_text
+        )
         
-    session_id = state.get("session_id", "default")
-    
     # Log GOAL_CREATED lifecycle event
     log_execution_ledger_event(
         session_id=session_id,
@@ -1342,15 +1503,18 @@ def task_executor_node(state: AriaState):
                         "tokens": task_tokens
                     })
                     # Log failure to the immune system to learn from errors!
-                    try:
-                        from .memory import log_execution_failure
-                    except ImportError:
-                        from memory import log_execution_failure
-                    log_execution_failure(
-                        domain=f"department.{task.department}",
-                        method=task.objective,
-                        exception_msg=f"Post-execution Audit Failed: {audit_result}"
-                    )
+                    if goal_graph.goal_type != "CORRECTION":
+                        try:
+                            from .memory import log_execution_failure
+                        except ImportError:
+                            from memory import log_execution_failure
+                        log_execution_failure(
+                            domain=f"department.{task.department}",
+                            method=task.objective,
+                            exception_msg=f"Post-execution Audit Failed: {audit_result}"
+                        )
+                    else:
+                        print(f"[IMMUNE SYSTEM GATE] Bypassing failure logging for CORRECTION goal execution failure to prevent database noise.", flush=True)
                 else:
                     log_execution_ledger_event(
                         session_id=session_id,
@@ -1421,15 +1585,18 @@ def task_executor_node(state: AriaState):
                     "tokens": {"prompt": 0, "completion": 0, "total": 0}
                 })
                 # Log failure to the immune system to learn from errors!
-                try:
-                    from .memory import log_execution_failure
-                except ImportError:
-                    from memory import log_execution_failure
-                log_execution_failure(
-                    domain=f"department.{task.department}",
-                    method=task.objective,
-                    exception_msg=f"Task Execution Exception: {err_msg}"
-                )
+                if goal_graph.goal_type != "CORRECTION":
+                    try:
+                        from .memory import log_execution_failure
+                    except ImportError:
+                        from memory import log_execution_failure
+                    log_execution_failure(
+                        domain=f"department.{task.department}",
+                        method=task.objective,
+                        exception_msg=f"Task Execution Exception: {err_msg}"
+                    )
+                else:
+                    print(f"[IMMUNE SYSTEM GATE] Bypassing failure logging for CORRECTION goal execution failure to prevent database noise.", flush=True)
                 
     # Update tracker
     duration = round(time.time() - start_time, 2)
@@ -1538,7 +1705,8 @@ def action_node(state: AriaState):
 
 def resolve_action_params(params: dict, research_text: str = "") -> dict:
     """Resolve profile placeholders and optional research placeholders."""
-    details = USER_PROFILE.get("personal_details", {})
+    profile = get_current_profile()
+    details = profile.get("personal_details", {}) if profile else {}
     placeholder_map = {
         "my_official_email": details.get("official_email", ""),
         "my_personal_email": details.get("personal_email", ""),
@@ -1846,7 +2014,8 @@ def pa_node(state: AriaState):
     # Tiered Prompt Architecture
     if gear == "WALK":
         # Ultra-thin manifesto for casual conversational mode
-        details = USER_PROFILE.get("personal_details", {}) if USER_PROFILE else {}
+        profile = get_current_profile()
+        details = profile.get("personal_details", {}) if profile else {}
         nickname = details.get("primary_nickname", "") or details.get("full_name", "Anshu")
         manifesto = (
             f"You are ARIA, a warm, direct, and helpful personal companion. Current date/time: {now_str}.\n"
@@ -1855,7 +2024,12 @@ def pa_node(state: AriaState):
         )
     else:
         # Full Workflow/Launch/Sprint Mode Prompt
-        profile_text = get_user_profile_text(gear)
+        # Only inject the full user profile if the query is profile-relevant
+        if is_profile_relevant_query(user_query):
+            profile_text = get_user_profile_text(gear)
+        else:
+            # Otherwise, use ultra-thin context just for username and style warmness
+            profile_text = get_user_profile_text("WALK")
         profile_ctx = f"\n\nUser Profile:\n{profile_text}" if profile_text else ""
         google_tools = ", ".join(MAKE_ACTIONS.keys())
         google_ctx = f"\n\nGoogle Workspace active [{google_tools}]. Confirm any triggered actions clearly."

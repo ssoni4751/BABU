@@ -45,8 +45,10 @@ PLANNER_SYSTEM_PROMPT: str = (
     "\n"
     "RULES:\n"
     "- Output ONLY valid JSON. No markdown, no explanation.\n"
+    "- GOAL CORRECTIONS: If the user query is a correction, typo fix, or modification of a previous goal in the recent conversation history (e.g. 'I meant monitoring, not monetary' or 'correct the topic to X'), you must identify the corrected goal topic and plan the task DAG for the corrected goal, not the incorrect one.\n"
     "- Each task must have: task_id (T1, T2, ...), objective, department, "
-    "depends_on (list of task_ids), priority (1=highest), and compliance_checklist (list of strings).\n"
+    "depends_on (list of task_ids), priority (1=highest), compliance_checklist (list of strings), and grant_profile_access (boolean).\n"
+    "- grant_profile_access: Set to true ONLY for the single, specific 'research' task that requires access to the local user profile (family graph, business services, contact info) to fulfill the user's personal query. For all other tasks, this MUST be false. Do NOT grant profile access to multiple tasks to prevent token bloat and ensure security isolation.\n"
     "- compliance_checklist: A list of 2-3 specific, concrete criteria that the task's output must satisfy for the auditor to approve it (e.g., verifying specific factual items, formatting style, checking profile matches, or ensuring it is not a raw status message).\n"
     "  CRITICAL: For 'writing' tasks that synthesize upstream 'research' findings, you MUST always include a checklist item requiring that all research citations, source links, or references are explicitly preserved and listed at the end of the report.\n"
     "- Valid departments: research, analysis, writing, execution, pa\n"
@@ -71,9 +73,9 @@ PLANNER_SYSTEM_PROMPT: str = (
     '  "goal": "brief goal description",\n'
     '  "tasks": [\n'
     '    {"task_id": "T1", "objective": "...", "department": "research", '
-    '"depends_on": [], "priority": 1, "compliance_checklist": ["Verify search was done", "No empty results"]},\n'
+    '"depends_on": [], "priority": 1, "compliance_checklist": ["Verify search was done", "No empty results"], "grant_profile_access": true},\n'
     '    {"task_id": "T2", "objective": "...", "department": "pa", '
-    '"depends_on": ["T1"], "priority": 2, "compliance_checklist": ["Verify findings are synthesized factually"]}\n'
+    '"depends_on": ["T1"], "priority": 2, "compliance_checklist": ["Verify findings are synthesized factually"], "grant_profile_access": false}\n'
     "  ]\n"
     "}"
 )
@@ -99,7 +101,7 @@ def _extract_json(text: str) -> dict:
     return json.loads(cleaned)
 
 
-def _build_fallback_graph(query: str, goal_id: Optional[str] = None) -> GoalGraph:
+def _build_fallback_graph(query: str, goal_id: Optional[str] = None, goal_type: str = "NEW") -> GoalGraph:
     """Return a single-task fail-closed graph refusing execution due to planning ambiguity."""
     if not goal_id:
         goal_id = f"G-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
@@ -123,6 +125,7 @@ def _build_fallback_graph(query: str, goal_id: Optional[str] = None) -> GoalGrap
         tasks=tasks,
         status="FAILED",
         created_at=now_iso,
+        goal_type=goal_type,
     )
 
 
@@ -137,6 +140,8 @@ def plan_goal(
     profile_text: str = "",
     model_name: str = "llama-3.1-8b-instant",
     goal_id: Optional[str] = None,
+    is_correction: bool = False,
+    last_goal_text: Optional[str] = None,
 ) -> GoalGraph:
     """Decompose *query* into a structured GoalGraph using a single LLM call.
 
@@ -162,6 +167,7 @@ def plan_goal(
     from langchain_core.messages import SystemMessage, HumanMessage
 
     start = time.time()
+    goal_type = "CORRECTION" if is_correction else "NEW"
 
     # Build the user prompt ------------------------------------------------
     now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -172,6 +178,10 @@ def plan_goal(
         f"Gear: {gear}",
         f"User query: {query}",
     ]
+    if is_correction:
+        user_content_parts.append("Goal correction mode: ACTIVE")
+    if last_goal_text:
+        user_content_parts.append(f"Last planned goal to correct: {last_goal_text}")
     if history_snippet:
         user_content_parts.append(f"Recent history: {history_snippet}")
     if profile_text:
@@ -195,7 +205,7 @@ def plan_goal(
         raw_text: str = response.content  # type: ignore[union-attr]
     except Exception as exc:
         print(f"[PLANNER] LLM call failed: {exc}")
-        return _build_fallback_graph(query, goal_id=goal_id)
+        return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type)
 
     # Parse JSON -----------------------------------------------------------
     try:
@@ -203,7 +213,7 @@ def plan_goal(
     except (json.JSONDecodeError, ValueError) as exc:
         print(f"[PLANNER] JSON parse error: {exc}")
         print(f"[PLANNER] Raw LLM output: {raw_text[:300]}")
-        return _build_fallback_graph(query, goal_id=goal_id)
+        return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type)
 
     # Validate & build TaskDTOs -------------------------------------------
     goal_text: str = data.get("goal", query[:200])
@@ -211,7 +221,7 @@ def plan_goal(
 
     if not raw_tasks:
         print("[PLANNER] LLM returned empty task list — using fallback")
-        return _build_fallback_graph(query, goal_id=goal_id)
+        return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type)
 
     valid_dept_names = set(DEPARTMENTS.keys())
     tasks: List[TaskDTO] = []
@@ -236,11 +246,12 @@ def plan_goal(
         # Determine initial state
         state = TaskState.READY if not depends_on else TaskState.PENDING
 
-        # Extract action and params if present in planner JSON
+        # Extract action, params, and grant_profile_access if present in planner JSON
         task_context = {}
         if "action" in t:
             task_context["action"] = t["action"]
             task_context["params"] = t.get("params", {})
+        task_context["grant_profile_access"] = bool(t.get("grant_profile_access", False))
 
         # Dynamic per-department token budget allocation
         dept_budgets = {
@@ -269,7 +280,7 @@ def plan_goal(
 
     if not tasks:
         print("[PLANNER] All tasks filtered out — using fallback")
-        return _build_fallback_graph(query)
+        return _build_fallback_graph(query, goal_type=goal_type)
 
     # ── Post-processing: Enforce content dependencies for execution tasks ──
     content_task_ids = [t.task_id for t in tasks if t.department in ("writing", "analysis", "research")]
@@ -300,6 +311,7 @@ def plan_goal(
         goal=goal_text,
         tasks=tasks,
         created_at=now_iso,
+        goal_type=goal_type,
     )
 
     # Validate DAG (no cycles) ---------------------------------------------
@@ -307,7 +319,7 @@ def plan_goal(
         validate_dag(graph.tasks)
     except Exception as exc:
         print(f"[PLANNER] DAG validation failed: {exc} — using fallback")
-        return _build_fallback_graph(query)
+        return _build_fallback_graph(query, goal_type=goal_type)
 
     duration = round(time.time() - start, 2)
     print(f"[PLANNER] Generated {len(tasks)} tasks in {duration}s")

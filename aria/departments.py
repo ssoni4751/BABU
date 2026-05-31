@@ -163,9 +163,9 @@ class ResearchHead(DepartmentHead):
 
         # 2. Dynamically import search helpers to avoid circular dependencies
         try:
-            from .bot import web_search, search_knowledge, search_profile
+            from .bot import web_search, search_knowledge, search_profile, is_profile_relevant_query
         except ImportError:
-            from bot import web_search, search_knowledge, search_profile
+            from bot import web_search, search_knowledge, search_profile, is_profile_relevant_query
 
         # 3. Dynamic search execution
         print(f"[DEPT:research] Dynamically executing web search for objective: '{search_query}'", flush=True)
@@ -177,9 +177,10 @@ class ResearchHead(DepartmentHead):
         if kb_hits:
             scoped["knowledge_base"] = kb_hits
 
-        profile_slice = search_profile(search_query)
-        if profile_slice:
-            scoped["profile_slice"] = profile_slice
+        if task.context.get("grant_profile_access", False):
+            profile_slice = search_profile(search_query, bypass_filter=True)
+            if profile_slice:
+                scoped["profile_slice"] = profile_slice
 
         return scoped
 

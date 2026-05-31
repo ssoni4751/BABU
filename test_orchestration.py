@@ -640,9 +640,81 @@ class TestExecutionLedger(unittest.TestCase):
         rows = cursor.fetchall()
         conn.close()
         
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0][0], "PLANNING")
-        self.assertEqual(rows[0][1], "PLANNED")
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0][0], "GOAL_CREATED")
+        self.assertEqual(rows[0][1], "ACTIVE")
+        self.assertEqual(rows[1][0], "PLANNING")
+        self.assertEqual(rows[1][1], "PLANNED")
+
+
+class TestGoalCorrection(unittest.TestCase):
+    
+    def test_goal_graph_type_serialization(self):
+        # Test default goal_type is "NEW"
+        g = GoalGraph(
+            goal_id="G_test_type",
+            goal="Test goal description",
+            tasks=[]
+        )
+        self.assertEqual(g.goal_type, "NEW")
+        
+        # Test serialization preserves NEW
+        d = g.to_dict()
+        self.assertEqual(d["goal_type"], "NEW")
+        
+        # Test deserialization reconstructs NEW
+        g2 = GoalGraph.from_dict(d)
+        self.assertEqual(g2.goal_type, "NEW")
+        
+        # Test setting goal_type to CORRECTION
+        g_corr = GoalGraph(
+            goal_id="G_test_type_corr",
+            goal="Test correction",
+            tasks=[],
+            goal_type="CORRECTION"
+        )
+        self.assertEqual(g_corr.goal_type, "CORRECTION")
+        d_corr = g_corr.to_dict()
+        self.assertEqual(d_corr["goal_type"], "CORRECTION")
+        g_corr2 = GoalGraph.from_dict(d_corr)
+        self.assertEqual(g_corr2.goal_type, "CORRECTION")
+
+    def test_get_last_goal_graph_retrieval(self):
+        import sqlite3
+        import uuid
+        from aria.bot import log_execution_ledger_event, get_last_goal_graph, DB_PATH
+        
+        session_id = f"test_corr_session_{uuid.uuid4().hex[:6]}"
+        goal_id = "G_test_corr_123"
+        
+        # Log a mock planning event to the execution ledger database
+        graph_mock = {
+            "goal_id": goal_id,
+            "goal": "Original target goal description",
+            "tasks": [],
+            "status": "COMPLETED",
+            "created_at": "",
+            "total_token_budget": 15000,
+            "goal_type": "NEW"
+        }
+        
+        log_execution_ledger_event(
+            session_id=session_id,
+            goal_id=goal_id,
+            task_id=None,
+            department=None,
+            event_type="PLANNING",
+            state_before=None,
+            state_after="PLANNED",
+            metadata={"query": "Original query", "graph": graph_mock}
+        )
+        
+        # Retrieve using helper
+        retrieved = get_last_goal_graph(session_id)
+        self.assertIsNotNone(retrieved)
+        self.assertEqual(retrieved["goal_id"], goal_id)
+        self.assertEqual(retrieved["goal"], "Original target goal description")
+        self.assertEqual(retrieved["goal_type"], "NEW")
 
 
 if __name__ == "__main__":

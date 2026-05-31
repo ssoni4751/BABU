@@ -181,6 +181,7 @@ class GoalGraph:
     status: str = "ACTIVE"
     created_at: str = ""
     total_token_budget: int = 15000
+    goal_type: str = "NEW"
 
     def __post_init__(self) -> None:
         if not self.created_at:
@@ -197,6 +198,7 @@ class GoalGraph:
             "status": self.status,
             "created_at": self.created_at,
             "total_token_budget": self.total_token_budget,
+            "goal_type": self.goal_type,
         }
 
     @classmethod
@@ -209,6 +211,7 @@ class GoalGraph:
             status=data.get("status", "ACTIVE"),
             created_at=data.get("created_at", ""),
             total_token_budget=int(data.get("total_token_budget", 15000)),
+            goal_type=data.get("goal_type", "NEW"),
         )
 
 
