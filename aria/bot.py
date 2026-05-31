@@ -2663,6 +2663,44 @@ async def cmd_postnow(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # â”€â”€ Telegram handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+async def send_long_telegram_message(update: Update, text: str, reply_markup=None):
+    """Split and send messages exceeding Telegram's 4096 character limit."""
+    limit = 4000  # Safe boundary to prevent any BadRequest exception
+    if len(text) <= limit:
+        if reply_markup:
+            await update.message.reply_text(text, reply_markup=reply_markup)
+        else:
+            await update.message.reply_text(text)
+        return
+
+    paragraphs = text.split("\n\n")
+    current_chunk = ""
+    for paragraph in paragraphs:
+        if len(current_chunk) + len(paragraph) + 2 > limit:
+            if len(paragraph) > limit:
+                if current_chunk:
+                    await update.message.reply_text(current_chunk.strip())
+                    current_chunk = ""
+                sub_paragraphs = [paragraph[i:i+limit] for i in range(0, len(paragraph), limit)]
+                for sub in sub_paragraphs[:-1]:
+                    await update.message.reply_text(sub)
+                current_chunk = sub_paragraphs[-1]
+            else:
+                await update.message.reply_text(current_chunk.strip())
+                current_chunk = paragraph
+        else:
+            if current_chunk:
+                current_chunk += "\n\n" + paragraph
+            else:
+                current_chunk = paragraph
+
+    if current_chunk:
+        if reply_markup:
+            await update.message.reply_text(current_chunk.strip(), reply_markup=reply_markup)
+        else:
+            await update.message.reply_text(current_chunk.strip())
+
+
 async def run_aria(update: Update, msg: str, session_id: str):
     if update and update.effective_chat:
         persist_chat_id(update.effective_chat.id)
@@ -2694,7 +2732,7 @@ async def run_aria(update: Update, msg: str, session_id: str):
     with _pending_actions_lock:
         has_pending = session_id in _pending_actions
     if has_pending and "Action authorization required." in reply:
-        await update.message.reply_text(reply, reply_markup=get_action_approval_keyboard(session_id))
+        await send_long_telegram_message(update, reply, reply_markup=get_action_approval_keyboard(session_id))
         return
 
     # Check for [IMAGE] tag to reply with a photo
@@ -2705,7 +2743,7 @@ async def run_aria(update: Update, msg: str, session_id: str):
         await update.message.reply_photo(photo=url, caption=caption.strip())
         return
 
-    await update.message.reply_text(reply)
+    await send_long_telegram_message(update, reply)
 
 
 def tg_session(update: Update) -> str:
