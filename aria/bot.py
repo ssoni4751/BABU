@@ -418,7 +418,12 @@ def search_profile(query: str, bypass_filter: bool = False) -> str:
     
     # Programmatic Me/Myself/I override:
     # If the query is a general question asking about themselves, load the ENTIRE profile history and context!
-    personal_pronouns = {"myself", "who am i", "my journey", "my background", "tell me about me", "my profile", "my biography", "my bio", "who is talk", "who is speak"}
+    personal_pronouns = {
+        "myself", "who am i", "my journey", "my background", "tell me about me", 
+        "my profile", "my biography", "my bio", "who is talk", "who is speak",
+        "user profile", "profile information", "gather user profile", "know about me",
+        "about me", "personal details", "profile data"
+    }
     is_general_profile = any(p in q for p in personal_pronouns)
     
     # Programmatic Query vs Statement Classifier:
