@@ -1,234 +1,42 @@
 [
   {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260526_130414",
+    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_CONSOLIDATED_TOKEN_EXPIRED",
     "domain": "social_media.facebook_publisher",
     "attempted_methodology": "publish_to_facebook_page",
-    "observed_consequence": "ARIA failed to publish content to a Facebook Page because the specific Page Access Token used for authentication was either expired or invalid. This indicates a failure in token management, where an outdated or revoked credential was presented to the Facebook API.",
-    "active_anti_pattern_rule": "NEVER attempt to publish to a Facebook Page using a Page Access Token that has not been recently refreshed or validated, or without a robust mechanism to re-acquire a fresh Page Access Token immediately upon encountering an 'expired or invalid' error.",
-    "timestamp": "2026-05-26T07:34:14.988221+00:00"
+    "observed_consequence": "The publish_to_facebook_page method failed due to an expired or invalid Page access token, resulting in an OAuthException from the Facebook API.",
+    "active_anti_pattern_rule": "NEVER use an unverified or expired Page access token to publish to a Facebook page. ALWAYS refresh the token before publishing and verify its validity by checking the token's expiration time or using the Facebook API's token debugging tool. Query /me/accounts for valid Page Tokens first.",
+    "confidence": 1.0,
+    "decay_rate": 0.15,
+    "success_count": 0,
+    "ttl_sessions_remaining": 20,
+    "timestamp": "2026-05-31T09:35:42.609977+00:00",
+    "failure_type": "METHODOLOGY",
+    "goal": "Daily Autonomous Marketing Post"
   },
   {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260526_130530",
-    "domain": "social_media.facebook_publisher",
-    "attempted_methodology": "publish_to_facebook_page",
-    "observed_consequence": "The system failed to publish content to a Facebook Page because the Page access token used for authentication was either expired or invalid, leading to an OAuthException.",
-    "active_anti_pattern_rule": "NEVER attempt to publish to a Facebook Page using a stored Page access token without first validating its current status and refreshing it if it's expired or nearing expiration.",
-    "timestamp": "2026-05-26T07:35:30.173583+00:00"
-  },
-  {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260526_130612",
-    "domain": "social_media.facebook_publisher",
-    "attempted_methodology": "publish_to_facebook_page(img_path, caption) with Page ID invalid_page_123",
-    "observed_consequence": "The system attempted to publish content to a Facebook page but failed because the provided OAuth access token was fundamentally malformed or invalid, preventing the Facebook API from even parsing it. This indicates a core issue with the token's structure or acquisition, rather than its permissions or expiry.",
-    "active_anti_pattern_rule": "ALWAYS perform a pre-flight validation check on Facebook access tokens to ensure they are non-empty and structurally resemble a valid Facebook token string before initiating any API requests. If the token cannot be parsed, it indicates a fundamental data integrity issue with the token itself, not its permissions or expiry, and the operation must be aborted with an appropriate error.",
-    "timestamp": "2026-05-26T07:36:12.216592+00:00"
-  },
-  {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260527_115214",
-    "domain": "social_media.facebook_publisher",
-    "attempted_methodology": "publish_to_facebook_page",
-    "observed_consequence": "Facebook API Error: OAuthException - (#100) Page access token is expired or invalid.",
-    "active_anti_pattern_rule": "CRITICAL DIRECTION: Avoid using methodology publish_to_facebook_page under domain social_media.facebook_publisher to prevent exception: Facebook API Error: OAuthException - (#100) Page access token is expired or invalid.",
-    "timestamp": "2026-05-27T06:22:14.938987+00:00"
-  },
-  {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260527_115355",
-    "domain": "social_media.facebook_publisher",
-    "attempted_methodology": "publish_to_facebook_page(img_path, caption) with Page ID invalid_page_123",
-    "observed_consequence": "Facebook API Error: Invalid OAuth access token - Cannot parse access token",
-    "active_anti_pattern_rule": "CRITICAL DIRECTION: Avoid using methodology publish_to_facebook_page(img_path, caption) with Page ID invalid_page_123 under domain social_media.facebook_publisher to prevent exception: Facebook API Error: Invalid OAuth access token - Cannot parse access token",
-    "timestamp": "2026-05-27T06:23:55.716261+00:00"
-  },
-  {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260527_120241",
-    "domain": "social_media.facebook_publisher",
-    "attempted_methodology": "publish_to_facebook_page",
-    "observed_consequence": "Facebook API Error: OAuthException - (#100) Page access token is expired or invalid.",
-    "active_anti_pattern_rule": "CRITICAL DIRECTION: Avoid using methodology publish_to_facebook_page under domain social_media.facebook_publisher to prevent exception: Facebook API Error: OAuthException - (#100) Page access token is expired or invalid.",
-    "timestamp": "2026-05-27T06:32:41.608364+00:00"
-  },
-  {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260527_120306",
+    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_CONSOLIDATED_INVALID_PAGE_ID",
     "domain": "social_media.facebook_publisher",
     "attempted_methodology": "publish_to_facebook_page(img_path, caption) with Page ID invalid_page_123",
     "observed_consequence": "The publish_to_facebook_page method failed due to an invalid OAuth access token, which was caused by using an invalid Page ID, resulting in the inability to parse the access token.",
-    "active_anti_pattern_rule": "NEVER use an invalid Page ID to obtain an access token, ALWAYS verify the Page ID before attempting to publish to Facebook, and ensure to query /me/accounts for Page Tokens first to obtain a valid access token.",
-    "timestamp": "2026-05-27T06:33:06.249233+00:00"
+    "active_anti_pattern_rule": "NEVER use an invalid Page ID to obtain an access token. ALWAYS verify the Page ID and obtain a valid access token by querying the Facebook API's /me/accounts endpoint for page-specific tokens before attempting to publish.",
+    "confidence": 1.0,
+    "decay_rate": 0.15,
+    "success_count": 0,
+    "ttl_sessions_remaining": 20,
+    "timestamp": "2026-05-31T09:03:19.971271+00:00",
+    "failure_type": "METHODOLOGY"
   },
   {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260527_120618",
+    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_CONSOLIDATED_TOKEN_VALIDATION",
     "domain": "social_media.facebook_publisher",
     "attempted_methodology": "publish_to_facebook_page",
-    "observed_consequence": "The publish_to_facebook_page method failed due to an expired or invalid Page access token, resulting in an OAuthException from the Facebook API.",
-    "active_anti_pattern_rule": "NEVER use an unverified or expired Page access token to publish content to a Facebook page, ALWAYS refresh the token before use and verify its validity by checking the token's expiration time or using the Facebook API to validate the token.",
-    "timestamp": "2026-05-27T06:36:18.093008+00:00"
-  },
-  {
-    "failure_signature": "SOCIAL_MEDIA.AUTONOMOUS_SOCIAL_POST_20260527_120633",
-    "domain": "social_media.autonomous_social_post",
-    "attempted_methodology": "run_autonomous_social_post() full pipeline execution",
-    "observed_consequence": "Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01ksanet3cfh6szhqyxr45df3p` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 99712, Requested 858. Please try again in 8m12.48s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}",
-    "active_anti_pattern_rule": "CRITICAL DIRECTION: Avoid using methodology run_autonomous_social_post() full pipeline execution under domain social_media.autonomous_social_post to prevent exception: Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01ksanet3cfh6szhqyxr45df3p` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 99712, Requested 858. Please try again in 8m12.48s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}",
-    "timestamp": "2026-05-27T06:36:33.161681+00:00"
-  },
-  {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260527_160359",
-    "domain": "social_media.facebook_publisher",
-    "attempted_methodology": "publish_to_facebook_page",
-    "observed_consequence": "The publish_to_facebook_page method failed due to an expired or invalid Page access token, resulting in an OAuthException from the Facebook API.",
-    "active_anti_pattern_rule": "NEVER use an unverified or expired Page access token to publish to a Facebook page, ALWAYS refresh the token or re-authenticate the user before making API calls.",
-    "timestamp": "2026-05-27T10:33:59.745321+00:00"
-  },
-  {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260527_160418",
-    "domain": "social_media.facebook_publisher",
-    "attempted_methodology": "publish_to_facebook_page(img_path, caption) with Page ID invalid_page_123",
-    "observed_consequence": "The publish_to_facebook_page method failed due to an invalid OAuth access token, which was caused by using an incorrect Page ID, resulting in the inability to parse the access token.",
-    "active_anti_pattern_rule": "NEVER use an invalid Page ID to obtain an access token, ALWAYS verify the Page ID and obtain a valid access token by querying the Facebook API for the correct Page Token before attempting to publish.",
-    "timestamp": "2026-05-27T10:34:18.621153+00:00"
-  },
-  {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260528_112650",
-    "domain": "social_media.facebook_publisher",
-    "attempted_methodology": "publish_to_facebook_page",
-    "observed_consequence": "The publish_to_facebook_page method failed due to an expired or invalid Page access token, resulting in a Facebook API OAuthException error.",
-    "active_anti_pattern_rule": "NEVER use an unverified or potentially expired Page access token to publish to a Facebook page, ALWAYS refresh and validate the token before making API requests, and query /me/accounts for Page Tokens to ensure authenticity and validity.",
-    "timestamp": "2026-05-28T05:56:50.975325+00:00"
-  },
-  {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260528_112707",
-    "domain": "social_media.facebook_publisher",
-    "attempted_methodology": "publish_to_facebook_page(img_path, caption) with Page ID invalid_page_123",
-    "observed_consequence": "The publish_to_facebook_page method failed due to an invalid OAuth access token, which was used to attempt to publish to a Facebook page with an ID of invalid_page_123, resulting in a Facebook API Error.",
-    "active_anti_pattern_rule": "NEVER use an OAuth access token without verifying its validity and scope for the specific Facebook page or user, ALWAYS obtain a page-specific access token by querying the Facebook API with a valid user token and the page ID, and ensure the token is refreshed or re-obtained when necessary to avoid expiration or revocation.",
-    "timestamp": "2026-05-28T05:57:07.453669+00:00"
-  },
-  {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260528_115946",
-    "domain": "social_media.facebook_publisher",
-    "attempted_methodology": "publish_to_facebook_page",
-    "observed_consequence": "The publish_to_facebook_page method failed due to an expired or invalid Page access token, resulting in an OAuthException from the Facebook API.",
-    "active_anti_pattern_rule": "NEVER use an unverified or expired Page access token to publish to a Facebook page, ALWAYS refresh the token before publishing and verify its validity by checking the token's expiration time or using a try-except block to catch and handle token expiration errors.",
-    "timestamp": "2026-05-28T06:29:46.750603+00:00"
-  },
-  {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260528_120004",
-    "domain": "social_media.facebook_publisher",
-    "attempted_methodology": "publish_to_facebook_page(img_path, caption) with Page ID invalid_page_123",
-    "observed_consequence": "The publish_to_facebook_page method failed due to an invalid OAuth access token, which was used to attempt to publish to a Facebook page with an ID of invalid_page_123, resulting in a Facebook API Error.",
-    "active_anti_pattern_rule": "NEVER use an OAuth access token without verifying its validity and scope for the specific Facebook page, ALWAYS obtain a page-specific access token by querying /me/accounts or /oauth/access_token with the correct permissions and page ID before attempting to publish to a Facebook page.",
-    "timestamp": "2026-05-28T06:30:04.493034+00:00"
-  },
-  {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260528_125651",
-    "domain": "social_media.facebook_publisher",
-    "attempted_methodology": "publish_to_facebook_page",
-    "observed_consequence": "The publish_to_facebook_page method failed due to an expired or invalid Page access token, resulting in an OAuthException from the Facebook API.",
-    "active_anti_pattern_rule": "NEVER use an unverified or expired Page access token to publish to a Facebook page, ALWAYS refresh or re-obtain the token before making API calls and verify its validity by checking the token's expiration time.",
-    "timestamp": "2026-05-28T07:26:51.751667+00:00"
-  },
-  {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260528_125707",
-    "domain": "social_media.facebook_publisher",
-    "attempted_methodology": "publish_to_facebook_page(img_path, caption) with Page ID invalid_page_123",
-    "observed_consequence": "The publish_to_facebook_page method failed due to an invalid OAuth access token, which was used to attempt to post to a Facebook page with an ID of invalid_page_123, resulting in a Facebook API Error.",
-    "active_anti_pattern_rule": "NEVER use an OAuth access token without verifying its validity and scope for the specific Facebook page, ALWAYS obtain a page-specific access token by querying /me/accounts or /oauth/access_token with the correct permissions and page ID before attempting to publish to a Facebook page.",
-    "timestamp": "2026-05-28T07:27:07.757031+00:00"
-  },
-  {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260528_130829",
-    "domain": "social_media.facebook_publisher",
-    "attempted_methodology": "publish_to_facebook_page",
-    "observed_consequence": "The publish_to_facebook_page method failed due to an expired or invalid Page access token, resulting in an OAuthException from the Facebook API.",
-    "active_anti_pattern_rule": "NEVER use an unverified or expired Page access token to publish content, ALWAYS refresh the token prior to publishing and ensure it is obtained through a valid authorization flow, such as querying /me/accounts for Page Tokens or using a token refresh mechanism.",
-    "timestamp": "2026-05-28T07:38:29.509764+00:00"
-  },
-  {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260528_130853",
-    "domain": "social_media.facebook_publisher",
-    "attempted_methodology": "publish_to_facebook_page(img_path, caption) with Page ID invalid_page_123",
-    "observed_consequence": "The publish_to_facebook_page method failed due to an invalid OAuth access token, which was likely caused by using an incorrect or expired access token to authenticate with the Facebook API.",
-    "active_anti_pattern_rule": "NEVER use an access token without verifying its validity and scope for the specific Page ID, ALWAYS obtain a Page-specific access token by querying /me/accounts or /oauth/access_token with the correct permissions and page ID before attempting to publish.",
-    "timestamp": "2026-05-28T07:38:53.013956+00:00"
-  },
-  {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260528_131524",
-    "domain": "social_media.facebook_publisher",
-    "attempted_methodology": "publish_to_facebook_page",
-    "observed_consequence": "The publish_to_facebook_page method failed due to an expired or invalid Page access token, resulting in an OAuthException from the Facebook API.",
-    "active_anti_pattern_rule": "NEVER use an unverified or expired Page access token to publish to a Facebook page, ALWAYS refresh the token before publishing and verify its validity through the Facebook API's token debugging tool.",
-    "timestamp": "2026-05-28T07:45:24.800557+00:00"
-  },
-  {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260528_131539",
-    "domain": "social_media.facebook_publisher",
-    "attempted_methodology": "publish_to_facebook_page(img_path, caption) with Page ID invalid_page_123",
-    "observed_consequence": "The publish_to_facebook_page method failed due to an invalid OAuth access token, which was caused by using an invalid Page ID, resulting in the inability to parse the access token.",
-    "active_anti_pattern_rule": "NEVER use an invalid Page ID to obtain an access token, ALWAYS verify the Page ID and obtain a valid access token by querying the Facebook API for page-specific tokens before attempting to publish.",
-    "timestamp": "2026-05-28T07:45:39.902994+00:00"
-  },
-  {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260528_132453",
-    "domain": "social_media.facebook_publisher",
-    "attempted_methodology": "publish_to_facebook_page",
-    "observed_consequence": "The publish_to_facebook_page method failed due to an expired or invalid Page access token, resulting in an OAuthException from the Facebook API.",
-    "active_anti_pattern_rule": "NEVER use an unverified or expired Page access token to publish to a Facebook page, ALWAYS refresh the token prior to publishing or query /me/accounts for a valid Page Token first.",
-    "timestamp": "2026-05-28T07:54:53.607348+00:00"
-  },
-  {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260528_132511",
-    "domain": "social_media.facebook_publisher",
-    "attempted_methodology": "publish_to_facebook_page(img_path, caption) with Page ID invalid_page_123",
-    "observed_consequence": "The publish_to_facebook_page method failed due to an invalid OAuth access token, which was used to attempt to publish to a Facebook page with an ID of invalid_page_123, resulting in a Facebook API Error.",
-    "active_anti_pattern_rule": "NEVER use an access token without verifying its validity and scope for the intended Facebook page, ALWAYS fetch a new page-specific access token using the Facebook API's /me/accounts endpoint or OAuth authorization flow before attempting to publish.",
-    "timestamp": "2026-05-28T07:55:11.775932+00:00"
-  },
-  {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260528_133302",
-    "domain": "social_media.facebook_publisher",
-    "attempted_methodology": "publish_to_facebook_page",
-    "observed_consequence": "The publish_to_facebook_page method failed due to an expired or invalid Page access token, resulting in an OAuthException from the Facebook API.",
-    "active_anti_pattern_rule": "NEVER use expired or invalid Page access tokens to publish to Facebook pages, ALWAYS refresh or re-acquire Page access tokens before attempting to publish.",
-    "timestamp": "2026-05-28T08:03:02.888375+00:00"
-  },
-  {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260528_133317",
-    "domain": "social_media.facebook_publisher",
-    "attempted_methodology": "publish_to_facebook_page(img_path, caption) with Page ID invalid_page_123",
-    "observed_consequence": "The publish_to_facebook_page method failed due to an invalid OAuth access token, which was used to attempt publishing to a Facebook page with an ID of invalid_page_123, resulting in a Facebook API Error.",
-    "active_anti_pattern_rule": "NEVER use an OAuth access token without verifying its validity and scope for the intended Facebook page, ALWAYS refresh tokens when necessary and ensure proper page authorization before attempting to publish content.",
-    "timestamp": "2026-05-28T08:03:17.327944+00:00"
-  },
-  {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260528_134052",
-    "domain": "social_media.facebook_publisher",
-    "attempted_methodology": "publish_to_facebook_page",
-    "observed_consequence": "The publish_to_facebook_page method failed due to an expired or invalid Page access token, resulting in an OAuthException from the Facebook API.",
-    "active_anti_pattern_rule": "NEVER use expired or invalid Page access tokens to publish to Facebook pages, ALWAYS refresh or renew the token before making API requests and validate token expiration before use.",
-    "timestamp": "2026-05-28T08:10:52.820814+00:00"
-  },
-  {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260528_134111",
-    "domain": "social_media.facebook_publisher",
-    "attempted_methodology": "publish_to_facebook_page(img_path, caption) with Page ID invalid_page_123",
-    "observed_consequence": "The publish_to_facebook_page method failed due to an invalid OAuth access token, which was used to attempt publishing to a Facebook page with an ID of invalid_page_123, resulting in a Facebook API error.",
-    "active_anti_pattern_rule": "NEVER use an OAuth access token without verifying its validity and scope for the specific Facebook page, ALWAYS obtain a page-specific access token by querying /me/accounts or /oauth/access_token with the correct permissions and page ID before attempting to publish.",
-    "timestamp": "2026-05-28T08:11:11.675037+00:00"
-  },
-  {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260528_134736",
-    "domain": "social_media.facebook_publisher",
-    "attempted_methodology": "publish_to_facebook_page",
-    "observed_consequence": "The publish_to_facebook_page method failed due to an expired or invalid Page access token, resulting in an OAuthException from the Facebook API.",
-    "active_anti_pattern_rule": "NEVER use an unverified or expired Page access token to publish to a Facebook page, ALWAYS refresh the token before publishing and verify its validity by checking the token's expiration time or using the Facebook API to validate the token.",
-    "timestamp": "2026-05-28T08:17:36.219718+00:00"
-  },
-  {
-    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260528_134812",
-    "domain": "social_media.facebook_publisher",
-    "attempted_methodology": "publish_to_facebook_page(img_path, caption) with Page ID invalid_page_123",
-    "observed_consequence": "The publish_to_facebook_page method failed due to an invalid OAuth access token, which was used to attempt publishing to an invalid Page ID, resulting in a Facebook API error.",
-    "active_anti_pattern_rule": "NEVER use an access token without verifying its validity and scope for the specific Page ID, ALWAYS obtain a Page access token by querying the /me/accounts or /me/accounts/{account_id} endpoint and use it for publishing to ensure the correct token is used for the intended action.",
-    "timestamp": "2026-05-28T08:18:12.133320+00:00"
+    "observed_consequence": "The system attempted to publish content to a Facebook page but failed because the provided OAuth access token was fundamentally malformed or invalid, preventing the Facebook API from even parsing it.",
+    "active_anti_pattern_rule": "ALWAYS perform a pre-flight validation check on Facebook access tokens to ensure they are non-empty and structurally resemble a valid Facebook token string before initiating any API requests. If the token cannot be parsed, abort the operation with an appropriate error.",
+    "confidence": 1.0,
+    "decay_rate": 0.15,
+    "success_count": 0,
+    "ttl_sessions_remaining": 20,
+    "timestamp": "2026-05-28T05:57:07.453669+00:00",
+    "failure_type": "METHODOLOGY"
   }
 ]
