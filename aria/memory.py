@@ -78,6 +78,103 @@ def append_to_profile_ledger(category: str, entry_data: dict) -> bool:
             return False
 
 
+def send_immune_rule_email(new_rule: dict, all_rules: list) -> None:
+    """
+    Compiles and sends a structured plain-text report of ARIA's active immune rules
+    to the user's official email address. Executed asynchronously to avoid blocking.
+    """
+    print("[IMMUNE SYSTEM EMAIL] Starting background email notification compile...", flush=True)
+    try:
+        try:
+            from google_service import send_gmail
+        except ImportError:
+            try:
+                from aria.google_service import send_gmail
+            except ImportError as imp_err:
+                print(f"[IMMUNE SYSTEM EMAIL ERROR] Could not import send_gmail: {imp_err}", flush=True)
+                return
+
+        # 1. Resolve recipient official email address
+        recipient = "anshucomputerorai@gmail.com"
+        try:
+            if os.path.exists(PROFILE_PATH):
+                with open(PROFILE_PATH, "r", encoding="utf-8") as pf:
+                    prof_data = json.load(pf)
+                    recipient = prof_data.get("personal_details", {}).get("official_email", recipient)
+        except Exception as pf_err:
+            print(f"[IMMUNE SYSTEM EMAIL WARNING] Failed to read user_profile.json for official email: {pf_err}", flush=True)
+
+        # 2. Extract details of the new sealed rule
+        domain_name = new_rule.get("domain", "unknown").upper()
+        attempted_method = new_rule.get("attempted_methodology", "unknown")
+        observed_consequence = new_rule.get("observed_consequence", "unknown")
+        active_anti_pattern_rule = new_rule.get("active_anti_pattern_rule", "unknown")
+        timestamp = new_rule.get("timestamp", "")
+        failure_type = new_rule.get("failure_type", "METHODOLOGY")
+
+        # 3. Group and summarize all active rules
+        active_by_domain = {}
+        active_count = 0
+        for entry in all_rules:
+            conf = entry.get("confidence", 1.0)
+            if conf >= 0.25:
+                active_count += 1
+                dom = entry.get("domain", "general")
+                if dom not in active_by_domain:
+                    active_by_domain[dom] = []
+                active_by_domain[dom].append(entry)
+
+        grouped_domains_list = []
+        for dom, entries in sorted(active_by_domain.items()):
+            grouped_domains_list.append(f"\n📂 Domain: {dom.upper()} ({len(entries)} active rule{'s' if len(entries) > 1 else ''})")
+            for idx, entry in enumerate(entries, 1):
+                rule_text = entry.get("active_anti_pattern_rule", "")
+                method_text = entry.get("attempted_methodology", "")
+                grouped_domains_list.append(f"  {idx}. [Method: {method_text}]")
+                grouped_domains_list.append(f"     Constraint: {rule_text}")
+        grouped_domains_str = "\n".join(grouped_domains_list)
+
+        # 4. Construct email body
+        subject = f"🛡️ ARIA Auto-Immunity Alert: New Rule Sealed in [{domain_name}]"
+        body = (
+            "========================================================================\n"
+            "🛡️ ARIA COGNITIVE IMMUNE SYSTEM — NEW RULE SEALED\n"
+            "========================================================================\n\n"
+            "A new cognitive/reasoning anti-pattern rule has been successfully synthesized\n"
+            "and committed to failures.json by the Epistemic Immune System.\n\n"
+            "------------------------------------------------------------------------\n"
+            "🚨 NEW ACTIVE IMMUNITY RULE (SEALED ON TOP)\n"
+            "------------------------------------------------------------------------\n"
+            f"🌐 Execution Domain: {domain_name}\n"
+            f"⚙️ Attempted Method: {attempted_method}\n"
+            f"❌ Observed Consequence: {observed_consequence}\n"
+            "🛡️ Active Anti-Pattern Rule:\n"
+            f">>> {active_anti_pattern_rule} <<<\n"
+            f"🕒 Timestamp: {timestamp}\n"
+            f"🏷️ Failure Type: {failure_type}\n\n"
+            "------------------------------------------------------------------------\n"
+            "📊 SYSTEM WIDE IMMUNITY SUMMARY\n"
+            "------------------------------------------------------------------------\n"
+            f"• Total Sealed Immunity Rules in History: {len(all_rules)}\n"
+            f"• Active Reasoning Constraints (confidence >= 0.25): {active_count}\n"
+            f"{grouped_domains_str}\n\n"
+            "========================================================================\n"
+            "ℹ️ ARIA cognitive OS automatically enforces these negative constraints\n"
+            "during future plan-and-decouple execution graphs to eliminate errors.\n"
+            "========================================================================\n"
+        )
+
+        # 5. Dispatch email
+        ok, msg = send_gmail(to=recipient, subject=subject, body=body)
+        if ok:
+            print(f"[IMMUNE SYSTEM EMAIL SUCCESS] {msg}", flush=True)
+        else:
+            print(f"[IMMUNE SYSTEM EMAIL FAILED] {msg}", flush=True)
+
+    except Exception as e:
+        print(f"[IMMUNE SYSTEM EMAIL EXCEPTION] Failed to construct or send email notification: {e}", flush=True)
+
+
 def log_execution_failure(domain: str, method: str, exception_msg: str) -> bool:
     """
     Auto-Immune Failure Logger. Captures a caught exception, automatically
@@ -186,6 +283,19 @@ def log_execution_failure(domain: str, method: str, exception_msg: str) -> bool:
                 
             os.replace(temp_path, FAILURES_PATH)
             print(f"[IMMUNE SYSTEM SUCCESS] Anti-pattern logged for domain '{domain}': \"{failure_entry['active_anti_pattern_rule']}\"", flush=True)
+            
+            # Dispatch background email notification
+            try:
+                email_thread = threading.Thread(
+                    target=send_immune_rule_email,
+                    args=(failure_entry, failures),
+                    daemon=True
+                )
+                email_thread.start()
+                print(f"[IMMUNE SYSTEM EMAIL] Dispatched email notification thread in background.", flush=True)
+            except Exception as thread_err:
+                print(f"[IMMUNE SYSTEM EMAIL ERROR] Failed to start email notification thread: {thread_err}", flush=True)
+
             return True
             
     except Exception as e:
