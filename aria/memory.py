@@ -86,13 +86,21 @@ def log_execution_failure(domain: str, method: str, exception_msg: str) -> bool:
     """
     # Gating infrastructure/rate limits/network errors to prevent immune auto-immune contamination
     msg_lower = exception_msg.lower()
-    is_infra_failure = (
-        any(k in msg_lower for k in ("429", "rate limit", "rate_limit_exceeded", "too many requests", "tpd", "tpm")) or
-        any(k in msg_lower for k in ("timeout", "connection refused", "network", "http error", "503", "502", "504", "socket", "dns", "urllib3", "requests.exceptions", "unreachable", "disconnected")) or
-        any(k in msg_lower for k in ("token budget", "token limit", "out of memory", "disk full", "no space", "filesystem", "permission denied"))
-    )
+    
+    # Classify the failure type explicitly for future analytical lookups
+    failure_type = "METHODOLOGY"
+    if any(k in msg_lower for k in ("429", "rate limit", "rate_limit_exceeded", "too many requests", "tpd", "tpm")):
+        failure_type = "RATE_LIMIT"
+    elif any(k in msg_lower for k in ("timeout", "connection refused", "network", "http error", "503", "502", "504", "socket", "dns", "urllib3", "requests.exceptions", "unreachable", "disconnected")):
+        failure_type = "NETWORK"
+    elif any(k in msg_lower for k in ("token budget", "token limit", "out of memory", "disk full", "no space", "filesystem", "permission denied")):
+        failure_type = "RESOURCE"
+    elif "audit" in msg_lower or "compliance" in msg_lower or "checklist" in msg_lower:
+        failure_type = "AUDIT"
+        
+    is_infra_failure = failure_type in ("RATE_LIMIT", "NETWORK", "RESOURCE")
     if is_infra_failure:
-        print(f"[IMMUNE SYSTEM GATE] Bypassing immune learning for infrastructure/rate-limit/network/resource exception: {exception_msg}", flush=True)
+        print(f"[IMMUNE SYSTEM GATE] Bypassing immune learning for {failure_type} exception: {exception_msg}", flush=True)
         return False
 
     if not GROQ_KEY:
@@ -154,7 +162,8 @@ def log_execution_failure(domain: str, method: str, exception_msg: str) -> bool:
             "decay_rate": 0.15,
             "success_count": 0,
             "ttl_sessions_remaining": 20,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "failure_type": failure_type
         }
         
         # 2. Append atomically to failures.json
