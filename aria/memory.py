@@ -194,16 +194,33 @@ def log_execution_failure(domain: str, method: str, exception_msg: str, goal: st
     
     # Classify the failure type explicitly for future analytical lookups
     failure_type = "METHODOLOGY"
-    if any(k in msg_lower for k in ("429", "rate limit", "rate_limit_exceeded", "too many requests", "tpd", "tpm")):
+    
+    # Primary check: direct infrastructure signals in the exception message
+    infra_rate = ("429", "rate limit", "rate_limit_exceeded", "too many requests", "tpd", "tpm")
+    infra_net = ("timeout", "connection refused", "network", "http error", "503", "502", "504", "socket", "dns", "urllib3", "requests.exceptions", "unreachable", "disconnected")
+    infra_res = ("token budget", "token limit", "out of memory", "disk full", "no space", "filesystem", "permission denied")
+    
+    if any(k in msg_lower for k in infra_rate):
         failure_type = "RATE_LIMIT"
-    elif any(k in msg_lower for k in ("timeout", "connection refused", "network", "http error", "503", "502", "504", "socket", "dns", "urllib3", "requests.exceptions", "unreachable", "disconnected")):
+    elif any(k in msg_lower for k in infra_net):
         failure_type = "NETWORK"
-    elif any(k in msg_lower for k in ("token budget", "token limit", "out of memory", "disk full", "no space", "filesystem", "permission denied")):
+    elif any(k in msg_lower for k in infra_res):
         failure_type = "RESOURCE"
     elif "audit" in msg_lower or "compliance" in msg_lower or "checklist" in msg_lower:
         failure_type = "AUDIT"
+    # Secondary defense: detect repackaged worker/schema errors that masked the original infra signal
+    elif "worker error" in msg_lower or "malformed json" in msg_lower:
+        # These are downstream consequences of worker failures.
+        # If any infra signal is buried inside the nested error text, gate it.
+        all_infra = infra_rate + infra_net + infra_res
+        if any(k in msg_lower for k in all_infra):
+            failure_type = "RATE_LIMIT"  # Conservative: treat as infra
+        else:
+            # Even if we can't detect the original signal, a "malformed JSON" from a worker
+            # is almost never a true methodology failure — it's a transient LLM output error.
+            failure_type = "TRANSIENT_WORKER"
         
-    is_infra_failure = failure_type in ("RATE_LIMIT", "NETWORK", "RESOURCE")
+    is_infra_failure = failure_type in ("RATE_LIMIT", "NETWORK", "RESOURCE", "TRANSIENT_WORKER")
     if is_infra_failure:
         print(f"[IMMUNE SYSTEM GATE] Bypassing immune learning for {failure_type} exception: {exception_msg}", flush=True)
         return False

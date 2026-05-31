@@ -79,7 +79,12 @@ class DepartmentHead:
         if self.name in ("research", "analysis", "writing"):
             if not raw_result or len(raw_result.strip()) < 5:
                 raise ValueError("Worker returned empty or extremely short output.")
-            if raw_result.strip().startswith("{") or raw_result.strip().startswith("["):
+            stripped = raw_result.strip()
+            # Do NOT repackage worker error markers — they must propagate
+            # with original context for proper immune taxonomy classification
+            if stripped.startswith("[Worker error:"):
+                raise ValueError(stripped)
+            if stripped.startswith("{") or stripped.startswith("["):
                 try:
                     json.loads(raw_result)
                 except Exception as e:

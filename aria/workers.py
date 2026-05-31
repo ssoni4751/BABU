@@ -66,5 +66,14 @@ def run_worker(task: TaskDTO, scoped_context: dict, llm: Any) -> tuple[str, dict
         tokens = extract_tokens(res)
         return res.content.strip(), tokens
     except Exception as exc:
+        exc_str = str(exc).lower()
         print(f"[WORKER:{task.department.upper()}] Invocation failed: {exc}", flush=True)
+        # Re-raise infrastructure errors so the executor and immune system
+        # can see the ORIGINAL error type (429, network, timeout) instead of
+        # a masked "malformed JSON" from the schema validator downstream.
+        infra_signals = ("429", "rate limit", "rate_limit_exceeded", "too many requests",
+                         "tpd", "tpm", "timeout", "connection refused", "network",
+                         "502", "503", "504", "socket", "dns", "unreachable")
+        if any(sig in exc_str for sig in infra_signals):
+            raise  # Preserve original exception for proper taxonomy classification
         return f"[Worker error: {exc}]", {"prompt": 0, "completion": 0, "total": 0}
