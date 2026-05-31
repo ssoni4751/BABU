@@ -238,6 +238,37 @@ class WritingHead(DepartmentHead):
             "sender_profile": user_context,
         }
 
+    def _run_worker(self, task: TaskDTO, scoped_context: dict, llm: Any) -> tuple[str, dict]:
+        """Override to inject specific writing guidelines (e.g. preserving citations/links)."""
+        from langchain_core.messages import SystemMessage, HumanMessage
+        try:
+            from .workers import extract_tokens
+            from .memory import get_anti_pattern_rules
+        except ImportError:
+            from workers import extract_tokens
+            from memory import get_anti_pattern_rules
+
+        system = (
+            "ARIA Worker [WRITING]: You are ARIA's professional corporate copywriter and report editor.\n"
+            "Your task is to write a well-structured, clear, and easy-to-understand deliverable based on the provided upstream context.\n"
+            "CRITICAL: If the provided upstream context ('upstream_results') contains any credible sources, reference links, URLs, or citations, you MUST carry them forward and embed or list them in a dedicated 'Sources & Citations' section at the end of your document. Do NOT lose or omit any source links.\n"
+            "Be extremely factual and professional. Do not assume or invent facts outside of the provided context."
+        )
+
+        anti_patterns = get_anti_pattern_rules("department.writing")
+        if anti_patterns:
+            system += f"\n\nCRITICAL ANTI-PATTERNS TO AVOID:\n{anti_patterns}"
+
+        user_content = json.dumps(scoped_context, ensure_ascii=False, default=str)
+
+        print(f"[WORKER:WRITING] Starting LLM invocation with strict citation-lock guidance...", flush=True)
+        res = llm.invoke([
+            SystemMessage(content=system),
+            HumanMessage(content=user_content)
+        ])
+        tokens = extract_tokens(res)
+        return res.content.strip(), tokens
+
 
 
 # ── ExecutionHead ────────────────────────────────────────────────────────────

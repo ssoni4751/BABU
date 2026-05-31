@@ -48,6 +48,7 @@ PLANNER_SYSTEM_PROMPT: str = (
     "- Each task must have: task_id (T1, T2, ...), objective, department, "
     "depends_on (list of task_ids), priority (1=highest), and compliance_checklist (list of strings).\n"
     "- compliance_checklist: A list of 2-3 specific, concrete criteria that the task's output must satisfy for the auditor to approve it (e.g., verifying specific factual items, formatting style, checking profile matches, or ensuring it is not a raw status message).\n"
+    "  CRITICAL: For 'writing' tasks that synthesize upstream 'research' findings, you MUST always include a checklist item requiring that all research citations, source links, or references are explicitly preserved and listed at the end of the report.\n"
     "- Valid departments: research, analysis, writing, execution, pa\n"
     "- depends_on must reference existing task_ids only\n"
     "- Tasks with no dependencies get depends_on: []\n"
