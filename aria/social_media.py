@@ -527,7 +527,8 @@ def run_autonomous_social_post() -> tuple[bool, str, str, str]:
             log_execution_failure(
                 domain="social_media.facebook_publisher",
                 method=f"publish_to_facebook_page(img_path, caption) with Page ID {os.environ.get('FACEBOOK_PAGE_ID')}",
-                exception_msg=msg
+                exception_msg=msg,
+                goal="Daily Autonomous Marketing Post generation and publishing"
             )
             
         import gc
@@ -546,7 +547,8 @@ def run_autonomous_social_post() -> tuple[bool, str, str, str]:
         log_execution_failure(
             domain="social_media.autonomous_social_post",
             method="run_autonomous_social_post() full pipeline execution",
-            exception_msg=error_msg
+            exception_msg=error_msg,
+            goal="Daily Autonomous Marketing Post generation and publishing"
         )
         import gc
         gc.collect()

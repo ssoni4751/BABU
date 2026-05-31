@@ -1516,7 +1516,8 @@ def task_executor_node(state: AriaState):
                         log_execution_failure(
                             domain=f"department.{task.department}",
                             method=task.objective,
-                            exception_msg=f"Post-execution Audit Failed: {audit_result}"
+                            exception_msg=f"Post-execution Audit Failed: {audit_result}",
+                            goal=goal_graph.goal
                         )
                     else:
                         print(f"[IMMUNE SYSTEM GATE] Bypassing failure logging for CORRECTION goal execution failure to prevent database noise.", flush=True)
@@ -1598,7 +1599,8 @@ def task_executor_node(state: AriaState):
                     log_execution_failure(
                         domain=f"department.{task.department}",
                         method=task.objective,
-                        exception_msg=f"Task Execution Exception: {err_msg}"
+                        exception_msg=f"Task Execution Exception: {err_msg}",
+                        goal=goal_graph.goal
                     )
                 else:
                     print(f"[IMMUNE SYSTEM GATE] Bypassing failure logging for CORRECTION goal execution failure to prevent database noise.", flush=True)
