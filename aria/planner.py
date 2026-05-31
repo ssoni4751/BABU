@@ -101,7 +101,7 @@ def _extract_json(text: str) -> dict:
     return json.loads(cleaned)
 
 
-def _build_fallback_graph(query: str, goal_id: Optional[str] = None, goal_type: str = "NEW") -> GoalGraph:
+def _build_fallback_graph(query: str, goal_id: Optional[str] = None, goal_type: str = "NEW", planner_status: str = "FALLBACK") -> GoalGraph:
     """Return a single-task fail-closed graph refusing execution due to planning ambiguity."""
     if not goal_id:
         goal_id = f"G-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
@@ -126,6 +126,7 @@ def _build_fallback_graph(query: str, goal_id: Optional[str] = None, goal_type: 
         status="FAILED",
         created_at=now_iso,
         goal_type=goal_type,
+        planner_status=planner_status,
     )
 
 
@@ -205,7 +206,14 @@ def plan_goal(
         raw_text: str = response.content  # type: ignore[union-attr]
     except Exception as exc:
         print(f"[PLANNER] LLM call failed: {exc}")
-        return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type)
+        exc_str = str(exc).lower()
+        if any(k in exc_str for k in ("429", "rate limit", "rate_limit_exceeded", "too many requests", "tpd", "tpm")):
+            p_status = "RATE_LIMIT"
+        elif any(k in exc_str for k in ("timeout", "connection refused", "network", "socket", "dns", "unreachable")):
+            p_status = "NETWORK"
+        else:
+            p_status = "PROVIDER_ERROR"
+        return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status=p_status)
 
     # Parse JSON -----------------------------------------------------------
     try:
@@ -213,7 +221,7 @@ def plan_goal(
     except (json.JSONDecodeError, ValueError) as exc:
         print(f"[PLANNER] JSON parse error: {exc}")
         print(f"[PLANNER] Raw LLM output: {raw_text[:300]}")
-        return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type)
+        return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status="JSON_ERROR")
 
     # Validate & build TaskDTOs -------------------------------------------
     goal_text: str = data.get("goal", query[:200])
@@ -221,7 +229,7 @@ def plan_goal(
 
     if not raw_tasks:
         print("[PLANNER] LLM returned empty task list — using fallback")
-        return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type)
+        return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status="VALIDATION_ERROR")
 
     valid_dept_names = set(DEPARTMENTS.keys())
     tasks: List[TaskDTO] = []
@@ -280,7 +288,7 @@ def plan_goal(
 
     if not tasks:
         print("[PLANNER] All tasks filtered out — using fallback")
-        return _build_fallback_graph(query, goal_type=goal_type)
+        return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status="VALIDATION_ERROR")
 
     # ── Post-processing: Enforce content dependencies for execution tasks ──
     content_task_ids = [t.task_id for t in tasks if t.department in ("writing", "analysis", "research")]
@@ -319,7 +327,7 @@ def plan_goal(
         validate_dag(graph.tasks)
     except Exception as exc:
         print(f"[PLANNER] DAG validation failed: {exc} — using fallback")
-        return _build_fallback_graph(query, goal_type=goal_type)
+        return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status="VALIDATION_ERROR")
 
     duration = round(time.time() - start, 2)
     print(f"[PLANNER] Generated {len(tasks)} tasks in {duration}s")

@@ -1188,7 +1188,8 @@ def planner_node(state: AriaState):
         state_after="ACTIVE",
         metadata={
             "query": query,
-            "goal": graph.goal
+            "goal": graph.goal,
+            "planner_status": graph.planner_status
         }
     )
     
@@ -1202,7 +1203,8 @@ def planner_node(state: AriaState):
         state_after="PLANNED",
         metadata={
             "query": query,
-            "graph": graph.to_dict()
+            "graph": graph.to_dict(),
+            "planner_status": graph.planner_status
         }
     )
         
@@ -1614,6 +1616,7 @@ def task_executor_node(state: AriaState):
     
     # Goal lifecycle outcomes logging
     if engine.is_goal_complete():
+        is_graceful_recovery = (goal_graph.planner_status != "SUCCESS")
         log_execution_ledger_event(
             session_id=session_id,
             goal_id=goal_graph.goal_id,
@@ -1622,8 +1625,29 @@ def task_executor_node(state: AriaState):
             event_type="GOAL_COMPLETED",
             state_before="ACTIVE",
             state_after="COMPLETED",
-            metadata={"latency_sec": duration, "summary": final_brief[:1000]}
+            metadata={
+                "latency_sec": duration, 
+                "summary": final_brief[:1000],
+                "graceful_recovery": is_graceful_recovery,
+                "planner_status": goal_graph.planner_status
+            }
         )
+        if is_graceful_recovery:
+            log_execution_ledger_event(
+                session_id=session_id,
+                goal_id=goal_graph.goal_id,
+                task_id=None,
+                department=None,
+                event_type="RECOVERY_REGISTERED",
+                state_before="DEGRADED",
+                state_after="COMPLETED",
+                metadata={
+                    "planner_status": goal_graph.planner_status,
+                    "recovery_mechanism": "Conversational assistant fallback graph",
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            )
+            print(f"[EXECUTOR] GRACEFUL RECOVERY REGISTERED: Planner failed with status {goal_graph.planner_status}, but execution completed successfully.", flush=True)
     elif engine.is_goal_blocked() or not engine.is_goal_complete():
         log_execution_ledger_event(
             session_id=session_id,
@@ -2067,6 +2091,27 @@ def pa_node(state: AriaState):
         parts.append(f"[Internal Research]\n{research}")
 
     response = llm_pa.invoke([SystemMessage(content=manifesto), HumanMessage(content="\n\n".join(parts))])
+    
+    # Check for planner degradation and append warning card if active
+    graph_dict = state.get("goal_graph")
+    if graph_dict and graph_dict.get("planner_status", "SUCCESS") != "SUCCESS":
+        p_status = graph_dict.get("planner_status")
+        reason_map = {
+            "RATE_LIMIT": "Planner rate-limited by Groq API limits (429)",
+            "NETWORK": "Planner encountered network timeout or connectivity issues",
+            "PROVIDER_ERROR": "Planner API provider returned an execution error",
+            "JSON_ERROR": "Planner LLM output could not be parsed as valid JSON",
+            "VALIDATION_ERROR": "Planner generated an invalid or cyclic task dependency graph"
+        }
+        reason_text = reason_map.get(p_status, "Planner encountered an unexpected exception")
+        degradation_notice = (
+            "\n\n---\n"
+            "⚠️ **WORKFLOW STATUS: DEGRADED**\n"
+            f"• **Reason**: {reason_text}\n"
+            "• **Capability Impact**: Multi-agent research planning & automation pipelines are temporarily unavailable\n"
+            "• **Fallback**: Active conversational assistant recovery mode"
+        )
+        response.content += degradation_notice
     
     # Programmatic safeguard: ensure [IMAGE] tag is preserved in the response if found in action_result
     if action_result and "[IMAGE]" in action_result:
