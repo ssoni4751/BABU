@@ -164,7 +164,6 @@ def plan_goal(
     GoalGraph
         A validated task DAG ready for dispatch.
     """
-    from langchain_groq import ChatGroq
     from langchain_core.messages import SystemMessage, HumanMessage
 
     start = time.time()
@@ -192,13 +191,13 @@ def plan_goal(
 
     target_model = model_name
 
-    # Call LLM -------------------------------------------------------------
+    # Call LLM (dynamic routing via build_llm) -----------------------------
     try:
-        llm = ChatGroq(
-            model=target_model,
-            temperature=0.1,
-            api_key=os.environ.get("GROQ_API_KEY", ""),
-        )
+        try:
+            from aria.bot import build_llm
+        except ImportError:
+            from bot import build_llm
+        llm = build_llm(target_model, 0.1)
         response = llm.invoke([
             SystemMessage(content=PLANNER_SYSTEM_PROMPT),
             HumanMessage(content=user_content),

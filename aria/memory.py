@@ -229,15 +229,18 @@ def log_execution_failure(domain: str, method: str, exception_msg: str, goal: st
     )
     
     try:
-        from langchain_groq import ChatGroq
         from langchain_core.messages import SystemMessage, HumanMessage
+        try:
+            from aria.bot import build_llm
+        except ImportError:
+            from bot import build_llm
         
         observed = exception_msg
         rule = f"CRITICAL DIRECTION: Avoid using methodology {method} under domain {domain} to prevent exception: {exception_msg}"
         
         try:
-            # Call Groq's high-quality llama-3.3-70b-versatile for failures analysis
-            llm = ChatGroq(model="llama-3.3-70b-versatile", api_key=GROQ_KEY, temperature=0.2)
+            # Dynamic LLM routing for failure analysis
+            llm = build_llm("llama-3.3-70b-versatile", 0.2)
             res = llm.invoke([
                 SystemMessage(content="You are ARIA's self-correcting Epistemic Immune System. Distill system errors into highly actionable execution constraints."),
                 HumanMessage(content=analysis_prompt)
@@ -407,10 +410,13 @@ def compress_context_payload(raw_text: str, context_topic: str = "general data")
     )
     
     try:
-        from langchain_groq import ChatGroq
         from langchain_core.messages import SystemMessage, HumanMessage
+        try:
+            from aria.bot import build_llm
+        except ImportError:
+            from bot import build_llm
         
-        llm = ChatGroq(model="llama-3.1-8b-instant", api_key=GROQ_KEY, temperature=0.1)
+        llm = build_llm("llama-3.1-8b-instant", 0.1)
         res = llm.invoke([
             SystemMessage(content="You are ARIA's high-speed context compressor. Distill bulk raw data into high-density operational briefs. Be extremely concise."),
             HumanMessage(content=compression_prompt)
