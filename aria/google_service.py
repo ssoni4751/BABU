@@ -12,6 +12,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 # Unified scopes for ARIA Google Workspace actions
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/calendar",
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/documents",
@@ -836,6 +837,56 @@ def upload_file_to_drive(file_path: str, folder_name: str = "ARIA Reports") -> t
         return False, f"Failed to upload file to Google Drive: {e}"
 
 
+def search_gmail_messages(query: str, max_results: int = 5) -> tuple[bool, str]:
+    """Retrieve and search recent Gmail messages matching query from Google Workspace."""
+    try:
+        from googleapiclient.discovery import build
+        
+        creds = get_google_creds()
+        if not creds:
+            return False, "Google Workspace credentials not configured or authorization required."
+            
+        service = build("gmail", "v1", credentials=creds)
+        
+        print(f"[GMAIL] Searching messages for query: '{query}'...", flush=True)
+        results = service.users().messages().list(userId="me", q=query, maxResults=max_results).execute()
+        messages = results.get("messages", [])
+        
+        if not messages:
+            return True, f"No emails found matching search query: '{query}'."
+            
+        lines = []
+        lines.append(f"Recent emails matching query '{query}':\n")
+        
+        for msg in messages:
+            msg_id = msg["id"]
+            detail = service.users().messages().get(userId="me", id=msg_id, format="metadata", metadataHeaders=["From", "Subject", "Date"]).execute()
+            
+            headers = detail.get("payload", {}).get("headers", [])
+            sender = "Unknown Sender"
+            subject = "No Subject"
+            date = "Unknown Date"
+            
+            for h in headers:
+                name = h.get("name", "")
+                val = h.get("value", "")
+                if name.lower() == "from":
+                    sender = val
+                elif name.lower() == "subject":
+                    subject = val
+                elif name.lower() == "date":
+                    date = val
+                    
+            snippet = detail.get("snippet", "")
+            lines.append(f"• **From**: {sender}\n  **Date**: {date}\n  **Subject**: {subject}\n  **Snippet**: {snippet}\n")
+            
+        return True, "\n".join(lines)
+        
+    except Exception as e:
+        print(f"[GMAIL ERROR] Email retrieval failed: {e}", flush=True)
+        return False, f"Failed to retrieve emails: {e}"
+
+
 # ── Central Execution Router ─────────────────────────────────────────────────
 
 def execute_google_action(action: str, params: dict) -> tuple[bool, str]:
@@ -889,6 +940,13 @@ def execute_google_action(action: str, params: dict) -> tuple[bool, str]:
         if not query:
             return False, "Missing 'query' parameter to search."
         return search_google_sheet(sheet_name, query)
+
+    elif action == "search_gmail":
+        query = params.get("query", "")
+        max_results = int(params.get("max_results", 5))
+        if not query:
+            return False, "Missing Gmail 'query' search parameter."
+        return search_gmail_messages(query, max_results)
 
     elif action == "search_image":
         query = params.get("query", "")

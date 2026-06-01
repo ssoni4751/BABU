@@ -43,7 +43,7 @@ def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]
     # 2. Dynamic capability-level union (prevents rigid halting on combined intents)
     if intent_packet_dict.get("lookup", False) or intent_packet_dict.get("research", False):
         allowed_depts.update({"research", "pa"})
-        allowed_actions.update({"search_sheet"})
+        allowed_actions.update({"search_sheet", "search_gmail"})
 
     if intent_packet_dict.get("generate", False):
         allowed_depts.update({"analysis", "writing", "pa"})
@@ -54,14 +54,14 @@ def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]
         all_actions = {
             "send_email", "create_event", "log_to_sheet", "create_doc", 
             "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
-            "send_slack", "create_task", "search_image"
+            "send_slack", "create_task", "search_image", "search_gmail"
         }
         allowed_actions.update(all_actions)
 
     # 3. Dynamic capability pruning for execute=False
     if not intent_packet_dict.get("execute", False):
         if "execution" in allowed_depts:
-            allowed_actions = allowed_actions.intersection({"search_sheet"})
+            allowed_actions = allowed_actions.intersection({"search_sheet", "search_gmail"})
             if not allowed_actions:
                 allowed_depts.discard("execution")
 
@@ -83,7 +83,8 @@ class PreExecutionGatekeeper:
             "copy_contacts_to_drive",
             "send_slack",
             "create_task",
-            "search_image"
+            "search_image",
+            "search_gmail"
         }
 
     def audit(self, task: TaskDTO) -> Tuple[bool, str]:

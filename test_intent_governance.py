@@ -197,5 +197,71 @@ class TestIntentGovernance(unittest.TestCase):
         if planning_rules:
             print(f"Planning Rules:\n{planning_rules}")
 
+    def test_08_auditor_allows_read_only_search_gmail_under_lookup(self):
+        """Test that PreExecutionGatekeeper allows search_gmail under LOOKUP even when execute=False."""
+        gatekeeper = PreExecutionGatekeeper()
+        intent = IntentPacket(lookup=True, research=False, generate=False, execute=False, execution_mode="READ_ONLY", workflow_template="LOOKUP")
+
+        task = TaskDTO(
+            task_id="T2",
+            objective="Retrieve recent emails",
+            department="execution",
+            depends_on=[],
+            priority=2,
+            context={
+                "action": "search_gmail",
+                "params": {"query": "flight", "max_results": 5},
+                "intent_packet": intent.to_dict()
+            }
+        )
+
+        from aria.google_service import is_google_configured
+        if not is_google_configured():
+            import aria.google_service as gs
+            original_func = gs.is_google_configured
+            gs.is_google_configured = lambda: True
+
+        try:
+            passed, reason = gatekeeper.audit(task)
+            self.assertTrue(passed, f"Gatekeeper failed unexpectedly: {reason}")
+            print("✅ Pre-execution gatekeeper successfully permitted read-only search_gmail under LOOKUP.")
+        finally:
+            if not is_google_configured():
+                gs.is_google_configured = original_func
+
+    def test_09_planner_allows_and_generates_search_gmail_tasks(self):
+        """Test that the planner generates search_gmail tasks successfully without template violations."""
+        query = "Check my recent emails for any flight updates and summarize them."
+        
+        # Classify the intent
+        packet = classify_intent(query)
+        self.assertTrue(packet.lookup or packet.research)
+        self.assertFalse(packet.execute)
+        self.assertEqual(packet.execution_mode, "READ_ONLY")
+        
+        # Generate plan using plan_goal
+        graph = plan_goal(
+            query=query,
+            gear="SPRINT",
+            intent_packet=packet,
+            model_name="llama-3.3-70b-versatile"
+        )
+        
+        print("\nDEBUG test_09 tasks:")
+        for t in graph.tasks:
+            print(f"  Task {t.task_id}: dept={t.department}, action={t.context.get('action')}, params={t.context.get('params')}, obj={t.objective}")
+        print()
+        
+        self.assertEqual(graph.planner_status, "SUCCESS")
+        
+        # Verify that there is at least one execution task with action='search_gmail'
+        has_search_gmail = False
+        for t in graph.tasks:
+            if t.department == "execution" and t.context.get("action") == "search_gmail":
+                has_search_gmail = True
+                
+        self.assertTrue(has_search_gmail, "Planner failed to generate search_gmail action task.")
+        print("✅ Planner successfully classified, generated, and verified search_gmail task graph without template violation.")
+
 if __name__ == "__main__":
     unittest.main()

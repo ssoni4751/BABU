@@ -44,12 +44,12 @@ from dataclasses import dataclass
 TEMPLATES: Dict[str, Dict[str, Any]] = {
     "LOOKUP": {
         "allowed_departments": {"research", "pa", "execution"},
-        "allowed_actions": {"search_sheet"},
+        "allowed_actions": {"search_sheet", "search_gmail"},
         "default_mode": "READ_ONLY"
     },
     "RESEARCH": {
-        "allowed_departments": {"research", "analysis", "writing", "pa"},
-        "allowed_actions": set(),
+        "allowed_departments": {"research", "analysis", "writing", "pa", "execution"},
+        "allowed_actions": {"search_gmail"},
         "default_mode": "READ_ONLY"
     },
     "PUBLISH": {
@@ -198,12 +198,12 @@ PLANNER_SYSTEM_PROMPT: str = (
     "- INTENT & TEMPLATE CONSTRAINTS: The system has pre-classified the user's intent boundaries and selected a WORKFLOW TEMPLATE. You must strictly obey these constraints:\n"
     "  * If lookup is false and research is false, you must NOT create any 'research' tasks.\n"
     "  * If generate is false, you must NOT create any 'analysis' or 'writing' tasks.\n"
-    "  * If execute is false, you are STRICTLY FORBIDDEN from creating any 'execution' department tasks (e.g. sending emails or creating docs). Creating unauthorized execution tasks is a critical safety violation.\n"
+    "  * If execute is false, you are STRICTLY FORBIDDEN from creating mutating 'execution' department tasks (e.g. sending emails, creating events, or creating docs). You are only allowed to plan read-only actions like 'search_sheet' or 'search_gmail'. Creating unauthorized mutating execution tasks is a critical safety violation.\n"
     "  * workflow_template: Read this setting carefully and obey its strict bounds:\n"
-    "    - LOOKUP: Only allow 'research', 'pa', and read-only 'execution' tasks. Permitted actions: 'search_sheet'. No writing, analysis, or mutating execution tasks are allowed.\n"
-    "    - RESEARCH: Only allow 'research', 'analysis', 'writing', and 'pa' tasks. NO 'execution' tasks are allowed under any circumstances.\n"
-    "    - PUBLISH: Allow 'research', 'analysis', 'writing', 'execution', and 'pa' tasks. Permitted execution actions: 'send_email', 'send_slack', 'create_doc', 'log_to_sheet'.\n"
-    "    - EXECUTE: Only allow 'execution', 'pa', and 'research' tasks. Permitted execution actions: 'create_event', 'log_to_sheet', 'create_doc', 'copy_photos_to_drive', 'copy_contacts_to_drive', 'create_task'.\n"
+    "    - LOOKUP: Only allow 'research', 'pa', and read-only 'execution' tasks. Permitted actions: 'search_sheet', 'search_gmail'. No writing, analysis, or mutating execution tasks are allowed.\n"
+    "    - RESEARCH: Only allow 'research', 'analysis', 'writing', 'pa', and read-only 'execution' tasks. Permitted execution actions: 'search_gmail'. No mutating execution tasks are allowed.\n"
+    "    - PUBLISH: Allow 'research', 'analysis', 'writing', 'execution', and 'pa' tasks. Permitted execution actions: 'send_email', 'send_slack', 'create_doc', 'log_to_sheet', 'search_gmail'.\n"
+    "    - EXECUTE: Only allow 'execution', 'pa', and 'research' tasks. Permitted execution actions: 'create_event', 'log_to_sheet', 'create_doc', 'copy_photos_to_drive', 'copy_contacts_to_drive', 'create_task', 'search_gmail'.\n"
     "  * execution_mode: Read this setting carefully. If it is 'READ_ONLY', you must only plan read-only informational/research tasks and end with a 'pa' task; no draft or mutation actions are allowed. If it is 'APPROVAL_REQUIRED', you can create 'execution' tasks but they will go through an approval check. If it is 'AUTO_EXECUTE', you are allowed to plan automated background execution dispatches.\n"
     "- CORRECT TASK SEQUENCING: If the goal requires multiple sequential steps or multiple execution actions (e.g. first research X, then write a report, then create a Google Doc, and finally send an email), you must establish strict dependency links (depends_on) between these tasks to ensure they execute in the correct chronological order (e.g. writing depends on research, Doc creation depends on writing, and email sending depends on Doc creation). If there are multiple execution department tasks, chain them sequentially (T_execution_N depends on T_execution_N-1) to ensure the user audits and approves them in the correct sequence.\n"
     "- Each task must have: task_id (T1, T2, ...), objective, department, "
@@ -215,7 +215,8 @@ PLANNER_SYSTEM_PROMPT: str = (
     "- depends_on must reference existing task_ids only\n"
     "- Tasks with no dependencies get depends_on: []\n"
     "- The LAST task should synthesize/deliver the final result to the user and MUST belong to the 'pa' department.\n"
-    "- CRITICAL: ONLY create an 'execution' department task if the user's request explicitly asks for a physical mutation action (e.g. sending an email, logging to sheets, creating a document, or scheduling a calendar event). Do NOT default to creating execution/action tasks for informational, question-answering, or research queries (e.g. 'get the weather update' or 'research cyber security trends'). Such requests should only use 'research', 'analysis', and 'writing' tasks, and end directly with a 'pa' task.\n"
+    "- CRITICAL: ONLY create an 'execution' department task if the user's request explicitly asks for a physical action (e.g. sending an email, logging to sheets, creating a document, scheduling a calendar event, or performing read-only search/retrieval like search_sheet or search_gmail). Do NOT default to creating execution/action tasks for general informational, question-answering, or web research queries (e.g. 'get the weather update' or 'research cyber security trends'). Such requests should only use 'research', 'analysis', and 'writing' tasks, and end directly with a 'pa' task.\n"
+    "- CRITICAL: If the user's query asks to check, retrieve, search, or find information inside their Google Sheets or Gmail, you MUST create an 'execution' department task using 'search_sheet' or 'search_gmail' action. Do NOT use a general 'research' department task for Sheets or Gmail retrieval, because general research cannot access Workspace data.\n"
     "- CRITICAL: If department is 'execution', you MUST specify 'action' and 'params' in that task's JSON object! You must dynamically select the most appropriate action from the list of valid actions based on the user's intent. Do not blindly default to 'send_email'.\n"
     "  Valid actions & parameters:\n"
     "    * send_email(to, subject, body) -- Use ONLY if user explicitly asked to send/mail an email.\n"
@@ -223,6 +224,7 @@ PLANNER_SYSTEM_PROMPT: str = (
     "    * log_to_sheet(sheet_name, data) -- Use ONLY if user explicitly asked to log or add data to a spreadsheet/sheet.\n"
     "    * create_doc(title, content) -- Use ONLY if user explicitly asked to write/create/draft a separate document file.\n"
     "    * search_sheet(sheet_name, query) -- Use ONLY if user explicitly asked to query/search/find information inside a spreadsheet/sheet.\n"
+    "    * search_gmail(query, max_results) -- Use ONLY if user explicitly asked to search or retrieve recent emails matching a query.\n"
     "  In 'params', use the placeholder '[NEEDS_RESEARCH_CONTEXT]' for parameters that depend on upstream findings (e.g. content: '[NEEDS_RESEARCH_CONTEXT]' or body: '[NEEDS_RESEARCH_CONTEXT]').\n"
     "  CRITICAL: If a task (like send_email) is designed to transmit/report findings or content generated upstream, it MUST depend directly on the 'writing', 'analysis', or 'research' task that generated that content, NOT on intermediate execution tasks (like 'create_doc' or 'log_to_sheet') which only return a status confirmation message.\n"
     "- Keep tasks atomic — one clear objective each\n"
@@ -319,7 +321,7 @@ def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]
     # 2. Dynamic capability-level union (prevents rigid halting on combined intents)
     if intent_packet_dict.get("lookup", False) or intent_packet_dict.get("research", False):
         allowed_depts.update({"research", "pa"})
-        allowed_actions.update({"search_sheet"})
+        allowed_actions.update({"search_sheet", "search_gmail"})
 
     if intent_packet_dict.get("generate", False):
         allowed_depts.update({"analysis", "writing", "pa"})
@@ -330,9 +332,16 @@ def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]
         all_actions = {
             "send_email", "create_event", "log_to_sheet", "create_doc", 
             "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
-            "send_slack", "create_task", "search_image"
+            "send_slack", "create_task", "search_image", "search_gmail"
         }
         allowed_actions.update(all_actions)
+
+    # 3. Dynamic capability pruning for execute=False
+    if not intent_packet_dict.get("execute", False):
+        if "execution" in allowed_depts:
+            allowed_actions = allowed_actions.intersection({"search_sheet", "search_gmail"})
+            if not allowed_actions:
+                allowed_depts.discard("execution")
 
     return allowed_depts, allowed_actions
 
@@ -554,6 +563,9 @@ def plan_goal(
         if preferred_dep:
             for t in tasks:
                 if t.department == "execution":
+                    action = t.context.get("action")
+                    if action in ("search_sheet", "search_gmail"):
+                        continue  # Do not add content dependency to read-only lookup/retrieval actions
                     if preferred_dep not in t.depends_on and t.task_id != preferred_dep:
                         print(f"[PLANNER] Post-processing: adding dependency {preferred_dep} to execution task {t.task_id} to ensure context propagation.", flush=True)
                         t.depends_on.append(preferred_dep)
