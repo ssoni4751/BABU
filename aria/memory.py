@@ -3,6 +3,7 @@ import sys
 import json
 import threading
 from datetime import datetime, timezone, timedelta
+from typing import Optional, Dict, List, Any
 from dotenv import load_dotenv
 
 # Ensure environment variables are loaded
@@ -183,7 +184,13 @@ def send_immune_rule_email(new_rule: dict, all_rules: list) -> None:
         print(f"[IMMUNE SYSTEM EMAIL EXCEPTION] Failed to construct or send email notification: {e}", flush=True)
 
 
-def log_execution_failure(domain: str, method: str, exception_msg: str, goal: str = "Daily Autonomous Marketing Post") -> bool:
+def log_execution_failure(
+    domain: str,
+    method: str,
+    exception_msg: str,
+    goal: str = "Daily Autonomous Marketing Post",
+    intent_packet: Optional[dict] = None
+) -> bool:
     """
     Auto-Immune Failure Logger. Captures a caught exception, automatically
     uses Groq to synthesize a strict anti-pattern rule, and
@@ -231,19 +238,37 @@ def log_execution_failure(domain: str, method: str, exception_msg: str, goal: st
         
     print(f"[IMMUNE SYSTEM] Activating diagnostic pass for domain '{domain}'...", flush=True)
     
-    # 1. Define standard analysis prompt
-    analysis_prompt = (
-        f"Analyze this operational failure in ARIA's automated systems.\n\n"
-        f"• Execution Domain: {domain}\n"
-        f"• Attempted Method: {method}\n"
-        f"• Exception Message: {exception_msg}\n\n"
-        f"Provide a structured failure analysis. You must output a raw JSON object ONLY "
-        f"(do not wrap in markdown ```json blocks) containing exactly these three keys:\n"
-        f"{{\n"
-        f"  \"observed_consequence\": \"A brief summary of what went wrong and why.\",\n"
-        f"  \"active_anti_pattern_rule\": \"A strict, clear directive/rule instructing the bot what to NEVER attempt in the future to avoid this exact error (e.g., 'NEVER use parent User tokens to post directly, always query /me/accounts for Page Tokens first').\"\n"
-        f"}}"
-    )
+    # 1. Define standard or governance analysis prompt
+    if intent_packet:
+        analysis_prompt = (
+            f"Analyze this operational failure in ARIA's automated systems at the GOVERNANCE/PLANNING level.\n\n"
+            f"• Goal text: {goal}\n"
+            f"• Failed Task Objective: {method}\n"
+            f"• Failure exception or audit result: {exception_msg}\n"
+            f"• Assigned Department: {domain}\n"
+            f"• Parent Intent Packet: {json.dumps(intent_packet, indent=2)}\n\n"
+            f"Identify if this failure was due to planning template mismatch, intent misclassification, capability leak, or architectural constraint violations.\n"
+            f"Provide a structured root cause analysis. You must output a raw JSON object ONLY "
+            f"(do not wrap in markdown ```json blocks) containing exactly these three keys:\n"
+            f"{{\n"
+            f"  \"observed_consequence\": \"A brief summary of the planning/intent root cause of this failure (e.g., 'The intent classifier misclassified the query as LOOKUP instead of RESEARCH, leading to missing analysis tasks').\",\n"
+            f"  \"active_anti_pattern_rule\": \"A strict, clear negative constraint instructing the strategic planner or intent classifier what to NEVER attempt in the future to avoid this error (e.g., 'NEVER classify queries containing search comparisons as LOOKUP; always route to RESEARCH' or 'NEVER create writing or analysis tasks under a LOOKUP template').\",\n"
+            f"  \"target_domain\": \"governance.classification\" if the error was caused by classifier misclassification, or \"governance.planning\" if caused by planner/template decomposition errors, or standard \"{domain}\" if it is a task-level execution error.\n"
+            f"}}"
+        )
+    else:
+        analysis_prompt = (
+            f"Analyze this operational failure in ARIA's automated systems.\n\n"
+            f"• Execution Domain: {domain}\n"
+            f"• Attempted Method: {method}\n"
+            f"• Exception Message: {exception_msg}\n\n"
+            f"Provide a structured failure analysis. You must output a raw JSON object ONLY "
+            f"(do not wrap in markdown ```json blocks) containing exactly these three keys:\n"
+            f"{{\n"
+            f"  \"observed_consequence\": \"A brief summary of what went wrong and why.\",\n"
+            f"  \"active_anti_pattern_rule\": \"A strict, clear directive/rule instructing the bot what to NEVER attempt in the future to avoid this exact error (e.g., 'NEVER use parent User tokens to post directly, always query /me/accounts for Page Tokens first').\"\n"
+            f"}}"
+        )
     
     try:
         from langchain_core.messages import SystemMessage, HumanMessage
@@ -277,6 +302,8 @@ def log_execution_failure(domain: str, method: str, exception_msg: str, goal: st
             data = json.loads(text)
             observed = data.get("observed_consequence", exception_msg)
             rule = data.get("active_anti_pattern_rule", rule)
+            if intent_packet and "target_domain" in data:
+                domain = data["target_domain"]
         except Exception as groq_err:
             print(f"[IMMUNE SYSTEM WARNING] Groq failure analysis failed: {groq_err}. Falling back to rule-based anti-pattern generator.", flush=True)
         

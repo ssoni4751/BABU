@@ -41,6 +41,29 @@ DEPARTMENTS: Dict[str, str] = {
 
 from dataclasses import dataclass
 
+TEMPLATES: Dict[str, Dict[str, Any]] = {
+    "LOOKUP": {
+        "allowed_departments": {"research", "pa", "execution"},
+        "allowed_actions": {"search_sheet"},
+        "default_mode": "READ_ONLY"
+    },
+    "RESEARCH": {
+        "allowed_departments": {"research", "analysis", "writing", "pa"},
+        "allowed_actions": set(),
+        "default_mode": "READ_ONLY"
+    },
+    "PUBLISH": {
+        "allowed_departments": {"research", "analysis", "writing", "execution", "pa"},
+        "allowed_actions": {"send_email", "send_slack", "create_doc", "log_to_sheet"},
+        "default_mode": "APPROVAL_REQUIRED"
+    },
+    "EXECUTE": {
+        "allowed_departments": {"execution", "pa"},
+        "allowed_actions": {"create_event", "log_to_sheet", "create_doc", "copy_photos_to_drive", "copy_contacts_to_drive", "create_task"},
+        "default_mode": "APPROVAL_REQUIRED"
+    }
+}
+
 @dataclass
 class IntentPacket:
     """Represents a classified query intent with strict execution capability limits and execution modes."""
@@ -50,6 +73,7 @@ class IntentPacket:
     execute: bool = False
     execution_mode: str = "READ_ONLY"  # "READ_ONLY", "APPROVAL_REQUIRED", "AUTO_EXECUTE"
     confidence: float = 1.0
+    workflow_template: str = "LOOKUP"  # "LOOKUP", "RESEARCH", "PUBLISH", "EXECUTE"
 
     def to_dict(self) -> dict:
         return {
@@ -58,7 +82,8 @@ class IntentPacket:
             "generate": self.generate,
             "execute": self.execute,
             "execution_mode": self.execution_mode,
-            "confidence": self.confidence
+            "confidence": self.confidence,
+            "workflow_template": self.workflow_template
         }
 
     @classmethod
@@ -69,7 +94,8 @@ class IntentPacket:
             generate=data.get("generate", False),
             execute=data.get("execute", False),
             execution_mode=data.get("execution_mode", "READ_ONLY"),
-            confidence=data.get("confidence", 1.0)
+            confidence=data.get("confidence", 1.0),
+            workflow_template=data.get("workflow_template", "LOOKUP")
         )
 
 INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
@@ -87,6 +113,12 @@ INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
     "- APPROVAL_REQUIRED: User requested a mutation action (e.g. email, document creation, sheet logging) that requires user audit and approval before dispatch.\n"
     "- AUTO_EXECUTE: User requested a highly structured, scheduled, or automated background task (like daily marketing posts) that does not need explicit user approval.\n"
     "\n"
+    "WORKFLOW TEMPLATE DEFINITION:\n"
+    "- LOOKUP: Simple queries asking to look up family details, facts, contact info, chitchat, or simple sheet lookups.\n"
+    "- RESEARCH: Deeper search queries, comparison, text synthesis, or content writing that does not involve physical mutation or external updates.\n"
+    "- PUBLISH: Query explicitly requests to post, draft, or transmit updates to external channels (e.g. Facebook posts, Slack, or emails).\n"
+    "- EXECUTE: Programmatic transactional operations such as scheduling events, logging spreadsheet entries, or document creation.\n"
+    "\n"
     "CONFIDENCE RATING:\n"
     "Provide a rating between 0.0 and 1.0 representing how clear and unambiguous the user query is. If the query is vague, nonsensical, or lacks required context (e.g., 'Take care of this thing', 'do it', or 'test'), rate the confidence below 0.65.\n"
     "\n"
@@ -97,7 +129,8 @@ INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
     '  "generate": true | false,\n'
     '  "execute": true | false,\n'
     '  "execution_mode": "READ_ONLY | APPROVAL_REQUIRED | AUTO_EXECUTE",\n'
-    '  "confidence": 0.0 to 1.0\n'
+    '  "confidence": 0.0 to 1.0,\n'
+    '  "workflow_template": "LOOKUP | RESEARCH | PUBLISH | EXECUTE"\n'
     "}\n"
     "\n"
     "CRITICAL: Output ONLY valid raw JSON. No explanation, no markdown fences."
@@ -111,7 +144,7 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
     greetings = {"hi", "hello", "hey", "good morning", "good afternoon", "good evening", "how are you", "help", "clear", "stats", "model"}
     if t in greetings or len(t) < 15:
         print("[INTENT CLASSIFIER] Fast-track classification: CHORE", flush=True)
-        return IntentPacket(lookup=False, research=False, generate=False, execute=False, execution_mode="READ_ONLY", confidence=1.0)
+        return IntentPacket(lookup=False, research=False, generate=False, execute=False, execution_mode="READ_ONLY", confidence=1.0, workflow_template="LOOKUP")
 
     # 2. LLM-based robust classification
     from langchain_core.messages import SystemMessage, HumanMessage
@@ -121,24 +154,35 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
         except ImportError:
             from bot import invoke_with_fallback
 
+        # Dynamic loading and injection of governance classification negative constraints
+        try:
+            from memory import get_anti_pattern_rules
+        except ImportError:
+            from .memory import get_anti_pattern_rules
+            
+        gov_rules = get_anti_pattern_rules("governance.classification")
+        system_prompt = INTENT_CLASSIFIER_SYSTEM_PROMPT
+        if gov_rules:
+            system_prompt += f"\n\n[CRITICAL HISTORICAL GOVERNANCE RULES]\n{gov_rules}"
+
         history_snippet = (history_text[:300] + "…") if len(history_text) > 300 else history_text
         user_content = f"User Query: {query}\n"
         if history_snippet:
             user_content += f"Recent History: {history_snippet}"
 
         response = invoke_with_fallback(
-            [SystemMessage(content=INTENT_CLASSIFIER_SYSTEM_PROMPT), HumanMessage(content=user_content)],
+            [SystemMessage(content=system_prompt), HumanMessage(content=user_content)],
             model_name=model_name,
             temp=0.0,  # Highly deterministic
         )
         raw_text = response.content.strip()
         data = _extract_json(raw_text)
         packet = IntentPacket.from_dict(data)
-        print(f"[INTENT CLASSIFIER] Classified: lookup={packet.lookup}, research={packet.research}, gen={packet.generate}, exec={packet.execute}, mode={packet.execution_mode}, conf={packet.confidence}", flush=True)
+        print(f"[INTENT CLASSIFIER] Classified: lookup={packet.lookup}, research={packet.research}, gen={packet.generate}, exec={packet.execute}, mode={packet.execution_mode}, template={packet.workflow_template}, conf={packet.confidence}", flush=True)
         return packet
     except Exception as e:
         print(f"[INTENT CLASSIFIER] Failed to classify intent: {e}. Defaulting to READ_ONLY fallback.", flush=True)
-        return IntentPacket(lookup=False, research=False, generate=False, execute=False, execution_mode="READ_ONLY", confidence=0.5)
+        return IntentPacket(lookup=False, research=False, generate=False, execute=False, execution_mode="READ_ONLY", confidence=0.5, workflow_template="LOOKUP")
 
 # ---------------------------------------------------------------------------
 # System prompt
@@ -151,10 +195,15 @@ PLANNER_SYSTEM_PROMPT: str = (
     "RULES:\n"
     "- Output ONLY valid JSON. No markdown, no explanation.\n"
     "- GOAL CORRECTIONS: If the user query is a correction, typo fix, or modification of a previous goal in the recent conversation history (e.g. 'I meant monitoring, not monetary' or 'correct the topic to X'), you must identify the corrected goal topic and plan the task DAG for the corrected goal, not the incorrect one.\n"
-    "- INTENT CONSTRAINTS: The system has pre-classified the user's intent boundaries and capability limits. You must strictly obey these constraints:\n"
+    "- INTENT & TEMPLATE CONSTRAINTS: The system has pre-classified the user's intent boundaries and selected a WORKFLOW TEMPLATE. You must strictly obey these constraints:\n"
     "  * If lookup is false and research is false, you must NOT create any 'research' tasks.\n"
     "  * If generate is false, you must NOT create any 'analysis' or 'writing' tasks.\n"
     "  * If execute is false, you are STRICTLY FORBIDDEN from creating any 'execution' department tasks (e.g. sending emails or creating docs). Creating unauthorized execution tasks is a critical safety violation.\n"
+    "  * workflow_template: Read this setting carefully and obey its strict bounds:\n"
+    "    - LOOKUP: Only allow 'research' and 'pa' tasks. Permitted actions: 'search_sheet'. No writing, analysis, or mutating execution tasks are allowed.\n"
+    "    - RESEARCH: Only allow 'research', 'analysis', 'writing', and 'pa' tasks. NO 'execution' tasks are allowed under any circumstances.\n"
+    "    - PUBLISH: Allow 'research', 'analysis', 'writing', 'execution', and 'pa' tasks. Permitted execution actions: 'send_email', 'send_slack', 'create_doc', 'log_to_sheet'.\n"
+    "    - EXECUTE: Only allow 'execution' and 'pa' tasks. Permitted execution actions: 'create_event', 'log_to_sheet', 'create_doc', 'copy_photos_to_drive', 'copy_contacts_to_drive', 'create_task'.\n"
     "  * execution_mode: Read this setting carefully. If it is 'READ_ONLY', you must only plan read-only informational/research tasks and end with a 'pa' task; no draft or mutation actions are allowed. If it is 'APPROVAL_REQUIRED', you can create 'execution' tasks but they will go through an approval check. If it is 'AUTO_EXECUTE', you are allowed to plan automated background execution dispatches.\n"
     "- Each task must have: task_id (T1, T2, ...), objective, department, "
     "depends_on (list of task_ids), priority (1=highest), compliance_checklist (list of strings), and grant_profile_access (boolean).\n"
@@ -313,6 +362,7 @@ def plan_goal(
             f"- generate: {intent_packet.generate}\n"
             f"- execute: {intent_packet.execute}\n"
             f"- execution_mode: {intent_packet.execution_mode}\n"
+            f"- workflow_template: {intent_packet.workflow_template}\n"
             f"- confidence: {intent_packet.confidence}"
         )
     if is_correction:
@@ -334,8 +384,20 @@ def plan_goal(
             from aria.bot import invoke_with_fallback
         except ImportError:
             from bot import invoke_with_fallback
+
+        # Dynamic loading and injection of governance planning negative constraints
+        try:
+            from memory import get_anti_pattern_rules
+        except ImportError:
+            from .memory import get_anti_pattern_rules
+            
+        gov_planning_rules = get_anti_pattern_rules("governance.planning")
+        system_prompt = PLANNER_SYSTEM_PROMPT
+        if gov_planning_rules:
+            system_prompt += f"\n\n[CRITICAL HISTORICAL GOVERNANCE RULES]\n{gov_planning_rules}"
+
         response = invoke_with_fallback(
-            [SystemMessage(content=PLANNER_SYSTEM_PROMPT), HumanMessage(content=user_content)],
+            [SystemMessage(content=system_prompt), HumanMessage(content=user_content)],
             model_name=target_model,
             temp=0.1,
         )
@@ -349,7 +411,7 @@ def plan_goal(
             p_status = "NETWORK"
         else:
             p_status = "PROVIDER_ERROR"
-        return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status=p_status)
+        return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status=p_status, intent_packet=intent_packet.to_dict() if intent_packet else None)
 
     # Parse JSON -----------------------------------------------------------
     try:
@@ -357,7 +419,7 @@ def plan_goal(
     except (json.JSONDecodeError, ValueError) as exc:
         print(f"[PLANNER] JSON parse error: {exc}")
         print(f"[PLANNER] Raw LLM output: {raw_text[:300]}")
-        return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status="JSON_ERROR")
+        return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status="JSON_ERROR", intent_packet=intent_packet.to_dict() if intent_packet else None)
 
     # Validate & build TaskDTOs -------------------------------------------
     goal_text: str = data.get("goal", query[:200])
@@ -365,7 +427,7 @@ def plan_goal(
 
     if not raw_tasks:
         print("[PLANNER] LLM returned empty task list — using fallback")
-        return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status="VALIDATION_ERROR")
+        return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status="VALIDATION_ERROR", intent_packet=intent_packet.to_dict() if intent_packet else None)
 
     valid_dept_names = set(DEPARTMENTS.keys())
     tasks: List[TaskDTO] = []
@@ -425,7 +487,28 @@ def plan_goal(
 
     if not tasks:
         print("[PLANNER] All tasks filtered out — using fallback")
-        return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status="VALIDATION_ERROR")
+        return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status="VALIDATION_ERROR", intent_packet=intent_packet.to_dict() if intent_packet else None)
+
+    # ── Post-processing: Enforce template constraints programmatically ──
+    if intent_packet:
+        tmpl_name = intent_packet.workflow_template
+        if tmpl_name in TEMPLATES:
+            tmpl = TEMPLATES[tmpl_name]
+            allowed_depts = tmpl["allowed_departments"]
+            allowed_actions = tmpl["allowed_actions"]
+            
+            for t in tasks:
+                # 1. Verify permitted department
+                if t.department not in allowed_depts:
+                    print(f"[PLANNER] Programmatic Template Restriction: Task '{t.task_id}' uses unauthorized department '{t.department}' for template '{tmpl_name}'. Triggering fallback.", flush=True)
+                    return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status="TEMPLATE_VIOLATION", intent_packet=intent_packet.to_dict())
+                
+                # 2. Verify permitted actions for execution tasks
+                if t.department == "execution":
+                    action = t.context.get("action")
+                    if action not in allowed_actions:
+                        print(f"[PLANNER] Programmatic Template Restriction: Task '{t.task_id}' uses unauthorized execution action '{action}' for template '{tmpl_name}'. Triggering fallback.", flush=True)
+                        return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status="TEMPLATE_VIOLATION", intent_packet=intent_packet.to_dict())
 
     # ── Post-processing: Enforce content dependencies for execution tasks ──
     content_task_ids = [t.task_id for t in tasks if t.department in ("writing", "analysis", "research")]
