@@ -184,6 +184,82 @@ def send_immune_rule_email(new_rule: dict, all_rules: list) -> None:
         print(f"[IMMUNE SYSTEM EMAIL EXCEPTION] Failed to construct or send email notification: {e}", flush=True)
 
 
+def consolidate_failures_semantic(new_entry: dict, existing_failures: list) -> tuple[bool, list]:
+    """
+    Check if the newly generated failure/rule is semantically similar to any existing rule in the same domain.
+    If so, consolidates them by updating the existing rule's confidence and success count, returning True and the updated list.
+    Otherwise, returns False and the original list.
+    """
+    if not existing_failures:
+        return False, existing_failures
+
+    # Filter existing rules by the same domain to keep prompt size tiny and focused
+    same_domain_failures = [f for f in existing_failures if f.get("domain") == new_entry.get("domain")]
+    if not same_domain_failures:
+        return False, existing_failures
+
+    # Construct a lightweight mapping of rules for the LLM
+    rules_list = []
+    for f in same_domain_failures:
+        rules_list.append({
+            "signature": f.get("failure_signature"),
+            "rule": f.get("active_anti_pattern_rule")
+        })
+
+    prompt = (
+        "You are ARIA's Epistemic Immune System memory compressor. Your job is to check if a new candidate rule "
+        "is semantically equivalent to, covered by, or substantially duplicate to any existing rule in the same domain. "
+        "If it is covered, we consolidate them instead of creating a duplicate entry.\n\n"
+        f"Candidate Rule: \"{new_entry['active_anti_pattern_rule']}\"\n\n"
+        "Existing Rules:\n"
+        f"{json.dumps(rules_list, indent=2)}\n\n"
+        "Instructions:\n"
+        "- If the candidate rule is semantically equivalent to or covered by an existing rule, return that existing rule's \"signature\" string.\n"
+        "- If the candidate rule covers a completely different failure mode, return null.\n"
+        "- Output ONLY a raw JSON object containing the key \"matched_signature\" which is either the signature string or null. No explanation, no markdown JSON blocks."
+    )
+
+    try:
+        from langchain_core.messages import SystemMessage, HumanMessage
+        try:
+            from aria.bot import invoke_with_fallback
+        except ImportError:
+            from bot import invoke_with_fallback
+            
+        res = invoke_with_fallback(
+            [
+                SystemMessage(content="You are ARIA's self-correcting Epistemic Immune System memory deduplicator."),
+                HumanMessage(content=prompt)
+            ],
+            model_name="llama-3.1-8b-instant",  # Fast, cheap, and very capable of simple classification
+            temp=0.0,
+        )
+        
+        text = res.content.strip()
+        # Clean markdown code blocks if the model wrapped it
+        if text.startswith("```"):
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+        text = text.strip()
+        
+        data = json.loads(text)
+        matched_sig = data.get("matched_signature")
+        if matched_sig:
+            # Update the matched rule in the full failures list
+            for f in existing_failures:
+                if f.get("failure_signature") == matched_sig:
+                    f["success_count"] = f.get("success_count", 0) + 1
+                    f["confidence"] = min(1.0, f.get("confidence", 1.0) + 0.05)
+                    f["timestamp"] = datetime.now(timezone.utc).isoformat()
+                    print(f"[IMMUNE SYSTEM] Semantic duplicate detected. Consolidated candidate rule into existing rule '{matched_sig}'. Updated confidence: {f['confidence']}", flush=True)
+                    return True, existing_failures
+    except Exception as e:
+        print(f"[IMMUNE SYSTEM WARNING] Semantic deduplication check failed: {e}", flush=True)
+
+    return False, existing_failures
+
+
 def log_execution_failure(
     domain: str,
     method: str,
@@ -332,7 +408,13 @@ def log_execution_failure(
                 except Exception:
                     pass
             
-            failures.append(failure_entry)
+            # Semantic deduplication pass
+            consolidated, updated_failures = consolidate_failures_semantic(failure_entry, failures)
+            if consolidated:
+                failures = updated_failures
+                print(f"[IMMUNE SYSTEM CONSOLIDATED] Consolidated anti-pattern into existing rule signature.", flush=True)
+            else:
+                failures.append(failure_entry)
             
             temp_path = FAILURES_PATH + ".tmp"
             # Ensure target directory exists

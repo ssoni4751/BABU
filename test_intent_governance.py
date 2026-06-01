@@ -263,5 +263,40 @@ class TestIntentGovernance(unittest.TestCase):
         self.assertTrue(has_search_gmail, "Planner failed to generate search_gmail action task.")
         print("✅ Planner successfully classified, generated, and verified search_gmail task graph without template violation.")
 
+    def test_10_immune_system_semantic_deduplication(self):
+        """Test that the Epistemic Immune System semantically deduplicates similar rules instead of appending duplicates."""
+        # 1. Clear failures.json before testing
+        if os.path.exists(FAILURES_PATH):
+            os.remove(FAILURES_PATH)
+            
+        domain = "department.execution"
+        method = "publish_to_facebook_page"
+        error_msg_1 = "Facebook API Error: OAuthException - (#100) Page access token is expired or invalid."
+        
+        # 2. Log first failure
+        ok1 = log_execution_failure(domain, method, error_msg_1)
+        self.assertTrue(ok1)
+        
+        # Verify first rule exists
+        with open(FAILURES_PATH, "r", encoding="utf-8") as f:
+            failures_1 = json.load(f)
+        self.assertEqual(len(failures_1), 1)
+        first_sig = failures_1[0]["failure_signature"]
+        self.assertEqual(failures_1[0].get("success_count", 0), 0)
+        
+        # 3. Log a semantically identical failure with slightly different wording
+        error_msg_2 = "Facebook API OAuthException: Token has expired or is invalid for the page."
+        ok2 = log_execution_failure(domain, method, error_msg_2)
+        self.assertTrue(ok2)
+        
+        # 4. Verify that no duplicate rule was added, and the success count has been updated
+        with open(FAILURES_PATH, "r", encoding="utf-8") as f:
+            failures_2 = json.load(f)
+            
+        self.assertEqual(len(failures_2), 1, "Semantic deduplicator failed to consolidate duplicate rule and appended a new one.")
+        self.assertEqual(failures_2[0]["failure_signature"], first_sig)
+        self.assertEqual(failures_2[0].get("success_count", 0), 1, "Success count was not incremented during consolidation.")
+        print("✅ Epistemic Immune System successfully deduplicated and consolidated semantic identical failure rules.")
+
 if __name__ == "__main__":
     unittest.main()
