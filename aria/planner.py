@@ -58,7 +58,7 @@ TEMPLATES: Dict[str, Dict[str, Any]] = {
         "default_mode": "APPROVAL_REQUIRED"
     },
     "EXECUTE": {
-        "allowed_departments": {"execution", "pa"},
+        "allowed_departments": {"execution", "pa", "research"},
         "allowed_actions": {"create_event", "log_to_sheet", "create_doc", "copy_photos_to_drive", "copy_contacts_to_drive", "create_task"},
         "default_mode": "APPROVAL_REQUIRED"
     }
@@ -200,11 +200,12 @@ PLANNER_SYSTEM_PROMPT: str = (
     "  * If generate is false, you must NOT create any 'analysis' or 'writing' tasks.\n"
     "  * If execute is false, you are STRICTLY FORBIDDEN from creating any 'execution' department tasks (e.g. sending emails or creating docs). Creating unauthorized execution tasks is a critical safety violation.\n"
     "  * workflow_template: Read this setting carefully and obey its strict bounds:\n"
-    "    - LOOKUP: Only allow 'research' and 'pa' tasks. Permitted actions: 'search_sheet'. No writing, analysis, or mutating execution tasks are allowed.\n"
+    "    - LOOKUP: Only allow 'research', 'pa', and read-only 'execution' tasks. Permitted actions: 'search_sheet'. No writing, analysis, or mutating execution tasks are allowed.\n"
     "    - RESEARCH: Only allow 'research', 'analysis', 'writing', and 'pa' tasks. NO 'execution' tasks are allowed under any circumstances.\n"
     "    - PUBLISH: Allow 'research', 'analysis', 'writing', 'execution', and 'pa' tasks. Permitted execution actions: 'send_email', 'send_slack', 'create_doc', 'log_to_sheet'.\n"
-    "    - EXECUTE: Only allow 'execution' and 'pa' tasks. Permitted execution actions: 'create_event', 'log_to_sheet', 'create_doc', 'copy_photos_to_drive', 'copy_contacts_to_drive', 'create_task'.\n"
+    "    - EXECUTE: Only allow 'execution', 'pa', and 'research' tasks. Permitted execution actions: 'create_event', 'log_to_sheet', 'create_doc', 'copy_photos_to_drive', 'copy_contacts_to_drive', 'create_task'.\n"
     "  * execution_mode: Read this setting carefully. If it is 'READ_ONLY', you must only plan read-only informational/research tasks and end with a 'pa' task; no draft or mutation actions are allowed. If it is 'APPROVAL_REQUIRED', you can create 'execution' tasks but they will go through an approval check. If it is 'AUTO_EXECUTE', you are allowed to plan automated background execution dispatches.\n"
+    "- CORRECT TASK SEQUENCING: If the goal requires multiple sequential steps or multiple execution actions (e.g. first research X, then write a report, then create a Google Doc, and finally send an email), you must establish strict dependency links (depends_on) between these tasks to ensure they execute in the correct chronological order (e.g. writing depends on research, Doc creation depends on writing, and email sending depends on Doc creation). If there are multiple execution department tasks, chain them sequentially (T_execution_N depends on T_execution_N-1) to ensure the user audits and approves them in the correct sequence.\n"
     "- Each task must have: task_id (T1, T2, ...), objective, department, "
     "depends_on (list of task_ids), priority (1=highest), compliance_checklist (list of strings), and grant_profile_access (boolean).\n"
     "- grant_profile_access: Set to true ONLY for the single, specific 'research' task that requires access to the local user profile (family graph, business services, contact info) to fulfill the user's personal query. For all other tasks, this MUST be false. Do NOT grant profile access to multiple tasks to prevent token bloat and ensure security isolation.\n"
