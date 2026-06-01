@@ -57,14 +57,39 @@ def run_worker(task: TaskDTO, scoped_context: dict, llm: Any) -> tuple[str, dict
 
     user_content = json.dumps(scoped_context, ensure_ascii=False, default=str)
 
+    messages = [
+        SystemMessage(content=system),
+        HumanMessage(content=user_content),
+    ]
+
     try:
         print(f"[WORKER:{task.department.upper()}] Starting LLM invocation for task {task.task_id}", flush=True)
-        res = llm.invoke([
-            SystemMessage(content=system),
-            HumanMessage(content=user_content)
-        ])
-        tokens = extract_tokens(res)
-        return res.content.strip(), tokens
+
+        # First, try the pre-built LLM passed by the department
+        try:
+            res = llm.invoke(messages)
+            tokens = extract_tokens(res)
+            return res.content.strip(), tokens
+        except Exception as primary_exc:
+            exc_str = str(primary_exc).lower()
+            # If it's a rate limit, try auto-failover through alternative providers
+            rate_signals = ("429", "rate limit", "rate_limit_exceeded", "too many requests", "tpd", "tpm")
+            if any(sig in exc_str for sig in rate_signals):
+                print(f"[WORKER:{task.department.upper()}] Primary LLM rate-limited → attempting provider failover", flush=True)
+                try:
+                    try:
+                        from aria.bot import invoke_with_fallback, CURRENT_DEPT_MODEL
+                    except ImportError:
+                        from bot import invoke_with_fallback, CURRENT_DEPT_MODEL
+                    res = invoke_with_fallback(messages, model_name=CURRENT_DEPT_MODEL, temp=0.7)
+                    tokens = extract_tokens(res)
+                    return res.content.strip(), tokens
+                except Exception:
+                    # All providers exhausted — re-raise the original for proper taxonomy
+                    raise primary_exc
+            else:
+                raise primary_exc
+
     except Exception as exc:
         exc_str = str(exc).lower()
         print(f"[WORKER:{task.department.upper()}] Invocation failed: {exc}", flush=True)

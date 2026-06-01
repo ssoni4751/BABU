@@ -248,20 +248,23 @@ def log_execution_failure(domain: str, method: str, exception_msg: str, goal: st
     try:
         from langchain_core.messages import SystemMessage, HumanMessage
         try:
-            from aria.bot import build_llm
+            from aria.bot import invoke_with_fallback
         except ImportError:
-            from bot import build_llm
+            from bot import invoke_with_fallback
         
         observed = exception_msg
         rule = f"CRITICAL DIRECTION: Avoid using methodology {method} under domain {domain} to prevent exception: {exception_msg}"
         
         try:
-            # Dynamic LLM routing for failure analysis
-            llm = build_llm("llama-3.3-70b-versatile", 0.2)
-            res = llm.invoke([
-                SystemMessage(content="You are ARIA's self-correcting Epistemic Immune System. Distill system errors into highly actionable execution constraints."),
-                HumanMessage(content=analysis_prompt)
-            ])
+            # Dynamic LLM routing with auto-failover for failure analysis
+            res = invoke_with_fallback(
+                [
+                    SystemMessage(content="You are ARIA's self-correcting Epistemic Immune System. Distill system errors into highly actionable execution constraints."),
+                    HumanMessage(content=analysis_prompt)
+                ],
+                model_name="llama-3.3-70b-versatile",
+                temp=0.2,
+            )
             
             text = res.content.strip()
             # Clean markdown code blocks if the model wrapped it
@@ -429,15 +432,18 @@ def compress_context_payload(raw_text: str, context_topic: str = "general data")
     try:
         from langchain_core.messages import SystemMessage, HumanMessage
         try:
-            from aria.bot import build_llm
+            from aria.bot import invoke_with_fallback
         except ImportError:
-            from bot import build_llm
+            from bot import invoke_with_fallback
         
-        llm = build_llm("llama-3.1-8b-instant", 0.1)
-        res = llm.invoke([
-            SystemMessage(content="You are ARIA's high-speed context compressor. Distill bulk raw data into high-density operational briefs. Be extremely concise."),
-            HumanMessage(content=compression_prompt)
-        ])
+        res = invoke_with_fallback(
+            [
+                SystemMessage(content="You are ARIA's high-speed context compressor. Distill bulk raw data into high-density operational briefs. Be extremely concise."),
+                HumanMessage(content=compression_prompt)
+            ],
+            model_name="llama-3.1-8b-instant",
+            temp=0.1,
+        )
         
         brief = res.content.strip()
         print(f"[COMPRESSOR SUCCESS] Distillation completed. Brief size: {len(brief)} characters (Saved ~{int((1 - len(brief)/len(raw_text))*100)}% tokens!).", flush=True)

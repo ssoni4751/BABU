@@ -57,10 +57,25 @@ def get_google_creds() -> Credentials:
                 return creds
             except Exception as e:
                 print(f"[GOOGLE AUTH] Token refresh failed: {e}", flush=True)
+                if "deleted_client" in str(e).lower():
+                    print("[GOOGLE AUTH] ERROR: The OAuth client has been deleted. Google Workspace actions will fail. Please update credentials.json and token.json.", flush=True)
+                    return None
 
         # 3. If refresh failed or token doesn't exist, we need credentials.json
         if not os.path.exists(CREDENTIALS_PATH):
             print("[GOOGLE AUTH] ERROR: credentials.json not found in root. Google actions will fail.", flush=True)
+            return None
+
+        # Check if environment is non-interactive to prevent hanging on headless servers
+        is_interactive = False
+        try:
+            if sys.stdin and sys.stdin.isatty():
+                is_interactive = True
+        except Exception:
+            pass
+
+        if os.environ.get("RENDER") or os.environ.get("CI") or not is_interactive:
+            print("[GOOGLE AUTH] Non-interactive/headless environment detected. Skipping local server authorization flow to prevent hanging.", flush=True)
             return None
 
         try:

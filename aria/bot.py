@@ -196,22 +196,117 @@ CURRENT_PA_MODEL   = "llama-3.1-8b-instant"
 CURRENT_DEPT_MODEL = "llama-3.3-70b-versatile"
 
 def build_llm(model_name: str, temp: float):
-    """Dynamically construct ChatGroq, ChatGoogleGenerativeAI, or ChatOpenAI based on model name, redirecting Gemini to Groq 8b to prevent rate limits."""
-    target_model = model_name
-    if target_model.startswith("gemini-"):
-        target_model = "llama-3.1-8b-instant"
-        print(f"[LLM REDIRECT] Mapping model '{model_name}' to 'llama-3.1-8b-instant' to bypass rate limits.", flush=True)
+    """Dynamically construct ChatGroq, ChatGoogleGenerativeAI, or ChatOpenAI based on model name and available credentials."""
+    groq_key = os.environ.get("GROQ_API_KEY", "")
+    gemini_key = os.environ.get("GEMINI_API_KEY", "")
+    openai_key = os.environ.get("OPENAI_API_KEY", "")
+    openrouter_key = os.environ.get("OPENROUTER_API_KEY", "")
 
-    if model_name.startswith("gpt-"):
-        if not OPENAI_KEY:
+    target_model = model_name.strip()
+
+    # 1. Google Gemini Native Support
+    if target_model.startswith("gemini-"):
+        if gemini_key:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            return ChatGoogleGenerativeAI(model=target_model, temperature=temp, google_api_key=gemini_key)
+        elif openrouter_key:
+            or_model = f"google/{target_model}"
+            print(f"[LLM FALLBACK] Gemini key missing. Routing '{target_model}' through OpenRouter as '{or_model}'.", flush=True)
+            from langchain_openai import ChatOpenAI
+            return ChatOpenAI(
+                model=or_model,
+                temperature=temp,
+                api_key=openrouter_key,
+                base_url="https://openrouter.ai/api/v1"
+            )
+        else:
+            fallback = "llama-3.1-8b-instant"
+            print(f"[LLM REDIRECT] Both Gemini and OpenRouter keys missing. Mapping '{target_model}' to Groq '{fallback}'.", flush=True)
+            return ChatGroq(model=fallback, temperature=temp, api_key=groq_key)
+
+    # 2. OpenRouter Support (Any model containing '/' or starting with 'openrouter/')
+    elif "/" in target_model or target_model.startswith("openrouter/"):
+        clean_model = target_model.replace("openrouter/", "")
+        if not openrouter_key:
+            raise ValueError("OPENROUTER_API_KEY is not configured in environment variables.")
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(
+            model=clean_model,
+            temperature=temp,
+            api_key=openrouter_key,
+            base_url="https://openrouter.ai/api/v1"
+        )
+
+    # 3. OpenAI Native Support
+    elif target_model.startswith("gpt-"):
+        if not openai_key:
             raise ValueError("OPENAI_API_KEY is not configured in environment variables.")
         from langchain_openai import ChatOpenAI
-        return ChatOpenAI(model=model_name, temperature=temp, api_key=OPENAI_KEY)
+        return ChatOpenAI(model=target_model, temperature=temp, api_key=openai_key)
+
+    # 4. Default: Groq Support
     else:
-        return ChatGroq(model=target_model, temperature=temp)
+        return ChatGroq(model=target_model, temperature=temp, api_key=groq_key)
 
 llm_pa   = build_llm(CURRENT_PA_MODEL,   0.2)
 llm_dept = build_llm(CURRENT_DEPT_MODEL, 0.7)
+
+# ---------------------------------------------------------------------------
+# Provider-level auto-failover for rate limits
+# ---------------------------------------------------------------------------
+
+# Map Groq models to their OpenRouter equivalents
+_FALLBACK_CHAIN = {
+    "llama-3.1-8b-instant":    ["meta-llama/llama-3.1-8b-instruct", "google/gemini-2.0-flash-001"],
+    "llama-3.3-70b-versatile": ["meta-llama/llama-3.3-70b-instruct", "google/gemini-2.0-flash-001"],
+}
+_RATE_LIMIT_SIGNALS = ("429", "rate limit", "rate_limit_exceeded", "too many requests", "tpd", "tpm")
+
+
+def invoke_with_fallback(messages, model_name: str, temp: float):
+    """Invoke an LLM with automatic provider failover on rate limits.
+
+    Tries the primary model first. If it hits a 429/rate-limit error,
+    automatically retries through alternative providers (OpenRouter → Gemini)
+    before giving up. Non-rate-limit errors propagate immediately.
+
+    Parameters
+    ----------
+    messages : list
+        Langchain message list [SystemMessage, HumanMessage, ...].
+    model_name : str
+        Primary model identifier (e.g. 'llama-3.1-8b-instant').
+    temp : float
+        Temperature for generation.
+
+    Returns
+    -------
+    LLM response object with .content and .response_metadata.
+    """
+    fallbacks = _FALLBACK_CHAIN.get(model_name, ["google/gemini-2.0-flash-001"])
+    models_to_try = [model_name] + fallbacks
+
+    last_exc = None
+    for i, model in enumerate(models_to_try):
+        try:
+            llm = build_llm(model, temp)
+            response = llm.invoke(messages)
+            if i > 0:
+                print(f"[LLM FAILOVER SUCCESS] '{model}' responded after primary '{model_name}' was rate-limited.", flush=True)
+            return response
+        except Exception as exc:
+            exc_str = str(exc).lower()
+            is_rate_limit = any(sig in exc_str for sig in _RATE_LIMIT_SIGNALS)
+            if is_rate_limit and i < len(models_to_try) - 1:
+                next_model = models_to_try[i + 1]
+                print(f"[LLM FAILOVER] '{model}' rate-limited → switching to '{next_model}'", flush=True)
+                last_exc = exc
+                continue
+            # Non-rate-limit error or last model in chain — propagate
+            raise
+
+    # Should not reach here, but safety net
+    raise last_exc
 
 USER_PROFILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "user_profile.json")
 _profile_lock = threading.Lock()
@@ -3188,25 +3283,49 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global llm_pa, llm_dept, CURRENT_PA_MODEL, CURRENT_DEPT_MODEL
 
+    # Real-time environment check
+    groq_active = "🟢 ACTIVE" if os.environ.get("GROQ_API_KEY") else "🔴 NOT CONFIGURED"
+    gemini_active = "🟢 ACTIVE" if os.environ.get("GEMINI_API_KEY") else "🔴 NOT CONFIGURED"
+    openai_active = "🟢 ACTIVE" if os.environ.get("OPENAI_API_KEY") else "🔴 NOT CONFIGURED"
+    openrouter_active = "🟢 ACTIVE" if os.environ.get("OPENROUTER_API_KEY") else "🔴 NOT CONFIGURED"
+
     args = context.args
     if not args:
         menu = (
-            "ARIA Model Settings\n\n"
-            f"- Current PA (Assistant) Model: `{CURRENT_PA_MODEL}`\n"
-            f"- Current Swarm (Research) Model: `{CURRENT_DEPT_MODEL}`\n\n"
-            "*Available Models to Switch:*\n"
+            "🛡️ **ARIA Model Settings & Telemetry**\n\n"
+            f"👤 **Current Assistant (PA) Model**: `{CURRENT_PA_MODEL}`\n"
+            f"👥 **Current Swarm (Research) Model**: `{CURRENT_DEPT_MODEL}`\n\n"
+            
+            "⚙️ **Active Providers Configuration:**\n"
+            f"- **Groq API**: {groq_active}\n"
+            f"- **OpenRouter API**: {openrouter_active}\n"
+            f"- **Gemini API (Native)**: {gemini_active}\n"
+            f"- **OpenAI API (Native)**: {openai_active}\n\n"
+            
+            "✨ **Available Models to Switch:**\n"
+            "--- *Groq Provider Models* ---\n"
             "1. `llama-3.3-70b-versatile` (Llama 3.3 - Best Quality)\n"
             "2. `llama-3.1-8b-instant` (Llama 3.1 8B - Fastest / Best Limits)\n"
             "3. `mixtral-8x7b-32768` (Mixtral 8x7B - Great Balance)\n"
             "4. `gemma2-9b-it` (Gemma 2 9B - Fast & Smart)\n"
-            "5. `deepseek-r1-distill-llama-70b` (DeepSeek R1 - Deep Reasoning)\n"
-            "6. `gemini-2.5-flash` (Gemini 2.5 Flash - Routes to Llama on Groq)\n"
-            "7. `gpt-4o-mini` (GPT-4o Mini - Fast & Cheap OpenAI)\n"
-            "8. `gpt-4o` (GPT-4o - Flagship OpenAI Intelligence)\n\n"
-            "*How to Switch:*\n"
-            "- `/model <1-8>` - Change the main Personal Assistant model\n"
-            "- `/model swarm <1-8>` - Change the underlying swarm/research model\n\n"
-            "Tip: If you encounter rate limits, switch models or let ARIA task manager auto-throttle and balance reasoning."
+            "5. `deepseek-r1-distill-llama-70b` (DeepSeek R1 - Deep Reasoning)\n\n"
+            
+            "--- *Gemini Native Models* ---\n"
+            "6. `gemini-2.5-flash` (Gemini 2.5 Flash)\n\n"
+            
+            "--- *OpenRouter Provider Models* ---\n"
+            "7. `google/gemini-2.5-flash` (Gemini 2.5 Flash via OpenRouter)\n"
+            "8. `deepseek/deepseek-chat` (DeepSeek V3 via OpenRouter)\n"
+            "9. `meta-llama/llama-3.3-70b-instruct` (Llama 3.3 via OpenRouter)\n\n"
+            
+            "--- *OpenAI Native Models* ---\n"
+            "10. `gpt-4o-mini` (GPT-4o Mini)\n"
+            "11. `gpt-4o` (GPT-4o flagship)\n\n"
+            
+            "🚀 **How to Switch:**\n"
+            "- `/model <1-11>` - Change the main Personal Assistant model\n"
+            "- `/model swarm <1-11>` - Change the underlying swarm/research model\n\n"
+            "Tip: You can also specify any custom model string directly, e.g. `/model deepseek/deepseek-reasoner` or `/model swarm gemini-2.5-flash`"
         )
         await update.message.reply_text(menu, parse_mode="Markdown")
         return
@@ -3224,16 +3343,19 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "4": "gemma2-9b-it",
         "5": "deepseek-r1-distill-llama-70b",
         "6": "gemini-2.5-flash",
-        "7": "gpt-4o-mini",
-        "8": "gpt-4o"
+        "7": "google/gemini-2.5-flash",
+        "8": "deepseek/deepseek-chat",
+        "9": "meta-llama/llama-3.3-70b-instruct",
+        "10": "gpt-4o-mini",
+        "11": "gpt-4o"
     }
 
     selected_model = model_map.get(choice)
     if not selected_model:
-        if choice in [m for m in model_map.values()]:
+        if choice in model_map.values() or "/" in choice or choice.startswith("gemini-") or choice.startswith("gpt-"):
             selected_model = choice
         else:
-            await update.message.reply_text("Invalid choice. Use `/model` to see valid options.")
+            await update.message.reply_text("Invalid choice. Use `/model` to see valid options or pass a valid model string.")
             return
 
     try:

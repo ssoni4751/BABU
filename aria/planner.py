@@ -191,17 +191,17 @@ def plan_goal(
 
     target_model = model_name
 
-    # Call LLM (dynamic routing via build_llm) -----------------------------
+    # Call LLM (with automatic provider failover on rate limits) ------------
     try:
         try:
-            from aria.bot import build_llm
+            from aria.bot import invoke_with_fallback
         except ImportError:
-            from bot import build_llm
-        llm = build_llm(target_model, 0.1)
-        response = llm.invoke([
-            SystemMessage(content=PLANNER_SYSTEM_PROMPT),
-            HumanMessage(content=user_content),
-        ])
+            from bot import invoke_with_fallback
+        response = invoke_with_fallback(
+            [SystemMessage(content=PLANNER_SYSTEM_PROMPT), HumanMessage(content=user_content)],
+            model_name=target_model,
+            temp=0.1,
+        )
         raw_text: str = response.content  # type: ignore[union-attr]
     except Exception as exc:
         print(f"[PLANNER] LLM call failed: {exc}")

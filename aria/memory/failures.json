@@ -38,5 +38,33 @@
     "ttl_sessions_remaining": 20,
     "timestamp": "2026-05-28T05:57:07.453669+00:00",
     "failure_type": "METHODOLOGY"
+  },
+  {
+    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260601_110352",
+    "domain": "social_media.facebook_publisher",
+    "attempted_methodology": "publish_to_facebook_page",
+    "observed_consequence": "The publish_to_facebook_page method failed due to an expired or invalid Page access token, resulting in an OAuthException from the Facebook API.",
+    "active_anti_pattern_rule": "NEVER use an unverified or potentially expired Page access token to publish to a Facebook page, ALWAYS refresh the token prior to publication or query /me/accounts for a valid Page Token first.",
+    "confidence": 1.0,
+    "decay_rate": 0.15,
+    "success_count": 0,
+    "ttl_sessions_remaining": 20,
+    "timestamp": "2026-06-01T05:33:52.958005+00:00",
+    "failure_type": "METHODOLOGY",
+    "goal": "Daily Autonomous Marketing Post"
+  },
+  {
+    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260601_110407",
+    "domain": "social_media.facebook_publisher",
+    "attempted_methodology": "publish_to_facebook_page(img_path, caption) with Page ID invalid_page_123",
+    "observed_consequence": "The publish_to_facebook_page method failed due to an invalid OAuth access token, which was used to attempt to publish to a Facebook page with an ID of invalid_page_123, resulting in a Facebook API Error.",
+    "active_anti_pattern_rule": "NEVER use an OAuth access token without first verifying its validity and ensuring it has the necessary permissions to publish to the target Facebook page, and ALWAYS obtain a Page-specific access token by querying the /me/accounts or /me/accounts/{account_id} endpoint to ensure the correct token is used for page-level actions.",
+    "confidence": 1.0,
+    "decay_rate": 0.15,
+    "success_count": 0,
+    "ttl_sessions_remaining": 20,
+    "timestamp": "2026-06-01T05:34:07.831400+00:00",
+    "failure_type": "METHODOLOGY",
+    "goal": "Daily Autonomous Marketing Post generation and publishing"
   }
 ]

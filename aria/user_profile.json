@@ -355,6 +355,110 @@
           "Proceed with Phase 3 integration"
         ],
         "timestamp": "2026-05-29T09:55:09.268638+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-30T12:07:59.406549+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-30T12:34:28.338146+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-31T06:37:01.315155+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-31T06:50:29.138107+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-31T06:52:59.293767+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-31T07:01:13.983889+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-31T07:19:39.210248+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-31T07:27:27.124283+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-31T07:46:18.866121+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-31T09:02:45.208814+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-31T09:08:16.229419+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-05-31T09:35:40.383238+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-06-01T05:33:51.289106+00:00"
       }
     ],
     "work_summaries": [
@@ -477,6 +581,102 @@
         "status": "FAILED",
         "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A futuristic illustration of a person safely browsing the internet on their lapt...",
         "timestamp": "2026-05-29T09:55:27.643083+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Failed to publish to Facebook: [Errno 2] No such file or directory: 'dummy.jpg' | Topic: None",
+        "timestamp": "2026-05-30T08:38:25.491903+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Failed to publish to Facebook: [Errno 2] No such file or directory: 'dummy.jpg' | Topic: None",
+        "timestamp": "2026-05-30T08:42:33.505541+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Failed to publish to Facebook: [Errno 2] No such file or directory: 'dummy.jpg' | Topic: None",
+        "timestamp": "2026-05-30T08:46:14.107286+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A premium, minimalist 3D corporate style marketing campaign poster background re...",
+        "timestamp": "2026-05-30T12:08:14.548501+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A premium, minimalist 3D corporate style marketing campaign poster background re...",
+        "timestamp": "2026-05-30T12:34:45.877656+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A premium, minimalist 3D corporate style marketing campaign poster background re...",
+        "timestamp": "2026-05-31T06:37:24.534594+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A premium, minimalist 3D corporate style marketing campaign poster background fe...",
+        "timestamp": "2026-05-31T06:50:50.289026+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A premium, minimalist 3D corporate style marketing campaign poster background fe...",
+        "timestamp": "2026-05-31T06:53:18.346179+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A premium, minimalist 3D corporate style marketing campaign poster background re...",
+        "timestamp": "2026-05-31T07:01:34.764093+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A premium, minimalist 3D corporate style marketing campaign poster background re...",
+        "timestamp": "2026-05-31T07:19:52.716958+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A premium, minimalist 3D corporate style marketing campaign poster background fe...",
+        "timestamp": "2026-05-31T07:27:40.043112+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A premium, minimalist 3D corporate style marketing campaign poster background re...",
+        "timestamp": "2026-05-31T07:47:30.044500+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A premium, minimalist 3D corporate style marketing campaign poster background re...",
+        "timestamp": "2026-05-31T09:03:12.202546+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "CRITICAL_ERROR",
+        "details": "Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01ksanet3cfh6szhqyxr45df3p` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 99665, Requested 1557. Please try again in 17m35.808s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}",
+        "timestamp": "2026-05-31T09:08:25.425198+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "CRITICAL_ERROR",
+        "details": "Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01ksanet3cfh6szhqyxr45df3p` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 99667, Requested 1352. Please try again in 14m40.416s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}",
+        "timestamp": "2026-05-31T09:35:52.069813+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A premium, minimalist 3D corporate style marketing campaign poster background fe...",
+        "timestamp": "2026-06-01T05:34:05.944926+00:00"
       }
     ]
   }
