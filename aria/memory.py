@@ -85,6 +85,18 @@ def send_immune_rule_email(new_rule: dict, all_rules: list) -> None:
     to the user's official email address. Executed asynchronously to avoid blocking.
     Gated to trigger ONLY on METHODOLOGY and AUDIT failure types.
     """
+    # 0. Gate to prevent email notifications during active unit/integration tests
+    import sys
+    is_testing = (
+        "unittest" in sys.modules 
+        or "pytest" in sys.modules 
+        or any("test" in arg.lower() for arg in sys.argv)
+        or os.environ.get("TESTING") == "true"
+    )
+    if is_testing:
+        print("[IMMUNE SYSTEM EMAIL GATE] Bypassing email alerts during active test execution.", flush=True)
+        return
+
     failure_type = new_rule.get("failure_type", "METHODOLOGY")
     
     # 1. Gating to prevent operational/infrastructure noise from emailing
