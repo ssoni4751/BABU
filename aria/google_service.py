@@ -74,6 +74,9 @@ def get_google_creds() -> Credentials:
         except Exception:
             pass
 
+        if os.environ.get("FORCE_INTERACTIVE") == "true":
+            is_interactive = True
+
         if os.environ.get("RENDER") or os.environ.get("CI") or not is_interactive:
             print("[GOOGLE AUTH] Non-interactive/headless environment detected. Skipping local server authorization flow to prevent hanging.", flush=True)
             return None
