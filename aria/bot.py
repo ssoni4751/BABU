@@ -468,6 +468,15 @@ def get_profile_fact_answer(query: str) -> str:
             return f"You work at {business_name}."
         return ""
 
+    if any(k in q for k in ("my business", "whats my business", "what is my business", "my company", "my shop", "about my business")):
+        business_name = business.get("business_name", "")
+        business_type = business.get("business_type", "") or business.get("classification", "")
+        if business_name and business_type:
+            return f"Your business is {business_name}, a {business_type}."
+        if business_name:
+            return f"Your business is {business_name}."
+        return ""
+
     if "father" in q:
         for relation, data in family.items():
             rel = relation.lower().replace("_", " ")
@@ -2136,11 +2145,11 @@ def pa_node(state: AriaState):
             response = AIMessage(content=direct_fact)
             return {"messages": state["messages"] + [response], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
 
-    # Dynamic L2/L3 profile retrieval fallback (LAUNCH/SPRINT only):
+    # Dynamic L2/L3 profile retrieval fallback (All gears including WALK):
     # If there's no research, query search_profile to fetch matching personal details!
-    if gear != "WALK" and not research and not action_result:
+    if not research and not action_result:
         profile_ctx = search_profile(state["user_query"])
-        if profile_ctx and "[Local User Profile Matches]" in profile_ctx:
+        if profile_ctx and ("[Local User Profile Matches]" in profile_ctx or "[Local User Profile" in profile_ctx):
             research = profile_ctx
 
     if gear == "WALK":
@@ -2163,7 +2172,9 @@ def pa_node(state: AriaState):
         manifesto = (
             f"You are ARIA, a warm, direct, and helpful personal companion. Current date/time: {now_str}.\n"
             f"Style: Warm, brief, natural human dialogue. Max two short paragraphs. Do not mention internal details.\n"
-            f"Recipient: You are talking directly to {nickname}."
+            f"Recipient: You are talking directly to {nickname}.\n"
+            f"CRITICAL: If the user asks about their personal details, family, business, career, or background, you MUST use the information provided in [Internal Research] (which is retrieved from the authoritative local user profile).\n"
+            f"If the required personal/business/family information is NOT present in [Internal Research] or [Conversation History], DO NOT invent, infer, or hallucinate any details (such as occupation, business name, meetings, or clients). In such cases, politely and warmly state that you do not have that information in their profile yet."
         )
     else:
         # Full Workflow/Launch/Sprint Mode Prompt

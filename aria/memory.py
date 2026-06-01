@@ -424,13 +424,21 @@ def log_execution_failure(
             else:
                 failures.append(failure_entry)
             
+            # Windows-resilient atomic writeback
+            import time
             temp_path = FAILURES_PATH + ".tmp"
-            # Ensure target directory exists
             os.makedirs(os.path.dirname(FAILURES_PATH), exist_ok=True)
             with open(temp_path, "w", encoding="utf-8") as f:
                 json.dump(failures, f, indent=2, ensure_ascii=False)
                 
-            os.replace(temp_path, FAILURES_PATH)
+            for attempt in range(5):
+                try:
+                    os.replace(temp_path, FAILURES_PATH)
+                    break
+                except PermissionError:
+                    if attempt == 4:
+                        raise
+                    time.sleep(0.1 * (2 ** attempt))
             print(f"[IMMUNE SYSTEM SUCCESS] Anti-pattern logged for domain '{domain}': \"{failure_entry['active_anti_pattern_rule']}\"", flush=True)
             
             # Dispatch background email notification
@@ -489,10 +497,19 @@ def register_successful_execution(domain: str) -> None:
                 print(f"[IMMUNE SYSTEM] Healed anti-pattern(s) from memory: {', '.join(healed_signatures)}", flush=True)
                 
             # Atomic Writeback
+            # Windows-resilient atomic writeback
+            import time
             temp_path = FAILURES_PATH + ".tmp"
             with open(temp_path, "w", encoding="utf-8") as f:
                 json.dump(updated_failures, f, indent=2, ensure_ascii=False)
-            os.replace(temp_path, FAILURES_PATH)
+            for attempt in range(5):
+                try:
+                    os.replace(temp_path, FAILURES_PATH)
+                    break
+                except PermissionError:
+                    if attempt == 4:
+                        raise
+                    time.sleep(0.1 * (2 ** attempt))
             
         except Exception as e:
             print(f"[IMMUNE SYSTEM ERROR] Failed to heal anti-patterns: {e}", flush=True)
