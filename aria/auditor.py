@@ -20,6 +20,52 @@ except ImportError:
     from task_engine import TaskDTO
     from memory import get_anti_pattern_rules
     from google_service import is_google_configured
+def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]]:
+    """Dynamically resolve allowed departments and allowed actions based on intent packet capabilities union."""
+    try:
+        from .planner import TEMPLATES
+    except ImportError:
+        try:
+            from planner import TEMPLATES
+        except ImportError:
+            TEMPLATES = {}
+
+    allowed_depts = set()
+    allowed_actions = set()
+
+    # 1. Base template-level allowed boundaries if specified
+    workflow_template = intent_packet_dict.get("workflow_template", "LOOKUP")
+    if workflow_template and TEMPLATES and workflow_template in TEMPLATES:
+        tmpl = TEMPLATES[workflow_template]
+        allowed_depts.update(tmpl.get("allowed_departments", set()))
+        allowed_actions.update(tmpl.get("allowed_actions", set()))
+
+    # 2. Dynamic capability-level union (prevents rigid halting on combined intents)
+    if intent_packet_dict.get("lookup", False) or intent_packet_dict.get("research", False):
+        allowed_depts.update({"research", "pa"})
+        allowed_actions.update({"search_sheet"})
+
+    if intent_packet_dict.get("generate", False):
+        allowed_depts.update({"analysis", "writing", "pa"})
+
+    if intent_packet_dict.get("execute", False):
+        allowed_depts.update({"execution", "pa"})
+        # Allow all execution actions if execute capability is explicitly enabled
+        all_actions = {
+            "send_email", "create_event", "log_to_sheet", "create_doc", 
+            "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
+            "send_slack", "create_task", "search_image"
+        }
+        allowed_actions.update(all_actions)
+
+    # 3. Dynamic capability pruning for execute=False
+    if not intent_packet_dict.get("execute", False):
+        if "execution" in allowed_depts:
+            allowed_actions = allowed_actions.intersection({"search_sheet"})
+            if not allowed_actions:
+                allowed_depts.discard("execution")
+
+    return allowed_depts, allowed_actions
 
 
 class PreExecutionGatekeeper:
@@ -58,52 +104,21 @@ class PreExecutionGatekeeper:
         if not task.task_id or not task.objective:
             return False, "Malformed task: missing task_id or objective."
 
-        # 2. Check department capabilities and intent-based governance boundaries
+        # 2. Check department capabilities and intent-based governance boundaries using dynamic union boundaries
         dept = task.department.lower()
         intent_packet_dict = task.context.get("intent_packet")
         if intent_packet_dict:
-            # Resolve TEMPLATES dynamically
-            try:
-                from .planner import TEMPLATES
-            except ImportError:
-                try:
-                    from planner import TEMPLATES
-                except ImportError:
-                    TEMPLATES = {}
-
-            workflow_template = intent_packet_dict.get("workflow_template", "LOOKUP")
+            allowed_depts, allowed_actions = get_allowed_boundaries(intent_packet_dict)
             
-            # Enforce TEMPLATES schema constraints if found
-            if workflow_template and TEMPLATES and workflow_template in TEMPLATES:
-                tmpl = TEMPLATES[workflow_template]
-                allowed_depts = tmpl.get("allowed_departments", set())
-                allowed_actions = tmpl.get("allowed_actions", set())
-                
-                # Check department
-                if dept not in allowed_depts:
-                    return False, f"Blocked: Task '{task.task_id}' belongs to the '{dept}' department, which is strictly prohibited under the '{workflow_template}' workflow template constraints."
-                
-                # Check actions for execution tasks
-                if dept == "execution":
-                    action = task.context.get("action")
-                    if action not in allowed_actions:
-                        return False, f"Blocked: Task '{task.task_id}' attempts physical execution action '{action}', which is strictly prohibited under the '{workflow_template}' workflow template constraints."
-
-            # Block execution tasks if execute is disabled
-            if dept == "execution" and not intent_packet_dict.get("execute", False):
+            # Check department
+            if dept not in allowed_depts:
+                return False, f"Blocked: Task '{task.task_id}' belongs to the '{dept}' department, which is strictly prohibited under current intent capability boundaries."
+            
+            # Check actions for execution tasks
+            if dept == "execution":
                 action = task.context.get("action")
-                if action == "search_sheet" and workflow_template == "LOOKUP":
-                    pass
-                else:
-                    return False, f"Blocked: Task '{task.task_id}' belongs to the 'execution' department, but 'execute' capability is disabled in the intent governance ledger."
-            
-            # Block research tasks if lookup & research are disabled
-            if dept == "research" and not intent_packet_dict.get("lookup", False) and not intent_packet_dict.get("research", False):
-                return False, f"Blocked: Task '{task.task_id}' belongs to the 'research' department, but both 'lookup' and 'research' capabilities are disabled in the intent governance ledger."
-            
-            # Block writing/analysis tasks if generate is disabled
-            if dept in ("writing", "analysis") and not intent_packet_dict.get("generate", False):
-                return False, f"Blocked: Task '{task.task_id}' belongs to the '{dept}' department, but 'generate' capability is disabled in the intent governance ledger."
+                if action not in allowed_actions:
+                    return False, f"Blocked: Task '{task.task_id}' attempts physical execution action '{action}', which is strictly prohibited under current intent capability boundaries."
 
         if dept == "execution":
             action = task.context.get("action")

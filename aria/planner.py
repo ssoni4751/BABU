@@ -304,6 +304,39 @@ def _build_fallback_graph(
     )
 
 
+def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]]:
+    """Dynamically resolve allowed departments and allowed actions based on intent packet capabilities union."""
+    allowed_depts = set()
+    allowed_actions = set()
+
+    # 1. Base template-level allowed boundaries if specified
+    workflow_template = intent_packet_dict.get("workflow_template", "LOOKUP")
+    if workflow_template and "TEMPLATES" in globals():
+        tmpl = TEMPLATES.get(workflow_template, {})
+        allowed_depts.update(tmpl.get("allowed_departments", set()))
+        allowed_actions.update(tmpl.get("allowed_actions", set()))
+
+    # 2. Dynamic capability-level union (prevents rigid halting on combined intents)
+    if intent_packet_dict.get("lookup", False) or intent_packet_dict.get("research", False):
+        allowed_depts.update({"research", "pa"})
+        allowed_actions.update({"search_sheet"})
+
+    if intent_packet_dict.get("generate", False):
+        allowed_depts.update({"analysis", "writing", "pa"})
+
+    if intent_packet_dict.get("execute", False):
+        allowed_depts.update({"execution", "pa"})
+        # Allow all execution actions if execute capability is explicitly enabled
+        all_actions = {
+            "send_email", "create_event", "log_to_sheet", "create_doc", 
+            "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
+            "send_slack", "create_task", "search_image"
+        }
+        allowed_actions.update(all_actions)
+
+    return allowed_depts, allowed_actions
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -492,24 +525,22 @@ def plan_goal(
 
     # ── Post-processing: Enforce template constraints programmatically ──
     if intent_packet:
+        intent_dict = intent_packet.to_dict()
+        allowed_depts, allowed_actions = get_allowed_boundaries(intent_dict)
         tmpl_name = intent_packet.workflow_template
-        if tmpl_name in TEMPLATES:
-            tmpl = TEMPLATES[tmpl_name]
-            allowed_depts = tmpl["allowed_departments"]
-            allowed_actions = tmpl["allowed_actions"]
+        
+        for t in tasks:
+            # 1. Verify permitted department
+            if t.department not in allowed_depts:
+                print(f"[PLANNER] Programmatic Template Restriction: Task '{t.task_id}' uses unauthorized department '{t.department}' for template '{tmpl_name}'. Triggering fallback.", flush=True)
+                return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status="TEMPLATE_VIOLATION", intent_packet=intent_dict)
             
-            for t in tasks:
-                # 1. Verify permitted department
-                if t.department not in allowed_depts:
-                    print(f"[PLANNER] Programmatic Template Restriction: Task '{t.task_id}' uses unauthorized department '{t.department}' for template '{tmpl_name}'. Triggering fallback.", flush=True)
-                    return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status="TEMPLATE_VIOLATION", intent_packet=intent_packet.to_dict())
-                
-                # 2. Verify permitted actions for execution tasks
-                if t.department == "execution":
-                    action = t.context.get("action")
-                    if action not in allowed_actions:
-                        print(f"[PLANNER] Programmatic Template Restriction: Task '{t.task_id}' uses unauthorized execution action '{action}' for template '{tmpl_name}'. Triggering fallback.", flush=True)
-                        return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status="TEMPLATE_VIOLATION", intent_packet=intent_packet.to_dict())
+            # 2. Verify permitted actions for execution tasks
+            if t.department == "execution":
+                action = t.context.get("action")
+                if action not in allowed_actions:
+                    print(f"[PLANNER] Programmatic Template Restriction: Task '{t.task_id}' uses unauthorized execution action '{action}' for template '{tmpl_name}'. Triggering fallback.", flush=True)
+                    return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status="TEMPLATE_VIOLATION", intent_packet=intent_dict)
 
     # ── Post-processing: Enforce content dependencies for execution tasks ──
     content_task_ids = [t.task_id for t in tasks if t.department in ("writing", "analysis", "research")]
