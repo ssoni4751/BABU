@@ -66,5 +66,33 @@
     "timestamp": "2026-06-01T05:34:07.831400+00:00",
     "failure_type": "METHODOLOGY",
     "goal": "Daily Autonomous Marketing Post generation and publishing"
+  },
+  {
+    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260601_113805",
+    "domain": "social_media.facebook_publisher",
+    "attempted_methodology": "publish_to_facebook_page",
+    "observed_consequence": "The publish_to_facebook_page method failed due to an expired or invalid Page access token, resulting in an OAuthException from the Facebook API.",
+    "active_anti_pattern_rule": "NEVER use expired or invalid Page access tokens to publish content, ALWAYS refresh or re-obtain Page access tokens through a valid authentication flow, such as querying /me/accounts or using the Facebook OAuth authorization process, before attempting to publish to a Facebook page.",
+    "confidence": 1.0,
+    "decay_rate": 0.15,
+    "success_count": 0,
+    "ttl_sessions_remaining": 20,
+    "timestamp": "2026-06-01T06:08:05.200741+00:00",
+    "failure_type": "METHODOLOGY",
+    "goal": "Daily Autonomous Marketing Post"
+  },
+  {
+    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260601_113822",
+    "domain": "social_media.facebook_publisher",
+    "attempted_methodology": "publish_to_facebook_page(img_path, caption) with Page ID invalid_page_123",
+    "observed_consequence": "The publish_to_facebook_page method failed due to an invalid OAuth access token, which was used to attempt to publish to a Facebook page with an ID of invalid_page_123, resulting in a Facebook API error.",
+    "active_anti_pattern_rule": "NEVER use an OAuth access token without verifying its validity and scope for the specific Facebook page, ALWAYS obtain a page-specific access token by querying /me/accounts or /oauth/access_token with the correct permissions and page ID before attempting to publish to a Facebook page.",
+    "confidence": 1.0,
+    "decay_rate": 0.15,
+    "success_count": 0,
+    "ttl_sessions_remaining": 20,
+    "timestamp": "2026-06-01T06:08:22.916238+00:00",
+    "failure_type": "METHODOLOGY",
+    "goal": "Daily Autonomous Marketing Post generation and publishing"
   }
 ]

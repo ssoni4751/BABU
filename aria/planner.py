@@ -36,6 +36,111 @@ DEPARTMENTS: Dict[str, str] = {
 }
 
 # ---------------------------------------------------------------------------
+# Intent Governance Layer & Packet Structures
+# ---------------------------------------------------------------------------
+
+from dataclasses import dataclass
+
+@dataclass
+class IntentPacket:
+    """Represents a classified query intent with strict execution capability limits and execution modes."""
+    lookup: bool = False
+    research: bool = False
+    generate: bool = False
+    execute: bool = False
+    execution_mode: str = "READ_ONLY"  # "READ_ONLY", "APPROVAL_REQUIRED", "AUTO_EXECUTE"
+    confidence: float = 1.0
+
+    def to_dict(self) -> dict:
+        return {
+            "lookup": self.lookup,
+            "research": self.research,
+            "generate": self.generate,
+            "execute": self.execute,
+            "execution_mode": self.execution_mode,
+            "confidence": self.confidence
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "IntentPacket":
+        return cls(
+            lookup=data.get("lookup", False),
+            research=data.get("research", False),
+            generate=data.get("generate", False),
+            execute=data.get("execute", False),
+            execution_mode=data.get("execution_mode", "READ_ONLY"),
+            confidence=data.get("confidence", 1.0)
+        )
+
+INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
+    "You are ARIA's Intent Classifier. Your ONLY job is to classify the user's "
+    "conversational intent into a structured IntentPacket JSON.\n"
+    "\n"
+    "CAPABILITIES DEFINITION:\n"
+    "- lookup: True if finding facts, searching the web, checking knowledge base, or gathering profile context is required.\n"
+    "- research: True if deep information gathering, multiple source evaluation, or cross-referencing is required.\n"
+    "- generate: True if data analysis, content creation, report drafting, comparison, or synthesis is required.\n"
+    "- execute: True if a physical mutation action (sending emails, creating Google Docs/Events, logging to sheets, publishing posts) is explicitly requested.\n"
+    "\n"
+    "EXECUTION MODE DEFINITION:\n"
+    "- READ_ONLY: The query is informational or research-based. No changes, drafts, or execution actions allowed.\n"
+    "- APPROVAL_REQUIRED: User requested a mutation action (e.g. email, document creation, sheet logging) that requires user audit and approval before dispatch.\n"
+    "- AUTO_EXECUTE: User requested a highly structured, scheduled, or automated background task (like daily marketing posts) that does not need explicit user approval.\n"
+    "\n"
+    "CONFIDENCE RATING:\n"
+    "Provide a rating between 0.0 and 1.0 representing how clear and unambiguous the user query is. If the query is vague, nonsensical, or lacks required context (e.g., 'Take care of this thing', 'do it', or 'test'), rate the confidence below 0.65.\n"
+    "\n"
+    "JSON SCHEMA:\n"
+    "{\n"
+    '  "lookup": true | false,\n'
+    '  "research": true | false,\n'
+    '  "generate": true | false,\n'
+    '  "execute": true | false,\n'
+    '  "execution_mode": "READ_ONLY | APPROVAL_REQUIRED | AUTO_EXECUTE",\n'
+    '  "confidence": 0.0 to 1.0\n'
+    "}\n"
+    "\n"
+    "CRITICAL: Output ONLY valid raw JSON. No explanation, no markdown fences."
+)
+
+def classify_intent(query: str, history_text: str = "", model_name: str = "llama-3.1-8b-instant") -> IntentPacket:
+    """Classify user query intent into a structured IntentPacket."""
+    t = query.lower().strip()
+    
+    # 1. Rule-based fast-track bypass for greetings, short chitchat, and stats commands
+    greetings = {"hi", "hello", "hey", "good morning", "good afternoon", "good evening", "how are you", "help", "clear", "stats", "model"}
+    if t in greetings or len(t) < 15:
+        print("[INTENT CLASSIFIER] Fast-track classification: CHORE", flush=True)
+        return IntentPacket(lookup=False, research=False, generate=False, execute=False, execution_mode="READ_ONLY", confidence=1.0)
+
+    # 2. LLM-based robust classification
+    from langchain_core.messages import SystemMessage, HumanMessage
+    try:
+        try:
+            from aria.bot import invoke_with_fallback
+        except ImportError:
+            from bot import invoke_with_fallback
+
+        history_snippet = (history_text[:300] + "…") if len(history_text) > 300 else history_text
+        user_content = f"User Query: {query}\n"
+        if history_snippet:
+            user_content += f"Recent History: {history_snippet}"
+
+        response = invoke_with_fallback(
+            [SystemMessage(content=INTENT_CLASSIFIER_SYSTEM_PROMPT), HumanMessage(content=user_content)],
+            model_name=model_name,
+            temp=0.0,  # Highly deterministic
+        )
+        raw_text = response.content.strip()
+        data = _extract_json(raw_text)
+        packet = IntentPacket.from_dict(data)
+        print(f"[INTENT CLASSIFIER] Classified: lookup={packet.lookup}, research={packet.research}, gen={packet.generate}, exec={packet.execute}, mode={packet.execution_mode}, conf={packet.confidence}", flush=True)
+        return packet
+    except Exception as e:
+        print(f"[INTENT CLASSIFIER] Failed to classify intent: {e}. Defaulting to READ_ONLY fallback.", flush=True)
+        return IntentPacket(lookup=False, research=False, generate=False, execute=False, execution_mode="READ_ONLY", confidence=0.5)
+
+# ---------------------------------------------------------------------------
 # System prompt
 # ---------------------------------------------------------------------------
 
@@ -46,6 +151,11 @@ PLANNER_SYSTEM_PROMPT: str = (
     "RULES:\n"
     "- Output ONLY valid JSON. No markdown, no explanation.\n"
     "- GOAL CORRECTIONS: If the user query is a correction, typo fix, or modification of a previous goal in the recent conversation history (e.g. 'I meant monitoring, not monetary' or 'correct the topic to X'), you must identify the corrected goal topic and plan the task DAG for the corrected goal, not the incorrect one.\n"
+    "- INTENT CONSTRAINTS: The system has pre-classified the user's intent boundaries and capability limits. You must strictly obey these constraints:\n"
+    "  * If lookup is false and research is false, you must NOT create any 'research' tasks.\n"
+    "  * If generate is false, you must NOT create any 'analysis' or 'writing' tasks.\n"
+    "  * If execute is false, you are STRICTLY FORBIDDEN from creating any 'execution' department tasks (e.g. sending emails or creating docs). Creating unauthorized execution tasks is a critical safety violation.\n"
+    "  * execution_mode: Read this setting carefully. If it is 'READ_ONLY', you must only plan read-only informational/research tasks and end with a 'pa' task; no draft or mutation actions are allowed. If it is 'APPROVAL_REQUIRED', you can create 'execution' tasks but they will go through an approval check. If it is 'AUTO_EXECUTE', you are allowed to plan automated background execution dispatches.\n"
     "- Each task must have: task_id (T1, T2, ...), objective, department, "
     "depends_on (list of task_ids), priority (1=highest), compliance_checklist (list of strings), and grant_profile_access (boolean).\n"
     "- grant_profile_access: Set to true ONLY for the single, specific 'research' task that requires access to the local user profile (family graph, business services, contact info) to fulfill the user's personal query. For all other tasks, this MUST be false. Do NOT grant profile access to multiple tasks to prevent token bloat and ensure security isolation.\n"
@@ -101,21 +211,34 @@ def _extract_json(text: str) -> dict:
     return json.loads(cleaned)
 
 
-def _build_fallback_graph(query: str, goal_id: Optional[str] = None, goal_type: str = "NEW", planner_status: str = "FALLBACK") -> GoalGraph:
+def _build_fallback_graph(
+    query: str,
+    goal_id: Optional[str] = None,
+    goal_type: str = "NEW",
+    planner_status: str = "FALLBACK",
+    intent_packet: Optional[dict] = None
+) -> GoalGraph:
     """Return a single-task fail-closed graph refusing execution due to planning ambiguity."""
     if not goal_id:
         goal_id = f"G-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
     now_iso = datetime.now(timezone.utc).isoformat()
 
+    objective = "Inform the user that the request could not be planned securely because the query is too ambiguous, lacks required context, or violates system safety boundaries. Refuse autonomous execution and request clarity."
+    checklist = ["State query ambiguity clearly", "Refuse execution factually"]
+
+    if planner_status == "AMBIGUOUS_QUERY":
+        objective = "Politely explain to the user that their query is too vague, ambiguous, or lacks necessary details to plan safely. Ask the user to clarify exactly what objective they want ARIA to achieve."
+        checklist = ["Politely explain ambiguity", "Ask for specific clarification"]
+
     tasks = [
         TaskDTO(
             task_id="T1",
-            objective="Inform the user that the request could not be planned securely because the query is too ambiguous, lacks required context, or violates system safety boundaries. Refuse autonomous execution and request clarity.",
+            objective=objective,
             department="pa",
             depends_on=[],
             priority=1,
             state=TaskState.READY,
-            compliance_checklist=["State query ambiguity clearly", "Refuse execution factually"],
+            compliance_checklist=checklist,
         )
     ]
 
@@ -127,6 +250,7 @@ def _build_fallback_graph(query: str, goal_id: Optional[str] = None, goal_type: 
         created_at=now_iso,
         goal_type=goal_type,
         planner_status=planner_status,
+        intent_packet=intent_packet,
     )
 
 
@@ -143,6 +267,7 @@ def plan_goal(
     goal_id: Optional[str] = None,
     is_correction: bool = False,
     last_goal_text: Optional[str] = None,
+    intent_packet: Optional[IntentPacket] = None,
 ) -> GoalGraph:
     """Decompose *query* into a structured GoalGraph using a single LLM call.
 
@@ -158,6 +283,8 @@ def plan_goal(
         User profile context to help the planner personalise tasks.
     model_name : str, optional
         Groq model identifier. Defaults to ``llama-3.1-8b-instant``.
+    intent_packet : IntentPacket, optional
+        The pre-classified intent boundaries.
 
     Returns
     -------
@@ -178,6 +305,16 @@ def plan_goal(
         f"Gear: {gear}",
         f"User query: {query}",
     ]
+    if intent_packet:
+        user_content_parts.append(
+            f"Pre-classified Intent Boundaries:\n"
+            f"- lookup: {intent_packet.lookup}\n"
+            f"- research: {intent_packet.research}\n"
+            f"- generate: {intent_packet.generate}\n"
+            f"- execute: {intent_packet.execute}\n"
+            f"- execution_mode: {intent_packet.execution_mode}\n"
+            f"- confidence: {intent_packet.confidence}"
+        )
     if is_correction:
         user_content_parts.append("Goal correction mode: ACTIVE")
     if last_goal_text:
@@ -259,6 +396,7 @@ def plan_goal(
             task_context["action"] = t["action"]
             task_context["params"] = t.get("params", {})
         task_context["grant_profile_access"] = bool(t.get("grant_profile_access", False))
+        task_context["intent_packet"] = intent_packet.to_dict() if intent_packet else None
 
         # Dynamic per-department token budget allocation
         dept_budgets = {
@@ -319,6 +457,8 @@ def plan_goal(
         tasks=tasks,
         created_at=now_iso,
         goal_type=goal_type,
+        planner_status="SUCCESS",
+        intent_packet=intent_packet.to_dict() if intent_packet else None,
     )
 
     # Validate DAG (no cycles) ---------------------------------------------

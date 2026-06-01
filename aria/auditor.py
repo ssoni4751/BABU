@@ -58,8 +58,22 @@ class PreExecutionGatekeeper:
         if not task.task_id or not task.objective:
             return False, "Malformed task: missing task_id or objective."
 
-        # 2. Check department capabilities
+        # 2. Check department capabilities and intent-based governance boundaries
         dept = task.department.lower()
+        intent_packet_dict = task.context.get("intent_packet")
+        if intent_packet_dict:
+            # Block execution tasks if execute is disabled
+            if dept == "execution" and not intent_packet_dict.get("execute", False):
+                return False, f"Blocked: Task '{task.task_id}' belongs to the 'execution' department, but 'execute' capability is disabled in the intent governance ledger."
+            
+            # Block research tasks if lookup & research are disabled
+            if dept == "research" and not intent_packet_dict.get("lookup", False) and not intent_packet_dict.get("research", False):
+                return False, f"Blocked: Task '{task.task_id}' belongs to the 'research' department, but both 'lookup' and 'research' capabilities are disabled in the intent governance ledger."
+            
+            # Block writing/analysis tasks if generate is disabled
+            if dept in ("writing", "analysis") and not intent_packet_dict.get("generate", False):
+                return False, f"Blocked: Task '{task.task_id}' belongs to the '{dept}' department, but 'generate' capability is disabled in the intent governance ledger."
+
         if dept == "execution":
             action = task.context.get("action")
             if not action:
