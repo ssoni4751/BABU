@@ -211,7 +211,7 @@ PLANNER_SYSTEM_PROMPT: str = (
     "- grant_profile_access: Set to true ONLY for the single, specific 'research' task that requires access to the local user profile (family graph, business services, contact info) to fulfill the user's personal query. For all other tasks, this MUST be false. Do NOT grant profile access to multiple tasks to prevent token bloat and ensure security isolation.\n"
     "- compliance_checklist: A list of 2-3 specific, concrete criteria that the task's output must satisfy for the auditor to approve it (e.g., verifying specific factual items, formatting style, checking profile matches, or ensuring it is not a raw status message).\n"
     "  CRITICAL: For 'writing' tasks that synthesize upstream 'research' findings, you MUST always include a checklist item requiring that all research citations, source links, or references are explicitly preserved and listed at the end of the report.\n"
-    "  CRITICAL: For any 'research' department task, you MUST always include compliance checklist items requiring: (1) source credibility and verifiability, (2) recency and evidence verification, and (3) confidence assessment.\n"
+    "  CRITICAL: For any 'research' department task, you MUST always include compliance checklist items requiring: (1) source credibility and verifiability, (2) recency and evidence verification, (3) confidence assessment, and (4) explicit evidence citations (naming specific sections, documents, or reports where possible).\n"
     "- Valid departments: research, analysis, writing, execution, pa\n"
     "- depends_on must reference existing task_ids only\n"
     "- Tasks with no dependencies get depends_on: []\n"

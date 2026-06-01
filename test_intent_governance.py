@@ -283,6 +283,8 @@ class TestIntentGovernance(unittest.TestCase):
         self.assertEqual(len(failures_1), 1)
         first_sig = failures_1[0]["failure_signature"]
         self.assertEqual(failures_1[0].get("success_count", 0), 0)
+        self.assertTrue("last_reinforced" in failures_1[0], "last_reinforced timestamp is missing from failure entry schema.")
+        first_reinforced = failures_1[0]["last_reinforced"]
         
         # 3. Log a semantically identical failure with slightly different wording
         error_msg_2 = "Facebook API OAuthException: Token has expired or is invalid for the page."
@@ -296,7 +298,8 @@ class TestIntentGovernance(unittest.TestCase):
         self.assertEqual(len(failures_2), 1, "Semantic deduplicator failed to consolidate duplicate rule and appended a new one.")
         self.assertEqual(failures_2[0]["failure_signature"], first_sig)
         self.assertEqual(failures_2[0].get("success_count", 0), 1, "Success count was not incremented during consolidation.")
-        print("✅ Epistemic Immune System successfully deduplicated and consolidated semantic identical failure rules.")
+        self.assertTrue("last_reinforced" in failures_2[0], "last_reinforced timestamp is missing from consolidated failure entry.")
+        print("✅ Epistemic Immune System successfully deduplicated, consolidated semantic identical failure rules, and updated last_reinforced timestamp.")
 
 if __name__ == "__main__":
     unittest.main()

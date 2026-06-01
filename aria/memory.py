@@ -208,15 +208,19 @@ def consolidate_failures_semantic(new_entry: dict, existing_failures: list) -> t
 
     prompt = (
         "You are ARIA's Epistemic Immune System memory compressor. Your job is to check if a new candidate rule "
-        "is semantically equivalent to, covered by, or substantially duplicate to any existing rule in the same domain. "
-        "If it is covered, we consolidate them instead of creating a duplicate entry.\n\n"
+        "is semantically equivalent to or covered by any existing rule in the same domain. "
+        "Specifically, categorize the relationship between the candidate rule and existing rules using one of these outcomes:\n"
+        "- \"EXACT_MATCH\": The candidate rule is semantically equivalent to or covers the exact same instructions as an existing rule.\n"
+        "- \"COVERED_BY_EXISTING\": The candidate rule's instructions are fully covered or subsumed by a stronger, broader, or more descriptive existing rule.\n"
+        "- \"NOVEL\": The candidate rule covers a completely different failure mode or contains novel security/planning constraints not present in the existing rules.\n\n"
         f"Candidate Rule: \"{new_entry['active_anti_pattern_rule']}\"\n\n"
         "Existing Rules:\n"
         f"{json.dumps(rules_list, indent=2)}\n\n"
         "Instructions:\n"
-        "- If the candidate rule is semantically equivalent to or covered by an existing rule, return that existing rule's \"signature\" string.\n"
-        "- If the candidate rule covers a completely different failure mode, return null.\n"
-        "- Output ONLY a raw JSON object containing the key \"matched_signature\" which is either the signature string or null. No explanation, no markdown JSON blocks."
+        "- Output a raw JSON object ONLY containing exactly two keys:\n"
+        "  * \"outcome\": \"EXACT_MATCH\" | \"COVERED_BY_EXISTING\" | \"NOVEL\"\n"
+        "  * \"matched_signature\": The \"signature\" string of the matched existing rule (if outcome is EXACT_MATCH or COVERED_BY_EXISTING), or null.\n"
+        "- Output ONLY raw valid JSON. No explanation, no markdown JSON blocks."
     )
 
     try:
@@ -244,15 +248,18 @@ def consolidate_failures_semantic(new_entry: dict, existing_failures: list) -> t
         text = text.strip()
         
         data = json.loads(text)
+        outcome = data.get("outcome", "NOVEL")
         matched_sig = data.get("matched_signature")
-        if matched_sig:
+        
+        if outcome in ("EXACT_MATCH", "COVERED_BY_EXISTING") and matched_sig:
             # Update the matched rule in the full failures list
             for f in existing_failures:
                 if f.get("failure_signature") == matched_sig:
                     f["success_count"] = f.get("success_count", 0) + 1
                     f["confidence"] = min(1.0, f.get("confidence", 1.0) + 0.05)
+                    f["last_reinforced"] = datetime.now(timezone.utc).isoformat()
                     f["timestamp"] = datetime.now(timezone.utc).isoformat()
-                    print(f"[IMMUNE SYSTEM] Semantic duplicate detected. Consolidated candidate rule into existing rule '{matched_sig}'. Updated confidence: {f['confidence']}", flush=True)
+                    print(f"[IMMUNE SYSTEM] Semantic similarity classified as {outcome}. Consolidated candidate rule into existing rule '{matched_sig}'. Updated confidence: {f['confidence']}", flush=True)
                     return True, existing_failures
     except Exception as e:
         print(f"[IMMUNE SYSTEM WARNING] Semantic deduplication check failed: {e}", flush=True)
@@ -394,6 +401,7 @@ def log_execution_failure(
             "success_count": 0,
             "ttl_sessions_remaining": 20,
             "timestamp": datetime.now(timezone.utc).isoformat(),
+            "last_reinforced": datetime.now(timezone.utc).isoformat(),
             "failure_type": failure_type,
             "goal": goal
         }
