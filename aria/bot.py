@@ -3556,6 +3556,21 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         traceback.print_exc(file=sys.stdout)
 
 
+async def telegram_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle unexpected errors in Telegram Bot. Exit immediately on Conflict to prevent infinite reconnection loop."""
+    from telegram.error import Conflict
+    if isinstance(context.error, Conflict):
+        print("\n" + "="*80, flush=True)
+        print("⚠️  CRITICAL CONFLICT DETECTED!", flush=True)
+        print("Another instance of this bot is already running and polling.", flush=True)
+        print("To prevent a reconnection loop battle, this duplicate instance will now exit.", flush=True)
+        print("="*80 + "\n", flush=True)
+        import os
+        os._exit(1)
+    else:
+        print(f"[BOT ERROR] Handled exception: {context.error}", flush=True)
+
+
 # â”€â”€ Entry point â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 if __name__ == "__main__":
@@ -3577,6 +3592,7 @@ if __name__ == "__main__":
     bot.add_handler(CommandHandler("postnow", cmd_postnow))
     bot.add_handler(MessageHandler((filters.TEXT | filters.VOICE) & (~filters.COMMAND), on_message))
     bot.add_handler(CallbackQueryHandler(on_post_callback))
+    bot.add_error_handler(telegram_error_handler)
     bot.run_polling(drop_pending_updates=True)
 
 
