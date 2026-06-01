@@ -606,7 +606,8 @@ def search_profile(query: str, bypass_filter: bool = False) -> str:
         "know", "tell", "show", "did", "does", "have", "has", "had", "a", "an", "the", "about",
         "hi", "hello", "hey", "yo"  # Add conversational greetings to stopwords
     }
-    search_words = [w for w in q.split() if w not in stopwords and len(w) >= 1]
+    search_words = [re.sub(r'[^a-zA-Z0-9]', '', w) for w in q.split()]
+    search_words = [w for w in search_words if w not in stopwords and len(w) >= 1]
     
     def matches_word(text: str) -> bool:
         t_lower = text.lower()
@@ -723,6 +724,14 @@ def clean_search_query(query: str) -> str:
     ]
     for pattern in patterns:
         cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE).strip()
+        
+    # 3. Clean trailing punctuation from individual words
+    cleaned = re.sub(r'[?.,!]+$', '', cleaned)
+    cleaned = re.sub(r'\s+[?.,!]+$', '', cleaned)
+    
+    # 4. Standardize common profile typos
+    cleaned = re.sub(r'\b(?:bussiness|bussines|busines)\b', 'business', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'\b(?:bussinesses|bussinesses|businesses)\b', 'businesses', cleaned, flags=re.IGNORECASE)
         
     return cleaned if cleaned else query
 
