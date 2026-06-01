@@ -467,6 +467,30 @@
           "Proceed with Phase 3 integration"
         ],
         "timestamp": "2026-06-01T06:08:03.328960+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-06-01T08:38:17.637222+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-06-01T08:49:24.458533+00:00"
+      },
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-06-01T09:42:22.779875+00:00"
       }
     ],
     "work_summaries": [
@@ -691,6 +715,24 @@
         "status": "FAILED",
         "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A premium, minimalist 3D corporate style marketing campaign poster background fe...",
         "timestamp": "2026-06-01T06:08:20.325577+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A premium, minimalist 3D corporate style marketing campaign poster background re...",
+        "timestamp": "2026-06-01T08:38:51.969756+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A premium, minimalist 3D corporate style marketing campaign poster background re...",
+        "timestamp": "2026-06-01T08:50:00.738807+00:00"
+      },
+      {
+        "task_name": "Daily FB Marketing Post",
+        "status": "FAILED",
+        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A premium, minimalist 3D corporate style marketing campaign poster background re...",
+        "timestamp": "2026-06-01T09:42:38.806918+00:00"
       }
     ]
   }

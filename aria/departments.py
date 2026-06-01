@@ -96,6 +96,8 @@ class DepartmentHead:
             raise ValueError(f"Invalid task for {self.name}: {task.task_id}")
 
         scoped = self.scope_context(task, shared_resources)
+        if task.compliance_checklist:
+            scoped["compliance_checklist"] = task.compliance_checklist
         print(
             f"[DEPT:{self.name}] Dispatching worker for task {task.task_id}",
             flush=True,

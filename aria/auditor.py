@@ -178,9 +178,9 @@ class PostExecutionValidator:
         if "[Worker error" in result or "[LLM error" in result:
             return False, f"Deterministic execution error detected: {result}"
 
-        # 2. Programmatic execution tasks bypass LLM semantic validation
-        if task.department.lower() == "execution":
-            print(f"[AUDITOR:POST] Bypassing LLM semantic validation for execution task '{task.task_id}'", flush=True)
+        # 2. Programmatic execution and PA passthrough tasks bypass LLM semantic validation
+        if task.department.lower() in ("execution", "pa"):
+            print(f"[AUDITOR:POST] Bypassing LLM semantic validation for '{task.department}' task '{task.task_id}'", flush=True)
             return True, result
 
         # 3. Semantic and Hallucination audit using LLM (if provided)
@@ -204,6 +204,7 @@ class PostExecutionValidator:
                 "- Check for hallucinated success markers (e.g. claiming an action was executed when it was not).\n"
                 "- Check if the output claims the model is 'flawless', 'perfect', or '100% correct' (unrealistic AI claims).\n"
                 "- Be fair, realistic, and constructive. Do NOT reject or block valid responses simply because they are concise, summarizing, or convey upstream results clearly, as long as they address the objective.\n"
+                "- For local profile searches, personal details lookup, or simple information retrievals, do NOT penalize the worker for lacking academic web citations or complex external evidence. The local user profile or local context is the authoritative source. If the worker presents the correct information retrieved from the local profile, treat it as fully compliant and verified.\n"
                 "- Output ONLY a JSON payload matching this format:\n"
                 "{\n"
                 '  "passed": true/false,\n'

@@ -48,8 +48,14 @@ def run_worker(task: TaskDTO, scoped_context: dict, llm: Any) -> tuple[str, dict
     system = (
         f"ARIA Worker [{task.department.upper()}]: Execute the task below.\n"
         f"Use ONLY the provided context. Be extremely concise and factual. Do NOT assume, invent, or extrapolate facts.\n"
-        f"Output your final result directly."
     )
+    if task.compliance_checklist:
+        system += (
+            f"\nCRITICAL: Your output MUST strictly satisfy and EXPLICITLY state/address the following compliance checklist items:\n"
+            + "\n".join(f"- {item}" for item in task.compliance_checklist) + "\n"
+            + "\nEnsure you explicitly address or state how these checklist items are met (e.g. mention the source of information, its recency, or confidence level if requested in the checklist) so that the post-execution auditor can easily verify them."
+        )
+    system += "\nOutput your final result directly."
 
     anti_patterns = get_anti_pattern_rules(f"department.{task.department}")
     if anti_patterns:
