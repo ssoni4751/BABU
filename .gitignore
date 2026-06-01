@@ -66,3 +66,8 @@ temp/
 
 # Compiled Output Artifacts
 *.pdf
+
+# Test Memory Isolation
+*failures_test.json
+*failures.json.tmp
+*.bak_test

@@ -17,7 +17,18 @@ if sys.platform == "win32":
 # Core Paths
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROFILE_PATH = os.path.join(CURRENT_DIR, "user_profile.json")
-FAILURES_PATH = os.path.join(CURRENT_DIR, "memory", "failures.json")
+# Dynamic Test Path isolation to avoid polluting failures.json during unit tests
+is_testing = (
+    "unittest" in sys.modules 
+    or "pytest" in sys.modules 
+    or any("test" in arg.lower() for arg in sys.argv)
+    or os.environ.get("TESTING") == "true"
+)
+
+if is_testing:
+    FAILURES_PATH = os.path.join(CURRENT_DIR, "memory", "failures_test.json")
+else:
+    FAILURES_PATH = os.path.join(CURRENT_DIR, "memory", "failures.json")
 LAYERED_MEMORY_DIR = os.path.join(CURRENT_DIR, "memory")
 ROUTING_STATS_PATH = os.path.join(LAYERED_MEMORY_DIR, "routing", "routing_stats.json")
 WORKFLOW_LOGS_PATH = os.path.join(LAYERED_MEMORY_DIR, "orchestration", "workflows.json")
