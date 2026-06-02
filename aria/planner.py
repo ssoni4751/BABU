@@ -28,7 +28,8 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 DEPARTMENTS: Dict[str, str] = {
-    "research": "Web search, knowledge base lookup, profile search, data collection",
+    "information": "Quick general web search, Wikipedia lookup, simple data collection, or local profile lookup (default for standard queries)",
+    "research": "Deep academic or comprehensive multi-source web research requiring strict citations, verifications, and source listing (ONLY when user explicitly requests research)",
     "analysis": "Data analysis, sentiment analysis, comparison, pattern recognition",
     "writing": "Report generation, content creation, summarization, formatting",
     "execution": "Google Workspace actions (email, calendar, sheets, docs)",
@@ -43,22 +44,22 @@ from dataclasses import dataclass
 
 TEMPLATES: Dict[str, Dict[str, Any]] = {
     "LOOKUP": {
-        "allowed_departments": {"research", "pa", "execution"},
+        "allowed_departments": {"information", "research", "pa", "execution"},
         "allowed_actions": {"search_sheet", "search_gmail"},
         "default_mode": "READ_ONLY"
     },
     "RESEARCH": {
-        "allowed_departments": {"research", "analysis", "writing", "pa", "execution"},
+        "allowed_departments": {"information", "research", "analysis", "writing", "pa", "execution"},
         "allowed_actions": {"search_gmail"},
         "default_mode": "READ_ONLY"
     },
     "PUBLISH": {
-        "allowed_departments": {"research", "analysis", "writing", "execution", "pa"},
+        "allowed_departments": {"information", "research", "analysis", "writing", "execution", "pa"},
         "allowed_actions": {"send_email", "send_slack", "create_doc", "log_to_sheet"},
         "default_mode": "APPROVAL_REQUIRED"
     },
     "EXECUTE": {
-        "allowed_departments": {"execution", "pa", "research"},
+        "allowed_departments": {"execution", "pa", "information", "research"},
         "allowed_actions": {"create_event", "log_to_sheet", "create_doc", "copy_photos_to_drive", "copy_contacts_to_drive", "create_task"},
         "default_mode": "APPROVAL_REQUIRED"
     }
@@ -200,10 +201,10 @@ PLANNER_SYSTEM_PROMPT: str = (
     "  * If generate is false, you must NOT create any 'analysis' or 'writing' tasks.\n"
     "  * If execute is false, you are STRICTLY FORBIDDEN from creating mutating 'execution' department tasks (e.g. sending emails, creating events, or creating docs). You are only allowed to plan read-only actions like 'search_sheet' or 'search_gmail'. Creating unauthorized mutating execution tasks is a critical safety violation.\n"
     "  * workflow_template: Read this setting carefully and obey its strict bounds:\n"
-    "    - LOOKUP: Only allow 'research', 'pa', and read-only 'execution' tasks. Permitted actions: 'search_sheet', 'search_gmail'. No writing, analysis, or mutating execution tasks are allowed.\n"
-    "    - RESEARCH: Only allow 'research', 'analysis', 'writing', 'pa', and read-only 'execution' tasks. Permitted execution actions: 'search_gmail'. No mutating execution tasks are allowed.\n"
-    "    - PUBLISH: Allow 'research', 'analysis', 'writing', 'execution', and 'pa' tasks. Permitted execution actions: 'send_email', 'send_slack', 'create_doc', 'log_to_sheet', 'search_gmail'.\n"
-    "    - EXECUTE: Only allow 'execution', 'pa', and 'research' tasks. Permitted execution actions: 'create_event', 'log_to_sheet', 'create_doc', 'copy_photos_to_drive', 'copy_contacts_to_drive', 'create_task', 'search_gmail'.\n"
+    "    - LOOKUP: Only allow 'information', 'research', 'pa', and read-only 'execution' tasks. Permitted actions: 'search_sheet', 'search_gmail'. No writing, analysis, or mutating execution tasks are allowed.\n"
+    "    - RESEARCH: Only allow 'information', 'research', 'analysis', 'writing', 'pa', and read-only 'execution' tasks. Permitted execution actions: 'search_gmail'. No mutating execution tasks are allowed.\n"
+    "    - PUBLISH: Allow 'information', 'research', 'analysis', 'writing', 'execution', and 'pa' tasks. Permitted execution actions: 'send_email', 'send_slack', 'create_doc', 'log_to_sheet', 'search_gmail'.\n"
+    "    - EXECUTE: Only allow 'execution', 'pa', 'information', and 'research' tasks. Permitted execution actions: 'create_event', 'log_to_sheet', 'create_doc', 'copy_photos_to_drive', 'copy_contacts_to_drive', 'create_task', 'search_gmail'.\n"
     "  * execution_mode: Read this setting carefully. If it is 'READ_ONLY', you must only plan read-only informational/research tasks and end with a 'pa' task; no draft or mutation actions are allowed. If it is 'APPROVAL_REQUIRED', you can create 'execution' tasks but they will go through an approval check. If it is 'AUTO_EXECUTE', you are allowed to plan automated background execution dispatches.\n"
     "- CORRECT TASK SEQUENCING: If the goal requires multiple sequential steps or multiple execution actions (e.g. first research X, then write a report, then create a Google Doc, and finally send an email), you must establish strict dependency links (depends_on) between these tasks to ensure they execute in the correct chronological order (e.g. writing depends on research, Doc creation depends on writing, and email sending depends on Doc creation). If there are multiple execution department tasks, chain them sequentially (T_execution_N depends on T_execution_N-1) to ensure the user audits and approves them in the correct sequence.\n"
     "- Each task must have: task_id (T1, T2, ...), objective, department, "
@@ -212,7 +213,9 @@ PLANNER_SYSTEM_PROMPT: str = (
     "- compliance_checklist: A list of 2-3 specific, concrete criteria that the task's output must satisfy for the auditor to approve it (e.g., verifying specific factual items, formatting style, checking profile matches, or ensuring it is not a raw status message).\n"
     "  CRITICAL: For 'writing' tasks that synthesize upstream 'research' findings, you MUST always include a checklist item requiring that all research citations, source links, or references are explicitly preserved and listed at the end of the report.\n"
     "  CRITICAL: For any 'research' department task, you MUST always include compliance checklist items requiring: (1) source credibility and verifiability, (2) recency and evidence verification, (3) confidence assessment, and (4) explicit evidence citations (naming specific sections, documents, or reports where possible).\n"
-    "- Valid departments: research, analysis, writing, execution, pa\n"
+    "  CRITICAL: For the 'information' department (used for general lookups, quick web searches, or simple profile searches), do NOT require academic-level citations or verifications. Checklists should only verify factual correctness and coverage.\n"
+    "  CRITICAL: Use the 'information' department as the default for all standard queries, quick web lookups, and general information checks. ONLY allocate the 'research' department when the user explicitly requests deep, formal, or comprehensive 'research' in their query.\n"
+    "- Valid departments: information, research, analysis, writing, execution, pa\n"
     "- depends_on must reference existing task_ids only\n"
     "- Tasks with no dependencies get depends_on: []\n"
     "- The LAST task should synthesize/deliver the final result to the user and MUST belong to the 'pa' department.\n"

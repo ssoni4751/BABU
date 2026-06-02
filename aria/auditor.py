@@ -42,7 +42,7 @@ def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]
 
     # 2. Dynamic capability-level union (prevents rigid halting on combined intents)
     if intent_packet_dict.get("lookup", False) or intent_packet_dict.get("research", False):
-        allowed_depts.update({"research", "pa"})
+        allowed_depts.update({"information", "research", "pa"})
         allowed_actions.update({"search_sheet", "search_gmail"})
 
     if intent_packet_dict.get("generate", False):
@@ -208,6 +208,7 @@ class PostExecutionValidator:
                 "- Check if the output claims the model is 'flawless', 'perfect', or '100% correct' (unrealistic AI claims).\n"
                 "- Be fair, realistic, and constructive. Do NOT reject or block valid responses simply because they are concise, summarizing, or convey upstream results clearly, as long as they address the objective.\n"
                 "- For local profile searches, personal details lookup, or simple information retrievals, do NOT penalize the worker for lacking academic web citations or complex external evidence. The local user profile or local context is the authoritative source. If the worker presents the correct information retrieved from the local profile, treat it as fully compliant and verified.\n"
+                "- For the 'information' department (designed for general information retrieval, simple web search, and Wikipedia-style lookups), do NOT penalize the worker for lacking academic-level citations, sources, or strict evidence links, unless the task objective or checklist explicitly demands them. The 'information' department only requires retrieving accurate facts or answers concisely and factually.\n"
                 "- Output ONLY a JSON payload matching this format:\n"
                 "{\n"
                 '  "passed": true/false,\n'

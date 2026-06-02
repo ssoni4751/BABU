@@ -192,6 +192,44 @@ class ResearchHead(DepartmentHead):
         return scoped
 
 
+# ── InformationHead ──────────────────────────────────────────────────────────
+
+
+class InformationHead(DepartmentHead):
+    """Handles quick general information retrieval, simple web search, and Wikipedia-style lookups without requiring deep academic-level citations or evidence constraints."""
+
+    name: str = "information"
+
+    def scope_context(self, task: TaskDTO, shared_resources: dict) -> dict:
+        """
+        Include objective, query, web-search hits, and KB hits.
+        Kept lightweight compared to deep research.
+        """
+        scoped: dict[str, Any] = {
+            "objective": task.objective,
+            "constraints": task.context.get("constraints", []),
+        }
+
+        search_query = task.objective
+        scoped["query"] = search_query
+
+        try:
+            from .bot import web_search, search_knowledge
+        except ImportError:
+            from bot import web_search, search_knowledge
+
+        print(f"[DEPT:information] Executing general information web search for: '{search_query}'", flush=True)
+        web_hits = web_search(search_query)
+        if web_hits and web_hits != "No results found.":
+            scoped["web_search"] = web_hits
+
+        kb_hits = search_knowledge(search_query)
+        if kb_hits:
+            scoped["knowledge_base"] = kb_hits
+
+        return scoped
+
+
 # ── AnalysisHead ─────────────────────────────────────────────────────────────
 
 
@@ -456,6 +494,7 @@ class PAHead(DepartmentHead):
 
 _heads: dict[str, DepartmentHead] = {
     "research": ResearchHead(),
+    "information": InformationHead(),
     "analysis": AnalysisHead(),
     "writing": WritingHead(),
     "execution": ExecutionHead(),

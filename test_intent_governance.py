@@ -301,5 +301,56 @@ class TestIntentGovernance(unittest.TestCase):
         self.assertTrue("last_reinforced" in failures_2[0], "last_reinforced timestamp is missing from consolidated failure entry.")
         print("✅ Epistemic Immune System successfully deduplicated, consolidated semantic identical failure rules, and updated last_reinforced timestamp.")
 
+    def test_11_information_department_routing_and_auditing(self):
+        """Test that standard queries route to the 'information' department instead of 'research',
+        and that PreExecutionGatekeeper and PostExecutionValidator handle the 'information' department correctly without citation penalties.
+        """
+        # 1. Verify get_department_head factory returns InformationHead for "information"
+        from aria.departments import get_department_head, InformationHead
+        head = get_department_head("information")
+        self.assertIsInstance(head, InformationHead)
+        self.assertEqual(head.name, "information")
+
+        # 2. Verify PreExecutionGatekeeper allows 'information' department
+        gatekeeper = PreExecutionGatekeeper()
+        intent = IntentPacket(lookup=True, research=False, generate=False, execute=False, execution_mode="READ_ONLY", workflow_template="LOOKUP")
+        task = TaskDTO(
+            task_id="T1",
+            objective="Retrieve general facts about Delhi",
+            department="information",
+            depends_on=[],
+            priority=1,
+            context={"intent_packet": intent.to_dict()}
+        )
+        passed, reason = gatekeeper.audit(task)
+        self.assertTrue(passed, f"Gatekeeper failed unexpectedly: {reason}")
+
+        # 3. Verify PostExecutionValidator allows 'information' tasks without academic citations
+        from aria.auditor import PostExecutionValidator
+        from unittest.mock import MagicMock
+        from langchain_core.messages import SystemMessage
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = MagicMock(
+            content='{"passed": true, "reason": "Passed info check."}'
+        )
+        validator_with_llm = PostExecutionValidator(llm=mock_llm)
+        val_task = TaskDTO(
+            task_id="T1",
+            objective="Retrieve general facts about Delhi",
+            department="information",
+            depends_on=[],
+            priority=1
+        )
+        passed, reason = validator_with_llm.audit(val_task, "Delhi is the capital of India.")
+        self.assertTrue(passed)
+        
+        # Verify the system prompt included the information department citation bypass instruction
+        system_msg = mock_llm.invoke.call_args[0][0][0]
+        self.assertIsInstance(system_msg, SystemMessage)
+        self.assertIn("information", system_msg.content)
+        self.assertIn("academic-level citations", system_msg.content)
+        print("✅ PreExecutionGatekeeper, get_department_head, and PostExecutionValidator correctly support information department with citation-free auditing rules.")
+
 if __name__ == "__main__":
     unittest.main()
+
