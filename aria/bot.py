@@ -2343,7 +2343,7 @@ else:
 
 # â”€â”€ Core invoke helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-def invoke_aria(message: str, session_id: str = "default", goal_id: Optional[str] = None) -> tuple[str, str, dict]:
+def invoke_aria(message: str, session_id: str = "default", goal_id: Optional[str] = None, gear: str = "WALK") -> tuple[str, str, dict]:
     if not goal_id:
         goal_id = f"G-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
     
@@ -2361,7 +2361,7 @@ def invoke_aria(message: str, session_id: str = "default", goal_id: Optional[str
         
     output = aria_brain.invoke({
         "messages":       [HumanMessage(content=message)],
-        "gear":           "WALK",
+        "gear":           gear,
         "research_data":  [],
         "user_query":     message,
         "history_text":   history_text,
@@ -2380,7 +2380,7 @@ def invoke_aria(message: str, session_id: str = "default", goal_id: Optional[str
     }, config)
     
     reply = output["messages"][-1].content
-    gear  = output.get("gear", "WALK")
+    gear_out = output.get("gear", gear)
     tokens = output.get("tokens", {"prompt": 0, "completion": 0, "total": 0})
     
     add_to_history(session_id, message, reply)
@@ -2392,7 +2392,7 @@ def invoke_aria(message: str, session_id: str = "default", goal_id: Optional[str
             seal_epoch(epoch_id)
             compact_completed_session_history(session_id)
             
-    return reply, gear, tokens
+    return reply, gear_out, tokens
 
 
 # â”€â”€ Health / chat HTTP server â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -2453,6 +2453,8 @@ STATUS_HTML = """<!DOCTYPE html>
     margin-bottom: 40px;
     border-bottom: 1px solid var(--border-color);
     padding-bottom: 24px;
+    flex-wrap: wrap;
+    gap: 16px;
   }
   
   .brand-group {
@@ -2588,55 +2590,70 @@ STATUS_HTML = """<!DOCTYPE html>
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border: 1px solid var(--border-color);
-    border-radius: 18px;
-    padding: 30px;
+    border-radius: 16px;
+    padding: 28px;
     box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    position: relative;
+    overflow: hidden;
   }
   
   .panel-title {
-    font-size: 1.15rem;
+    font-size: 1.1rem;
     font-weight: 700;
     margin-bottom: 24px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     padding-bottom: 14px;
+  }
+  
+  .text-muted {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+  }
+  
+  .text-highlight {
+    color: var(--text-primary);
+    font-weight: 600;
   }
   
   /* Allocation progress bars */
   .allocation-item {
-    margin-bottom: 20px;
+    margin-bottom: 18px;
   }
   
   .allocation-header {
     display: flex;
     justify-content: space-between;
-    font-size: 0.85rem;
+    align-items: center;
+    font-size: 0.88rem;
     margin-bottom: 8px;
   }
   
   .allocation-name {
-    font-weight: 600;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
+    font-weight: 600;
   }
   
   .dot-indicator {
     width: 8px;
     height: 8px;
     border-radius: 50%;
+    display: inline-block;
   }
   
   .allocation-value {
     color: var(--text-secondary);
+    font-size: 0.82rem;
   }
   
   .progress-bg {
     width: 100%;
-    height: 8px;
-    background: rgba(255, 255, 255, 0.05);
+    height: 6px;
+    background: rgba(255, 255, 255, 0.04);
     border-radius: 10px;
     overflow: hidden;
   }
@@ -2644,169 +2661,334 @@ STATUS_HTML = """<!DOCTYPE html>
   .progress-fill {
     height: 100%;
     border-radius: 10px;
-    width: 0%;
-    transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: width 1s ease-in-out;
   }
   
-  /* Ledger Table Panel */
-  .ledger-panel {
-    grid-column: span 2;
-  }
-  
-  @media (max-width: 1024px) {
-    .ledger-panel {
-      grid-column: span 1;
-    }
-  }
-  
-  .table-controls {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 16px;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-  }
-  
-  .search-box {
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 10px 16px;
-    color: var(--text-primary);
-    font-size: 0.88rem;
-    min-width: 280px;
-    transition: all 0.3s ease;
-  }
-  
-  .search-box:focus {
-    outline: none;
-    border-color: #6366f1;
-    background: rgba(255, 255, 255, 0.06);
-  }
-  
-  .tab-filters {
-    display: flex;
-    gap: 8px;
-  }
-  
-  .tab-btn {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--border-color);
-    color: var(--text-secondary);
-    padding: 8px 16px;
-    border-radius: 8px;
-    font-size: 0.82rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-  
-  .tab-btn:hover {
-    background: rgba(255,255,255,0.06);
-    color: var(--text-primary);
-  }
-  
-  .tab-btn.active {
-    background: rgba(99, 102, 241, 0.15);
-    border-color: #6366f1;
-    color: #818cf8;
-  }
-  
+  /* Table Styles */
   .table-wrapper {
+    width: 100%;
     overflow-x: auto;
-    max-height: 480px;
-    overflow-y: auto;
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
   }
   
   table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.85rem;
     text-align: left;
+    font-size: 0.88rem;
   }
   
   th {
-    background: rgba(255, 255, 255, 0.02);
     color: var(--text-secondary);
-    padding: 14px 18px;
     font-weight: 600;
+    padding: 14px 16px;
     border-bottom: 1px solid var(--border-color);
-    position: sticky;
-    top: 0;
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    z-index: 10;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
   }
   
   td {
-    padding: 14px 18px;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
-    color: var(--text-primary);
+    padding: 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    vertical-align: middle;
   }
   
   tr:hover td {
     background: rgba(255, 255, 255, 0.01);
   }
   
+  /* Filter controls */
+  .table-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  
+  .search-box {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    color: var(--text-primary);
+    padding: 10px 16px;
+    font-size: 0.88rem;
+    outline: none;
+    width: 320px;
+    transition: all 0.3s;
+  }
+  
+  .search-box:focus {
+    border-color: var(--border-hover);
+    box-shadow: 0 0 15px rgba(124, 58, 237, 0.15);
+  }
+  
+  .tab-filters {
+    display: flex;
+    background: rgba(255, 255, 255, 0.03);
+    padding: 4px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    gap: 4px;
+  }
+  
+  .tab-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  
+  .tab-btn:hover {
+    color: var(--text-primary);
+  }
+  
+  .tab-btn.active {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+  }
+  
+  /* Badges */
   .badge-category {
     padding: 4px 10px;
     border-radius: 6px;
     font-size: 0.72rem;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
     display: inline-block;
   }
   
-  .badge-research { background: rgba(6, 182, 212, 0.1); color: var(--color-research); border: 1px solid rgba(6, 182, 212, 0.2); }
-  .badge-analysis { background: rgba(245, 158, 11, 0.1); color: var(--color-analysis); border: 1px solid rgba(245, 158, 11, 0.2); }
-  .badge-writing { background: rgba(168, 85, 247, 0.1); color: var(--color-writing); border: 1px solid rgba(168, 85, 247, 0.2); }
-  .badge-execution { background: rgba(16, 185, 129, 0.1); color: var(--color-execution); border: 1px solid rgba(16, 185, 129, 0.2); }
-  .badge-pa { background: rgba(236, 72, 153, 0.1); color: var(--color-pa); border: 1px solid rgba(236, 72, 153, 0.2); }
-  .badge-governance { background: rgba(99, 102, 241, 0.1); color: var(--color-governance); border: 1px solid rgba(99, 102, 241, 0.2); }
+  .badge-research { background: rgba(6, 182, 212, 0.1); border: 1px solid rgba(6, 182, 212, 0.2); color: #22d3ee; }
+  .badge-analysis { background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); color: #fbbf24; }
+  .badge-writing { background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.2); color: #c084fc; }
+  .badge-execution { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); color: #34d399; }
+  .badge-pa { background: rgba(236, 72, 153, 0.1); border: 1px solid rgba(236, 72, 153, 0.2); color: #f472b6; }
+  .badge-governance { background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.2); color: #818cf8; }
   
   .badge-provider {
     padding: 2px 6px;
     border-radius: 4px;
-    font-size: 0.7rem;
-    font-weight: 700;
+    font-size: 0.65rem;
+    font-weight: 800;
     text-transform: uppercase;
-    display: inline-block;
     margin-right: 6px;
+    display: inline-block;
   }
-  .prov-groq { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.25); }
-  .prov-google { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.25); }
-  .prov-openai { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25); }
-  .prov-openrouter { background: rgba(139, 92, 246, 0.15); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.25); }
-  .prov-unknown { background: rgba(161, 161, 170, 0.15); color: #d4d4d8; border: 1px solid rgba(161, 161, 170, 0.25); }
+  .prov-google { background: rgba(219, 68, 85, 0.15); color: #f87171; border: 1px solid rgba(219, 68, 85, 0.2); }
+  .prov-openai { background: rgba(16, 163, 127, 0.15); color: #34d399; border: 1px solid rgba(16, 163, 127, 0.2); }
+  .prov-groq { background: rgba(245, 98, 0, 0.15); color: #f59e0b; border: 1px solid rgba(245, 98, 0, 0.2); }
+  .prov-openrouter { background: rgba(124, 58, 237, 0.15); color: #a78bfa; border: 1px solid rgba(124, 58, 237, 0.2); }
   
   .badge-method {
+    font-size: 0.65rem;
     padding: 2px 6px;
     border-radius: 4px;
-    font-size: 0.68rem;
     font-weight: 600;
-    text-transform: uppercase;
     display: inline-block;
   }
-  .meth-est { background: rgba(245, 158, 11, 0.12); color: #fbbf24; border: 1px dashed rgba(245, 158, 11, 0.3); }
-  .meth-meas { background: rgba(16, 185, 129, 0.1); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.2); }
+  .meth-est { background: rgba(255,255,255,0.04); color: var(--text-secondary); }
+  .meth-meas { background: rgba(16, 185, 129, 0.1); color: #34d399; }
   
-  .text-highlight {
-    font-weight: 600;
-    color: #e4e4e7;
-  }
-  
-  .text-muted {
-    color: var(--text-secondary);
+  /* Reasoning Panel custom style */
+  .reasoning-panel th {
     font-size: 0.78rem;
   }
   
-  /* Footer */
+  /* Query Controls */
+  .query-controls {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    margin-top: 16px;
+    flex-wrap: wrap;
+  }
+  
+  .gear-selector {
+    display: flex;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 4px;
+    gap: 4px;
+  }
+  
+  .gear-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    padding: 10px 20px;
+    border-radius: 9px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  
+  .gear-btn:hover {
+    color: var(--text-primary);
+  }
+  
+  .gear-btn.active {
+    background: linear-gradient(135deg, #6366f1, #ec4899);
+    color: #fff;
+    box-shadow: 0 0 15px rgba(99, 102, 241, 0.5);
+  }
+  
+  .trigger-btn {
+    background: linear-gradient(135deg, #10b981, #06b6d4);
+    border: none;
+    border-radius: 12px;
+    color: #fff;
+    padding: 14px 32px;
+    font-weight: 700;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+  }
+  
+  .trigger-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 0 25px rgba(16, 185, 129, 0.6);
+  }
+  
+  .trigger-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  .spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  
+  /* Model Controller Grid & Cards */
+  .model-card-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  
+  @media (max-width: 768px) {
+    .model-card-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  
+  .model-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: all 0.3s ease;
+  }
+  
+  .model-card:hover {
+    border-color: var(--border-hover);
+    background: rgba(255, 255, 255, 0.03);
+  }
+  
+  .model-card-title {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  
+  .model-select {
+    width: 100%;
+    background: rgba(7, 7, 14, 0.8);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    padding: 10px 14px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  
+  .model-select:focus {
+    border-color: #6366f1;
+  }
+  
+  /* Badge styles for operational statuses */
+  .badge-status {
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .status-working {
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: #34d399;
+  }
+  .status-rate_limited {
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    color: #fbbf24;
+  }
+  .status-timeout_degraded {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #f87171;
+  }
+  
+  /* Auth API token input style */
+  .auth-input-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  
+  .auth-box {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    padding: 8px 12px;
+    font-size: 0.8rem;
+    outline: none;
+    width: 150px;
+    transition: all 0.3s ease;
+  }
+  
+  .auth-box:focus {
+    border-color: var(--border-hover);
+    width: 200px;
+    box-shadow: 0 0 10px rgba(124, 58, 237, 0.2);
+  }
+  
   footer {
     text-align: center;
-    margin-top: 48px;
+    margin-top: 60px;
     color: #52525b;
     font-size: 0.8rem;
     letter-spacing: 0.5px;
@@ -2825,9 +3007,15 @@ STATUS_HTML = """<!DOCTYPE html>
         <p class="sub-title">Real-Time Telemetry & Token Ledger</p>
       </div>
     </div>
-    <div class="status-badge">
-      <span class="pulse-dot"></span>
-      <span id="refresh-status">LIVE AUTO-REFRESH</span>
+    <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+      <div class="auth-input-group">
+        <span style="font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); letter-spacing: 0.5px;">API KEY</span>
+        <input type="password" id="auth-token-input" class="auth-box" placeholder="Optional token..." oninput="saveAuthToken()">
+      </div>
+      <div class="status-badge">
+        <span class="pulse-dot"></span>
+        <span id="refresh-status">LIVE AUTO-REFRESH</span>
+      </div>
     </div>
   </header>
   
@@ -2846,6 +3034,106 @@ STATUS_HTML = """<!DOCTYPE html>
       <div class="metric-label">Operations Logged</div>
       <div class="metric-value" id="val-ops-count">-</div>
       <div class="metric-footer" id="val-unique-sessions">-</div>
+    </div>
+  </div>
+  
+  <!-- Swarm Dispatcher Control Panel -->
+  <div class="dashboard-panel query-panel" style="margin-bottom: 40px;">
+    <div class="panel-title">
+      <span>Swarm Operations Dispatcher Cockpit</span>
+      <span class="text-muted" style="font-weight: normal;">Decompose goals or run queries directly across swarm engines</span>
+    </div>
+    <div class="query-controls">
+      <input type="text" id="query-input" class="search-box" style="flex: 1; padding: 14px 20px; font-size: 1rem;" placeholder="Analyze spreadsheet, compile research report, send email summary...">
+      <div class="gear-selector">
+        <button class="gear-btn active" id="gear-walk" onclick="selectGear('WALK')">WALK GEAR</button>
+        <button class="gear-btn" id="gear-launch" onclick="selectGear('LAUNCH')">LAUNCH GEAR</button>
+      </div>
+      <button class="trigger-btn" id="trigger-btn" onclick="submitQuery()">
+        <span id="trigger-text">TRIGGER ACTION</span>
+        <div class="spinner" id="trigger-spinner" style="display: none;"></div>
+      </button>
+    </div>
+    
+    <div class="execution-output-wrapper" id="execution-output-wrapper" style="display: none; margin-top: 24px; border-top: 1px solid var(--border-color); padding-top: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <span style="font-size: 0.85rem; font-weight: 700; text-transform: uppercase; color: var(--color-research); letter-spacing: 0.5px;">Swarm Output Execution Feed</span>
+        <span id="output-meta" style="font-size: 0.78rem; color: var(--text-secondary);"></span>
+      </div>
+      <div id="execution-output" style="background: rgba(0,0,0,0.3); padding: 20px; border-radius: 12px; font-family: monospace; font-size: 0.9rem; line-height: 1.6; white-space: pre-wrap; max-height: 350px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.04); color: #f4f4f5;"></div>
+    </div>
+  </div>
+  
+  <!-- Swarm Model Control & Registry Split Panel -->
+  <div class="layout-split" style="margin-bottom: 40px;">
+    <!-- Model Controller swapper -->
+    <div class="dashboard-panel">
+      <div class="panel-title">
+        <span>Active Swarm Intelligence Mapping</span>
+        <span class="text-muted" style="font-weight: normal;">Switch engines in real-time</span>
+      </div>
+      <div class="model-card-grid">
+        <div class="model-card">
+          <div class="model-card-title">
+            <span class="dot-indicator" style="background:#6366f1"></span>
+            Swarm Operations Engine
+          </div>
+          <div class="text-muted" style="font-size:0.75rem; line-height:1.4;">Drives Strategic Planner, Swarm Workers (Research, Analysis, Writing), and Bipartite Auditor.</div>
+          <select id="swarm-model-select" class="model-select" onchange="switchModel('swarm', this.value)">
+            <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+            <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+            <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+            <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+            <option value="llama-3.3-70b-versatile">Llama 3.3 70B (Groq)</option>
+            <option value="llama-3.1-8b-instant">Llama 3.1 8B (Groq)</option>
+            <option value="gpt-4o">GPT-4o</option>
+            <option value="gpt-4o-mini">GPT-4o-Mini</option>
+            <option value="o1-mini">o1-mini</option>
+          </select>
+        </div>
+        
+        <div class="model-card">
+          <div class="model-card-title">
+            <span class="dot-indicator" style="background:#ec4899"></span>
+            Personal Assistant Engine
+          </div>
+          <div class="text-muted" style="font-size:0.75rem; line-height:1.4;">Synthesizes final briefs, formats direct Telegram / Chat responses, and structures briefs.</div>
+          <select id="pa-model-select" class="model-select" onchange="switchModel('pa', this.value)">
+            <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+            <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+            <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+            <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+            <option value="llama-3.3-70b-versatile">Llama 3.3 70B (Groq)</option>
+            <option value="llama-3.1-8b-instant">Llama 3.1 8B (Groq)</option>
+            <option value="gpt-4o">GPT-4o</option>
+            <option value="gpt-4o-mini">GPT-4o-Mini</option>
+            <option value="o1-mini">o1-mini</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Intelligence Matrix Registry -->
+    <div class="dashboard-panel">
+      <div class="panel-title">
+        <span>Intelligence Capability & Availability Board</span>
+      </div>
+      <div class="table-wrapper" style="max-height: 250px; overflow-y: auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Model Name</th>
+              <th>Provider</th>
+              <th>Token Limit</th>
+              <th>Operational Status</th>
+              <th style="text-align: right;">Avg Latency</th>
+            </tr>
+          </thead>
+          <tbody id="model-matrix-body">
+            <!-- Populated dynamically -->
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
   
@@ -2953,11 +3241,135 @@ STATUS_HTML = """<!DOCTYPE html>
 <script>
   let telemetryData = null;
   let activeCategory = 'all';
+  let selectedGear = 'WALK';
+
+  // Authorization token management
+  function saveAuthToken() {
+    const val = document.getElementById('auth-token-input').value;
+    localStorage.setItem('aria_api_token', val);
+  }
+  function loadAuthToken() {
+    const val = localStorage.getItem('aria_api_token') || '';
+    document.getElementById('auth-token-input').value = val;
+  }
+  function getHeaders() {
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+    const token = localStorage.getItem('aria_api_token') || '';
+    if (token) {
+      headers['Authorization'] = 'Bearer ' + token;
+      headers['X-API-Key'] = token;
+    }
+    return headers;
+  }
+
+  // Gear selectors
+  function selectGear(gear) {
+    selectedGear = gear;
+    document.getElementById('gear-walk').classList.remove('active');
+    document.getElementById('gear-launch').classList.remove('active');
+    
+    if (gear === 'WALK') {
+      document.getElementById('gear-walk').classList.add('active');
+    } else {
+      document.getElementById('gear-launch').classList.add('active');
+    }
+  }
+
+  // Submit Query to /api/chat
+  async function submitQuery() {
+    const queryInput = document.getElementById('query-input');
+    const query = queryInput.value.trim();
+    if (!query) return;
+    
+    const triggerBtn = document.getElementById('trigger-btn');
+    const triggerText = document.getElementById('trigger-text');
+    const triggerSpinner = document.getElementById('trigger-spinner');
+    
+    const outWrapper = document.getElementById('execution-output-wrapper');
+    const outDiv = document.getElementById('execution-output');
+    const outMeta = document.getElementById('output-meta');
+    
+    triggerBtn.disabled = true;
+    triggerText.textContent = "EXECUTING SWARM...";
+    triggerSpinner.style.display = "block";
+    
+    outWrapper.style.display = "block";
+    outDiv.textContent = "Swarm is initializing... Routing query through Intent Governance Gatekeeper...";
+    outMeta.textContent = "Mode: " + selectedGear;
+    
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          message: query,
+          session_id: 'web_dashboard_' + Math.floor(Date.now() / 1000),
+          gear: selectedGear
+        })
+      });
+      
+      const resData = await response.json();
+      triggerBtn.disabled = false;
+      triggerText.textContent = "TRIGGER ACTION";
+      triggerSpinner.style.display = "none";
+      
+      if (!response.ok) {
+        throw new Error(resData.error || 'Server error: ' + response.status);
+      }
+      
+      outDiv.textContent = resData.reply;
+      outMeta.textContent = `Gear: ${resData.gear} • Finished`;
+      
+      // Instantly refresh telemetry to show new ledger logs
+      fetchTelemetry();
+    } catch (e) {
+      console.error(e);
+      outDiv.textContent = "Error executing swarm: " + e.message;
+      outMeta.textContent = "Failed";
+      triggerBtn.disabled = false;
+      triggerText.textContent = "TRIGGER ACTION";
+      triggerSpinner.style.display = "none";
+    }
+  }
+
+  // Switch Model on backend
+  async function switchModel(role, modelName) {
+    console.log(`Switching model for ${role} to ${modelName}`);
+    try {
+      const response = await fetch('/api/models/switch', {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          role: role,
+          model: modelName
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Switch failed');
+      console.log("Model switch successful", data);
+      
+      // Highlight selector temporarily
+      const el = document.getElementById(role + '-model-select');
+      el.style.borderColor = "#10b981";
+      setTimeout(() => {
+        el.style.borderColor = "";
+      }, 1500);
+      
+      fetchTelemetry();
+    } catch (e) {
+      alert("Failed to switch model: " + e.message);
+      fetchTelemetry(); // revert selector to actual state
+    }
+  }
 
   async function fetchTelemetry() {
     const statusDot = document.getElementById('refresh-status');
     try {
-      const response = await fetch('/api/telemetry');
+      const response = await fetch('/api/telemetry', {
+        headers: getHeaders()
+      });
       if (!response.ok) throw new Error('API request failed');
       const data = await response.json();
       telemetryData = data;
@@ -2990,6 +3402,55 @@ STATUS_HTML = """<!DOCTYPE html>
     const aggregates = telemetryData.aggregates;
     const ledger = telemetryData.ledger;
     const reasoning = telemetryData.reasoning_efficiency || [];
+    
+    // Update Model selects if not currently active
+    if (telemetryData.current_dept_model) {
+      const el = document.getElementById('swarm-model-select');
+      if (document.activeElement !== el) {
+        el.value = telemetryData.current_dept_model;
+      }
+    }
+    if (telemetryData.current_pa_model) {
+      const el = document.getElementById('pa-model-select');
+      if (document.activeElement !== el) {
+        el.value = telemetryData.current_pa_model;
+      }
+    }
+    
+    // Update Capability Board
+    const matrixBody = document.getElementById('model-matrix-body');
+    matrixBody.innerHTML = '';
+    
+    if (telemetryData.model_matrix) {
+      telemetryData.model_matrix.forEach(row => {
+        const tr = document.createElement('tr');
+        const provClass = `prov-${row.provider}`;
+        const provBadge = `<span class="badge-provider ${provClass}">${row.provider}</span>`;
+        
+        let statusClass = 'status-working';
+        let statusText = 'WORKING';
+        if (row.status === 'RATE_LIMITED') {
+          statusClass = 'status-rate_limited';
+          statusText = 'RATE LIMITED';
+        } else if (row.status === 'TIMEOUT_DEGRADED') {
+          statusClass = 'status-timeout_degraded';
+          statusText = 'TIMEOUT DEGRADED';
+        }
+        
+        const latVal = row.avg_latency ? `${row.avg_latency}s` : '-';
+        const isCurrent = (row.model === telemetryData.current_dept_model || row.model === telemetryData.current_pa_model);
+        const nameStyle = isCurrent ? 'font-weight: 700; color: #fff;' : '';
+        
+        tr.innerHTML = `
+          <td style="${nameStyle}">${row.model} ${isCurrent ? '<span style="color:#6366f1;font-size:0.7rem;margin-left:4px;">(ACTIVE)</span>' : ''}</td>
+          <td>${provBadge}</td>
+          <td class="text-muted">${row.token_limit}</td>
+          <td><span class="badge-status ${statusClass}">${statusText}</span></td>
+          <td style="text-align: right;"><strong style="color:#06b6d4;">${latVal}</strong></td>
+        `;
+        matrixBody.appendChild(tr);
+      });
+    }
     
     // Update Counter Cards
     document.getElementById('val-total-tokens').textContent = aggregates.total_tokens.toLocaleString();
@@ -3158,11 +3619,13 @@ STATUS_HTML = """<!DOCTYPE html>
   document.getElementById('search-input').addEventListener('input', updateUI);
 
   // Initial fetch and start interval
+  loadAuthToken();
   fetchTelemetry();
   setInterval(fetchTelemetry, 3000);
 </script>
 </body>
 </html>"""
+
 
 
 def get_telemetry_data(limit=100) -> dict:
@@ -3185,6 +3648,20 @@ def get_telemetry_data(limit=100) -> dict:
         "gpt-4o-mini": (0.150, 0.600),
         "o1-mini": (3.00, 12.00)
     }
+    
+    supported_models = [
+        "gemini-2.5-pro",
+        "gemini-2.5-flash",
+        "gemini-1.5-pro",
+        "gemini-1.5-flash",
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
+        "gpt-4o",
+        "gpt-4o-mini",
+        "o1-mini"
+    ]
+    
+    model_mon = {m: {"latencies": [], "failures": 0, "rate_limited": False} for m in supported_models}
     
     def get_token_costs(model_name: str) -> tuple[float, float]:
         if not model_name:
@@ -3260,6 +3737,30 @@ def get_telemetry_data(limit=100) -> dict:
                     is_estimated = bool(meta.get("is_estimated", False))
                 except Exception:
                     pass
+            
+            # Extract metrics per model dynamically
+            if model_name:
+                m_lower = model_name.lower().strip()
+                matched_model = None
+                for sm in supported_models:
+                    if sm in m_lower:
+                        matched_model = sm
+                        break
+                if matched_model:
+                    if latency > 0.0:
+                        model_mon[matched_model]["latencies"].append(latency)
+                    if ev_type in ("AUDIT_PRE_FAIL", "AUDIT_POST_FAIL", "PLANNING_FAIL") or "fail" in ev_type.lower():
+                        model_mon[matched_model]["failures"] += 1
+                    if meta_str:
+                        try:
+                            meta = json.loads(meta_str)
+                            meta_lower = str(meta).lower()
+                            if "rate_limit" in meta_lower or "429" in meta_lower or "rate limit" in meta_lower:
+                                model_mon[matched_model]["rate_limited"] = True
+                            if "error" in meta or "exception" in meta or meta.get("planner_status") == "FAILED":
+                                model_mon[matched_model]["failures"] += 1
+                        except Exception:
+                            pass
             
             # Map categories
             category = "governance"
@@ -3362,11 +3863,45 @@ def get_telemetry_data(limit=100) -> dict:
         
     reasoning_list.sort(key=lambda x: x["timestamp"], reverse=True)
     
+    # Compile Model Matrix
+    model_matrix = []
+    for sm in supported_models:
+        mon = model_mon[sm]
+        avg_lat = sum(mon["latencies"]) / len(mon["latencies"]) if mon["latencies"] else 0.0
+        
+        status = "WORKING"
+        if mon["rate_limited"]:
+            status = "RATE_LIMITED"
+        elif mon["failures"] > 2:
+            status = "TIMEOUT_DEGRADED"
+            
+        limit_str = "8,192"
+        provider = "groq"
+        if "gemini-2.5" in sm or "gemini-1.5" in sm:
+            provider = "google"
+            limit_str = "2,097,152" if "pro" in sm else "1,048,576"
+        elif "gpt-" in sm or "o1-" in sm:
+            provider = "openai"
+            limit_str = "128,000"
+            
+        model_matrix.append({
+            "model": sm,
+            "provider": provider,
+            "token_limit": limit_str,
+            "status": status,
+            "avg_latency": round(avg_lat, 2) if avg_lat > 0 else None
+        })
+        
     return {
         "aggregates": aggregates,
         "ledger": ledger_rows[:limit],
-        "reasoning_efficiency": reasoning_list[:5]
+        "reasoning_efficiency": reasoning_list[:5],
+        "current_dept_model": CURRENT_DEPT_MODEL,
+        "current_pa_model": CURRENT_PA_MODEL,
+        "model_matrix": model_matrix
     }
+
+
 
 
 class HealthHandler(BaseHTTPRequestHandler):
@@ -3433,10 +3968,64 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_POST(self):
+        if self.path == "/api/models/switch":
+            try:
+                if API_CHAT_TOKEN:
+                    auth_header = str(self.headers.get("Authorization", "")).strip()
+                    api_key_header = str(self.headers.get("X-API-Key", "")).strip()
+                    bearer = ""
+                    if auth_header.lower().startswith("bearer "):
+                        bearer = auth_header[7:].strip()
+                    provided = api_key_header or bearer
+                    if provided != API_CHAT_TOKEN:
+                        err = json.dumps({"error": "unauthorized"}).encode()
+                        self.send_response(401)
+                        self.send_header("Content-Type", "application/json")
+                        self.send_header("Content-Length", str(len(err)))
+                        self._cors()
+                        self.end_headers()
+                        self.wfile.write(err)
+                        return
+
+                length = int(self.headers.get("Content-Length", 0))
+                body   = json.loads(self.rfile.read(length))
+                role   = str(body.get("role", "")).strip().lower()
+                model  = str(body.get("model", "")).strip()
+                if role not in ("swarm", "pa") or not model:
+                    raise ValueError("Invalid role or model parameter")
+
+                global CURRENT_DEPT_MODEL, CURRENT_PA_MODEL, llm_dept, llm_pa
+                if role == "swarm":
+                    CURRENT_DEPT_MODEL = model
+                    llm_dept = build_llm(CURRENT_DEPT_MODEL, 0.7)
+                    print(f"[API MODEL SWITCH] Swarm/Workers model switched to {model}", flush=True)
+                elif role == "pa":
+                    CURRENT_PA_MODEL = model
+                    llm_pa = build_llm(CURRENT_PA_MODEL, 0.2)
+                    print(f"[API MODEL SWITCH] Personal Assistant model switched to {model}", flush=True)
+
+                response = json.dumps({"status": "success", "role": role, "model": model}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(response)))
+                self._cors()
+                self.end_headers()
+                self.wfile.write(response)
+            except Exception as e:
+                err = json.dumps({"error": str(e)}).encode()
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(err)))
+                self._cors()
+                self.end_headers()
+                self.wfile.write(err)
+            return
+
         if self.path != "/api/chat":
             self.send_response(404)
             self.end_headers()
             return
+
         try:
             if API_CHAT_TOKEN:
                 auth_header = str(self.headers.get("Authorization", "")).strip()
@@ -3459,12 +4048,16 @@ class HealthHandler(BaseHTTPRequestHandler):
             body   = json.loads(self.rfile.read(length))
             msg    = str(body.get("message", "")).strip()
             sid    = str(body.get("session_id", "web_anon")).strip() or "web_anon"
+            gear   = str(body.get("gear", "WALK")).strip().upper()
+            if gear not in ("WALK", "LAUNCH", "SPRINT"):
+                gear = "WALK"
+                
             if not msg:
                 raise ValueError("empty message")
-            print(f"[WEB] session={sid[:16]} msg={msg[:80]}", flush=True)
-            reply, gear, tokens = invoke_aria(msg, sid)
-            print(f"[WEB OK] gear={gear} len={len(reply)} | Tokens: {tokens['total']}", flush=True)
-            response = json.dumps({"reply": reply, "gear": gear}).encode()
+            print(f"[WEB] session={sid[:16]} msg={msg[:80]} gear={gear}", flush=True)
+            reply, gear_res, tokens = invoke_aria(msg, sid, gear=gear)
+            print(f"[WEB OK] gear={gear_res} len={len(reply)} | Tokens: {tokens.get('total', 0)}", flush=True)
+            response = json.dumps({"reply": reply, "gear": gear_res}).encode()
             self.send_response(200)
             self.send_header("Content-Type",   "application/json")
             self.send_header("Content-Length", str(len(response)))
