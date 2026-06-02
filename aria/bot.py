@@ -82,6 +82,12 @@ def init_postgres_db():
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS system_memory (
+                key TEXT PRIMARY KEY,
+                data TEXT
+            );
+        """)
         conn.commit()
         cursor.close()
         conn.close()
@@ -122,6 +128,12 @@ def init_durable_checkpoint_db():
             state_after TEXT,
             metadata TEXT,
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS system_memory (
+            key TEXT PRIMARY KEY,
+            data TEXT
         );
     """)
     conn.commit()

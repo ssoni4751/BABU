@@ -429,15 +429,9 @@ def log_execution_failure(
             "goal": goal
         }
         
-        # 2. Append atomically to failures.json
+        # 2. Append atomically using database-aware helpers
         with FAILURES_LOCK:
-            failures = []
-            if os.path.exists(FAILURES_PATH):
-                try:
-                    with open(FAILURES_PATH, "r", encoding="utf-8") as f:
-                        failures = json.load(f)
-                except Exception:
-                    pass
+            failures = _read_json_list(FAILURES_PATH)
             
             # Semantic deduplication pass
             consolidated, updated_failures = consolidate_failures_semantic(failure_entry, failures)
@@ -447,21 +441,7 @@ def log_execution_failure(
             else:
                 failures.append(failure_entry)
             
-            # Windows-resilient atomic writeback
-            import time
-            temp_path = FAILURES_PATH + ".tmp"
-            os.makedirs(os.path.dirname(FAILURES_PATH), exist_ok=True)
-            with open(temp_path, "w", encoding="utf-8") as f:
-                json.dump(failures, f, indent=2, ensure_ascii=False)
-                
-            for attempt in range(5):
-                try:
-                    os.replace(temp_path, FAILURES_PATH)
-                    break
-                except PermissionError:
-                    if attempt == 4:
-                        raise
-                    time.sleep(0.1 * (2 ** attempt))
+            _write_json_list(FAILURES_PATH, failures)
             print(f"[IMMUNE SYSTEM SUCCESS] Anti-pattern logged for domain '{domain}': \"{failure_entry['active_anti_pattern_rule']}\"", flush=True)
             
             # Dispatch background email notification
@@ -490,13 +470,11 @@ def log_execution_failure(
 
 def register_successful_execution(domain: str) -> None:
     """Register successful method run to decay failure rules and heal the immune system."""
-    if not os.path.exists(FAILURES_PATH):
-        return
-        
     with FAILURES_LOCK:
         try:
-            with open(FAILURES_PATH, "r", encoding="utf-8") as f:
-                failures = json.load(f)
+            failures = _read_json_list(FAILURES_PATH)
+            if not failures:
+                return
                 
             updated_failures = []
             healed_signatures = []
@@ -519,38 +497,18 @@ def register_successful_execution(domain: str) -> None:
             if healed_signatures:
                 print(f"[IMMUNE SYSTEM] Healed anti-pattern(s) from memory: {', '.join(healed_signatures)}", flush=True)
                 
-            # Atomic Writeback
-            # Windows-resilient atomic writeback
-            import time
-            temp_path = FAILURES_PATH + ".tmp"
-            with open(temp_path, "w", encoding="utf-8") as f:
-                json.dump(updated_failures, f, indent=2, ensure_ascii=False)
-            for attempt in range(5):
-                try:
-                    os.replace(temp_path, FAILURES_PATH)
-                    break
-                except PermissionError:
-                    if attempt == 4:
-                        raise
-                    time.sleep(0.1 * (2 ** attempt))
+            _write_json_list(FAILURES_PATH, updated_failures)
             
         except Exception as e:
             print(f"[IMMUNE SYSTEM ERROR] Failed to heal anti-patterns: {e}", flush=True)
-            if os.path.exists(FAILURES_PATH + ".tmp"):
-                try:
-                    os.remove(FAILURES_PATH + ".tmp")
-                except Exception:
-                    pass
 
 
 def get_anti_pattern_rules(domain: str) -> str:
     """Retrieve all logged anti-pattern rules for a specific domain to inject as negative constraints."""
-    if not os.path.exists(FAILURES_PATH):
-        return ""
-        
     try:
-        with open(FAILURES_PATH, "r", encoding="utf-8") as f:
-            failures = json.load(f)
+        failures = _read_json_list(FAILURES_PATH)
+        if not failures:
+            return ""
             
         rules = []
         for entry in failures:
@@ -560,18 +518,16 @@ def get_anti_pattern_rules(domain: str) -> str:
         if rules:
             return "[CRITICAL EXECUTION CONSTRAINTS - HISTORICAL FAILURES DETECTED]\n" + "\n\n".join(rules)
     except Exception as e:
-        print(f"[IMMUNE SYSTEM] Failed to read failures.json: {e}", flush=True)
+        print(f"[IMMUNE SYSTEM] Failed to read failures: {e}", flush=True)
     return ""
 
 
 def get_anti_pattern_rules_for_domains(domains: list) -> str:
     """Retrieve all logged anti-pattern rules for a list of domains to inject as negative constraints."""
-    if not os.path.exists(FAILURES_PATH):
-        return ""
-        
     try:
-        with open(FAILURES_PATH, "r", encoding="utf-8") as f:
-            failures = json.load(f)
+        failures = _read_json_list(FAILURES_PATH)
+        if not failures:
+            return ""
             
         rules = []
         for entry in failures:
@@ -581,7 +537,7 @@ def get_anti_pattern_rules_for_domains(domains: list) -> str:
         if rules:
             return "[CRITICAL EXECUTION CONSTRAINTS - HISTORICAL FAILURES DETECTED]\n" + "\n\n".join(rules)
     except Exception as e:
-        print(f"[IMMUNE SYSTEM] Failed to read failures.json: {e}", flush=True)
+        print(f"[IMMUNE SYSTEM] Failed to read failures: {e}", flush=True)
     return ""
 
 
@@ -633,6 +589,33 @@ def compress_context_payload(raw_text: str, context_topic: str = "general data")
 
 
 def _read_json_list(path: str) -> list:
+    # Use basename of path as key, e.g. "failures" or "routing_stats"
+    key = os.path.splitext(os.path.basename(path))[0]
+    
+    # Try fetching from database if possible
+    try:
+        from .bot import get_db_connection
+    except ImportError:
+        try:
+            from bot import get_db_connection
+        except ImportError:
+            get_db_connection = None
+
+    if get_db_connection and not is_testing:
+        try:
+            conn, is_pg = get_db_connection()
+            cursor = conn.cursor()
+            placeholder = "%s" if is_pg else "?"
+            cursor.execute(f"SELECT data FROM system_memory WHERE key = {placeholder}", (key,))
+            res = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            if res and res[0]:
+                data = json.loads(res[0])
+                return data if isinstance(data, list) else []
+        except Exception:
+            pass
+
     if not os.path.exists(path):
         return []
     try:
@@ -644,16 +627,49 @@ def _read_json_list(path: str) -> list:
 
 
 def _write_json_list(path: str, items: list) -> bool:
+    file_write_ok = False
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         temp_path = path + ".tmp"
         with open(temp_path, "w", encoding="utf-8") as f:
             json.dump(items, f, indent=2, ensure_ascii=False)
         os.replace(temp_path, path)
-        return True
+        file_write_ok = True
     except Exception as e:
         print(f"[MEMORY WRITE ERROR] Failed to write {path}: {e}", flush=True)
-        return False
+
+    # Sync to database permanently
+    key = os.path.splitext(os.path.basename(path))[0]
+    
+    try:
+        from .bot import get_db_connection
+    except ImportError:
+        try:
+            from bot import get_db_connection
+        except ImportError:
+            get_db_connection = None
+
+    if get_db_connection and not is_testing:
+        try:
+            conn, is_pg = get_db_connection()
+            cursor = conn.cursor()
+            data_str = json.dumps(items, ensure_ascii=False)
+            if is_pg:
+                cursor.execute("""
+                    INSERT INTO system_memory (key, data) VALUES (%s, %s)
+                    ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data
+                """, (key, data_str))
+            else:
+                cursor.execute("""
+                    INSERT OR REPLACE INTO system_memory (key, data) VALUES (?, ?)
+                """, (key, data_str))
+            conn.commit()
+            cursor.close()
+            conn.close()
+        except Exception as e:
+            print(f"[DB MEMORY WRITE ERROR] Failed to write {key} to DB: {e}", flush=True)
+
+    return file_write_ok
 
 
 def _is_expired(entry: dict) -> bool:
