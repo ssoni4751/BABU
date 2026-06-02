@@ -1624,6 +1624,7 @@ def task_executor_node(state: AriaState):
                     metadata={"objective": task.objective}
                 )
                 passed_post, audit_result = auditor.audit_post(task, result)
+                audit_tokens = getattr(auditor, "last_tokens", {"prompt": 0, "completion": 0, "total": 0})
                 if not passed_post:
                     print(f"[EXECUTOR] Post-execution audit failed task {task.task_id}: {audit_result}", flush=True)
                     log_execution_ledger_event(
@@ -1634,7 +1635,13 @@ def task_executor_node(state: AriaState):
                         event_type="AUDIT_POST_FAIL",
                         state_before="AUDITING_POST",
                         state_after="FAILED",
-                        metadata={"objective": task.objective, "audit_result": audit_result}
+                        metadata={
+                            "objective": task.objective,
+                            "audit_result": audit_result,
+                            "tokens": audit_tokens,
+                            "model": CURRENT_DEPT_MODEL,
+                            "is_estimated": False
+                        }
                     )
                     track_cascading_blocks(engine.mark_failed, task.task_id, f"Post-execution Audit Failed: {audit_result}")
                     execution_log.append({
@@ -1669,7 +1676,13 @@ def task_executor_node(state: AriaState):
                         event_type="AUDIT_POST_PASS",
                         state_before="AUDITING_POST",
                         state_after="COMPLETED",
-                        metadata={"objective": task.objective, "audit_result": audit_result}
+                        metadata={
+                            "objective": task.objective,
+                            "audit_result": audit_result,
+                            "tokens": audit_tokens,
+                            "model": CURRENT_DEPT_MODEL,
+                            "is_estimated": False
+                        }
                     )
                     
                     # Track newly ready tasks unlocked by completing this task
@@ -3195,7 +3208,7 @@ STATUS_HTML = """<!DOCTYPE html>
       </div>
     </div>
     
-    <div class="dashboard-panel ledger-panel">
+    <div class="dashboard-panel ledger-panel" style="grid-column: span 2;">
       <div class="panel-title">
         <span>Unified Ledger Operations Log</span>
       </div>
@@ -3239,6 +3252,46 @@ STATUS_HTML = """<!DOCTYPE html>
 </div>
 
 <script>
+  // Convert UTC ISO timestamps or sqlite timestamps to IST (UTC+5:30) dynamically
+  function formatIST(isoString) {
+    if (!isoString) return '-';
+    try {
+      let cleanStr = isoString.trim();
+      cleanStr = cleanStr.replace(' ', 'T');
+      if (!cleanStr.endsWith('Z') && !cleanStr.includes('+') && !cleanStr.includes('-')) {
+        cleanStr += 'Z';
+      }
+      const date = new Date(cleanStr);
+      if (isNaN(date.getTime())) {
+        return isoString.replace('T', ' ').substring(0, 19);
+      }
+      const options = {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      };
+      const formatter = new Intl.DateTimeFormat('en-US', options);
+      const parts = formatter.formatToParts(date);
+      let year = '', month = '', day = '', hour = '', minute = '', second = '';
+      for (const part of parts) {
+        if (part.type === 'year') year = part.value;
+        else if (part.type === 'month') month = part.value;
+        else if (part.type === 'day') day = part.value;
+        else if (part.type === 'hour') hour = part.value;
+        else if (part.type === 'minute') minute = part.value;
+        else if (part.type === 'second') second = part.value;
+      }
+      return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+    } catch (e) {
+      return isoString.replace('T', ' ').substring(0, 19);
+    }
+  }
+
   let telemetryData = null;
   let activeCategory = 'all';
   let selectedGear = 'WALK';
@@ -3530,7 +3583,7 @@ STATUS_HTML = """<!DOCTYPE html>
     } else {
       reasoning.forEach(goal => {
         const tr = document.createElement('tr');
-        const ts = goal.timestamp.replace('T', ' ').substring(0, 19);
+        const ts = formatIST(goal.timestamp);
         
         let statusBadge = 'badge-governance';
         if (goal.status === 'COMPLETED' || goal.status === 'SUCCESS') statusBadge = 'badge-execution';
@@ -3581,7 +3634,7 @@ STATUS_HTML = """<!DOCTYPE html>
     
     filteredLedger.forEach(row => {
       const tr = document.createElement('tr');
-      const ts = row.timestamp.replace('T', ' ').substring(0, 19);
+      const ts = formatIST(row.timestamp);
       
       const isEstBadge = row.is_estimated ? 
         `<span class="badge-method meth-est">Estimated</span>` : 

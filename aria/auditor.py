@@ -154,6 +154,7 @@ class PostExecutionValidator:
 
     def __init__(self, llm: Any = None) -> None:
         self.llm = llm
+        self.last_tokens = {"prompt": 0, "completion": 0, "total": 0}
 
     def audit(self, task: TaskDTO, result: str) -> Tuple[bool, str]:
         """Perform post-execution validation on the raw worker output.
@@ -171,6 +172,8 @@ class PostExecutionValidator:
             (True, validated_result) if the result passes validation.
             (False, "failure reason") if a hallucination or failure is detected.
         """
+        self.last_tokens = {"prompt": 0, "completion": 0, "total": 0}
+
         # 1. Deterministic error detection
         if not result or result.strip() == "":
             return False, "Worker returned an empty result payload."
@@ -228,6 +231,21 @@ class PostExecutionValidator:
                     HumanMessage(content=json.dumps(audit_payload, ensure_ascii=False, default=str))
                 ])
                 
+                # Extract planning tokens dynamically
+                if res:
+                    usage_meta = getattr(res, "usage_metadata", None)
+                    if usage_meta:
+                        self.last_tokens["prompt"] = usage_meta.get("input_tokens", 0) or usage_meta.get("prompt_tokens", 0) or 0
+                        self.last_tokens["completion"] = usage_meta.get("output_tokens", 0) or usage_meta.get("completion_tokens", 0) or 0
+                        self.last_tokens["total"] = usage_meta.get("total_tokens", 0) or (self.last_tokens["prompt"] + self.last_tokens["completion"])
+                    else:
+                        metadata = getattr(res, "response_metadata", {})
+                        token_usage = metadata.get("token_usage")
+                        if token_usage:
+                            self.last_tokens["prompt"] = token_usage.get("prompt_tokens", 0)
+                            self.last_tokens["completion"] = token_usage.get("completion_tokens", 0)
+                            self.last_tokens["total"] = token_usage.get("total_tokens", 0)
+
                 # Extract and parse JSON response
                 cleaned = res.content.strip()
                 match = re.search(r'\{.*\}', cleaned, re.DOTALL)
@@ -254,6 +272,7 @@ class BipartiteAuditor:
     def __init__(self, llm: Any = None) -> None:
         self.gatekeeper = PreExecutionGatekeeper()
         self.validator = PostExecutionValidator(llm=llm)
+        self.last_tokens = {"prompt": 0, "completion": 0, "total": 0}
 
     def audit_pre(self, task: TaskDTO) -> Tuple[bool, str]:
         """Run the Pre-Execution Gatekeeper check."""
@@ -261,4 +280,6 @@ class BipartiteAuditor:
 
     def audit_post(self, task: TaskDTO, result: str) -> Tuple[bool, str]:
         """Run the Post-Execution Validator check."""
-        return self.validator.audit(task, result)
+        res = self.validator.audit(task, result)
+        self.last_tokens = getattr(self.validator, "last_tokens", {"prompt": 0, "completion": 0, "total": 0})
+        return res
