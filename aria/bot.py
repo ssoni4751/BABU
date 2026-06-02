@@ -31,6 +31,67 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory", "aria_checkpoint.db")
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+def get_db_connection():
+    if DATABASE_URL and (DATABASE_URL.startswith("postgres://") or DATABASE_URL.startswith("postgresql://")):
+        import psycopg2
+        url = DATABASE_URL
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://", 1)
+        return psycopg2.connect(url), True
+    else:
+        return sqlite3.connect(DB_PATH), False
+
+def init_postgres_db():
+    if not DATABASE_URL or not (DATABASE_URL.startswith("postgres://") or DATABASE_URL.startswith("postgresql://")):
+        return
+    try:
+        import psycopg2
+        url = DATABASE_URL
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://", 1)
+        conn = psycopg2.connect(url)
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS sealed_epochs (
+                epoch_id TEXT PRIMARY KEY,
+                sealed_at TEXT
+            );
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS search_cache (
+                query_hash TEXT PRIMARY KEY,
+                raw_query TEXT,
+                distilled_results TEXT,
+                sources TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS execution_ledger (
+                event_id SERIAL PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                goal_id TEXT NOT NULL,
+                task_id TEXT,
+                department TEXT,
+                event_type TEXT NOT NULL,
+                state_before TEXT,
+                state_after TEXT,
+                metadata TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print("[POSTGRES] Database tables verified/created successfully.", flush=True)
+    except Exception as e:
+        print(f"[POSTGRES ERROR] init_postgres_db failed: {e}", flush=True)
+
+if DATABASE_URL and (DATABASE_URL.startswith("postgres://") or DATABASE_URL.startswith("postgresql://")):
+    init_postgres_db()
+
 def init_durable_checkpoint_db():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     cursor = conn.cursor()
@@ -75,10 +136,12 @@ except Exception as e:
 
 def is_epoch_sealed(epoch_id: str) -> bool:
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn, is_pg = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM sealed_epochs WHERE epoch_id = ?", (epoch_id,))
+        placeholder = "%s" if is_pg else "?"
+        cursor.execute(f"SELECT 1 FROM sealed_epochs WHERE epoch_id = {placeholder}", (epoch_id,))
         res = cursor.fetchone()
+        cursor.close()
         conn.close()
         return bool(res)
     except Exception as e:
@@ -87,13 +150,20 @@ def is_epoch_sealed(epoch_id: str) -> bool:
 
 def seal_epoch(epoch_id: str):
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn, is_pg = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute(
-            "INSERT OR IGNORE INTO sealed_epochs (epoch_id, sealed_at) VALUES (?, ?)",
-            (epoch_id, datetime.now(timezone.utc).isoformat())
-        )
+        if is_pg:
+            cursor.execute(
+                "INSERT INTO sealed_epochs (epoch_id, sealed_at) VALUES (%s, %s) ON CONFLICT (epoch_id) DO NOTHING",
+                (epoch_id, datetime.now(timezone.utc).isoformat())
+            )
+        else:
+            cursor.execute(
+                "INSERT OR IGNORE INTO sealed_epochs (epoch_id, sealed_at) VALUES (?, ?)",
+                (epoch_id, datetime.now(timezone.utc).isoformat())
+            )
         conn.commit()
+        cursor.close()
         conn.close()
         print(f"[GOVERNANCE] Epoch '{epoch_id}' successfully sealed.", flush=True)
     except Exception as e:
@@ -102,14 +172,16 @@ def seal_epoch(epoch_id: str):
 
 def get_last_goal_graph(session_id: str) -> Optional[dict]:
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn, is_pg = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("""
+        placeholder = "%s" if is_pg else "?"
+        cursor.execute(f"""
             SELECT metadata FROM execution_ledger
-            WHERE session_id = ? AND event_type = 'PLANNING'
+            WHERE session_id = {placeholder} AND event_type = 'PLANNING'
             ORDER BY event_id DESC LIMIT 1
         """, (session_id,))
         res = cursor.fetchone()
+        cursor.close()
         conn.close()
         if res and res[0]:
             meta = json.loads(res[0])
@@ -122,14 +194,16 @@ def get_last_goal_graph(session_id: str) -> Optional[dict]:
 
 def log_execution_ledger_event(session_id: str, goal_id: str, task_id: Optional[str], department: Optional[str], event_type: str, state_before: Optional[str] = None, state_after: Optional[str] = None, metadata: Optional[dict] = None):
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn, is_pg = get_db_connection()
         cursor = conn.cursor()
         meta_str = json.dumps(metadata) if metadata else None
-        cursor.execute("""
+        placeholders = "%s, %s, %s, %s, %s, %s, %s, %s" if is_pg else "?, ?, ?, ?, ?, ?, ?, ?"
+        cursor.execute(f"""
             INSERT INTO execution_ledger (session_id, goal_id, task_id, department, event_type, state_before, state_after, metadata)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES ({placeholders})
         """, (session_id, goal_id, task_id, department, event_type, state_before, state_after, meta_str))
         conn.commit()
+        cursor.close()
         conn.close()
     except Exception as e:
         print(f"[DB ERROR] log_execution_ledger_event failed: {e}", flush=True)
@@ -144,14 +218,22 @@ def _query_hash(query: str) -> str:
 def get_cached_search(query: str, ttl_hours: float = 12.0) -> Optional[dict]:
     try:
         q_hash = _query_hash(query)
-        conn = sqlite3.connect(DB_PATH)
+        conn, is_pg = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT distilled_results, sources, created_at 
-            FROM search_cache 
-            WHERE query_hash = ? AND (strftime('%s', 'now') - strftime('%s', created_at)) < ?
-        """, (q_hash, ttl_hours * 3600))
+        if is_pg:
+            cursor.execute("""
+                SELECT distilled_results, sources, created_at 
+                FROM search_cache 
+                WHERE query_hash = %s AND (EXTRACT(EPOCH FROM NOW()) - EXTRACT(EPOCH FROM created_at)) < %s
+            """, (q_hash, ttl_hours * 3600))
+        else:
+            cursor.execute("""
+                SELECT distilled_results, sources, created_at 
+                FROM search_cache 
+                WHERE query_hash = ? AND (strftime('%s', 'now') - strftime('%s', created_at)) < ?
+            """, (q_hash, ttl_hours * 3600))
         res = cursor.fetchone()
+        cursor.close()
         conn.close()
         if res:
             return {"results": res[0], "sources": res[1]}
@@ -162,13 +244,25 @@ def get_cached_search(query: str, ttl_hours: float = 12.0) -> Optional[dict]:
 def store_cached_search(query: str, distilled_results: str, sources: str):
     try:
         q_hash = _query_hash(query)
-        conn = sqlite3.connect(DB_PATH)
+        conn, is_pg = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("""
-            INSERT OR REPLACE INTO search_cache (query_hash, raw_query, distilled_results, sources, created_at)
-            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-        """, (q_hash, query, distilled_results, sources))
+        if is_pg:
+            cursor.execute("""
+                INSERT INTO search_cache (query_hash, raw_query, distilled_results, sources, created_at)
+                VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (query_hash) DO UPDATE SET 
+                    raw_query = EXCLUDED.raw_query,
+                    distilled_results = EXCLUDED.distilled_results,
+                    sources = EXCLUDED.sources,
+                    created_at = CURRENT_TIMESTAMP
+            """, (q_hash, query, distilled_results, sources))
+        else:
+            cursor.execute("""
+                INSERT OR REPLACE INTO search_cache (query_hash, raw_query, distilled_results, sources, created_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """, (q_hash, query, distilled_results, sources))
         conn.commit()
+        cursor.close()
         conn.close()
     except Exception as e:
         print(f"[DB ERROR] store_cached_search failed: {e}", flush=True)
@@ -1625,6 +1719,8 @@ def task_executor_node(state: AriaState):
                 )
                 passed_post, audit_result = auditor.audit_post(task, result)
                 audit_tokens = getattr(auditor, "last_tokens", {"prompt": 0, "completion": 0, "total": 0})
+                if type(audit_tokens).__name__ in ("MagicMock", "Mock") or not isinstance(audit_tokens, dict):
+                    audit_tokens = {"prompt": 0, "completion": 0, "total": 0}
                 if not passed_post:
                     print(f"[EXECUTOR] Post-execution audit failed task {task.task_id}: {audit_result}", flush=True)
                     log_execution_ledger_event(
@@ -3756,7 +3852,7 @@ def get_telemetry_data(limit=100) -> dict:
     goals_map = {}
     
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn, is_pg = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("""
             SELECT event_id, session_id, goal_id, task_id, department, event_type, metadata, timestamp 
@@ -3764,10 +3860,16 @@ def get_telemetry_data(limit=100) -> dict:
             ORDER BY event_id DESC
         """)
         all_rows = cursor.fetchall()
+        cursor.close()
         conn.close()
         
         for row in all_rows:
             ev_id, sess_id, g_id, t_id, dept, ev_type, meta_str, ts = row
+            # Ensure timestamp is string formatted (converts datetime objects from postgres)
+            if hasattr(ts, "isoformat"):
+                ts = ts.isoformat()
+            else:
+                ts = str(ts)
             
             prompt = 0
             completion = 0
