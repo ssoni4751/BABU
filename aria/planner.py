@@ -230,6 +230,9 @@ PLANNER_SYSTEM_PROMPT: str = (
     "  CRITICAL: If a task (like send_email) is designed to transmit/report findings or content generated upstream, it MUST depend directly on the 'writing', 'analysis', or 'research' task that generated that content, NOT on intermediate execution tasks (like 'create_doc' or 'log_to_sheet') which only return a status confirmation message.\n"
     "- Keep tasks atomic — one clear objective each\n"
     "- Minimum 2 tasks for SPRINT, 3-6 for LAUNCH\n"
+    "- HISTORICAL FAILURE ADAPTATION: Read the [CRITICAL EXECUTION CONSTRAINTS - HISTORICAL FAILURES DETECTED] section carefully. If historical failures or anti-patterns exist for any department (e.g. writing, research, execution), you must actively adapt the task graph to avoid these failures:\n"
+    "  * For writing/research citation or structure failures: You MUST explicitly include citation verifier tasks or add specific sub-tasks/dependencies (such as citation formatting and source verification tasks in case of research).\n"
+    "  * You MUST explicitly address these constraints in the task objectives and the compliance checklists of the planned tasks to satisfy the quality verifications.\n"
     "\n"
     "Output format:\n"
     "{\n"
@@ -432,14 +435,22 @@ def plan_goal(
 
         # Dynamic loading and injection of governance planning negative constraints
         try:
-            from memory import get_anti_pattern_rules
+            from memory import get_anti_pattern_rules_for_domains
         except ImportError:
-            from .memory import get_anti_pattern_rules
+            from .memory import get_anti_pattern_rules_for_domains
             
-        gov_planning_rules = get_anti_pattern_rules("governance.planning")
+        planning_domains = [
+            "governance.planning", 
+            "department.research", 
+            "department.analysis", 
+            "department.writing", 
+            "department.execution", 
+            "department.pa"
+        ]
+        gov_planning_rules = get_anti_pattern_rules_for_domains(planning_domains)
         system_prompt = PLANNER_SYSTEM_PROMPT
         if gov_planning_rules:
-            system_prompt += f"\n\n[CRITICAL HISTORICAL GOVERNANCE RULES]\n{gov_planning_rules}"
+            system_prompt += f"\n\n{gov_planning_rules}"
 
         response = invoke_with_fallback(
             [SystemMessage(content=system_prompt), HumanMessage(content=user_content)],

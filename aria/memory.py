@@ -564,6 +564,27 @@ def get_anti_pattern_rules(domain: str) -> str:
     return ""
 
 
+def get_anti_pattern_rules_for_domains(domains: list) -> str:
+    """Retrieve all logged anti-pattern rules for a list of domains to inject as negative constraints."""
+    if not os.path.exists(FAILURES_PATH):
+        return ""
+        
+    try:
+        with open(FAILURES_PATH, "r", encoding="utf-8") as f:
+            failures = json.load(f)
+            
+        rules = []
+        for entry in failures:
+            if entry.get("domain") in domains and entry.get("confidence", 1.0) >= 0.25:
+                rules.append(f"• Domain: {entry.get('domain')}\n  Previously Failed Method: {entry.get('attempted_methodology')}\n  Observed Issue: {entry.get('observed_consequence')}\n  CRITICAL DIRECTION: {entry.get('active_anti_pattern_rule')}")
+                
+        if rules:
+            return "[CRITICAL EXECUTION CONSTRAINTS - HISTORICAL FAILURES DETECTED]\n" + "\n\n".join(rules)
+    except Exception as e:
+        print(f"[IMMUNE SYSTEM] Failed to read failures.json: {e}", flush=True)
+    return ""
+
+
 def compress_context_payload(raw_text: str, context_topic: str = "general data") -> str:
     """
     Core Staged Context Compression. Condenses granular text blocks 
