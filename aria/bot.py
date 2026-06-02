@@ -1321,6 +1321,9 @@ def planner_node(state: AriaState):
         }
     )
     
+    has_actual_tokens = bool(getattr(graph, "planning_tokens", None))
+    plan_tokens = getattr(graph, "planning_tokens", None) or {"prompt": 1800, "completion": 500, "total": 2300}
+    
     log_execution_ledger_event(
         session_id=session_id,
         goal_id=graph.goal_id,
@@ -1333,7 +1336,9 @@ def planner_node(state: AriaState):
             "query": query,
             "graph": graph.to_dict(),
             "planner_status": graph.planner_status,
-            "tokens": {"prompt": 1800, "completion": 500, "total": 2300}
+            "tokens": plan_tokens,
+            "model": CURRENT_DEPT_MODEL,
+            "is_estimated": not has_actual_tokens
         }
     )
         
@@ -1601,7 +1606,9 @@ def task_executor_node(state: AriaState):
                         "objective": task.objective,
                         "latency": latency,
                         "tokens": task_tokens,
-                        "result_preview": (result or "")[:500]
+                        "result_preview": (result or "")[:500],
+                        "model": CURRENT_DEPT_MODEL,
+                        "is_estimated": False
                     }
                 )
                 
@@ -2282,7 +2289,9 @@ def pa_node(state: AriaState):
             metadata={
                 "query": user_query,
                 "tokens": token_stats,
-                "response_preview": response.content[:300]
+                "response_preview": response.content[:300],
+                "model": CURRENT_PA_MODEL,
+                "is_estimated": False
             }
         )
     except Exception as e:
@@ -2758,6 +2767,32 @@ STATUS_HTML = """<!DOCTYPE html>
   .badge-pa { background: rgba(236, 72, 153, 0.1); color: var(--color-pa); border: 1px solid rgba(236, 72, 153, 0.2); }
   .badge-governance { background: rgba(99, 102, 241, 0.1); color: var(--color-governance); border: 1px solid rgba(99, 102, 241, 0.2); }
   
+  .badge-provider {
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    display: inline-block;
+    margin-right: 6px;
+  }
+  .prov-groq { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.25); }
+  .prov-google { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.25); }
+  .prov-openai { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25); }
+  .prov-openrouter { background: rgba(139, 92, 246, 0.15); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.25); }
+  .prov-unknown { background: rgba(161, 161, 170, 0.15); color: #d4d4d8; border: 1px solid rgba(161, 161, 170, 0.25); }
+  
+  .badge-method {
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    display: inline-block;
+  }
+  .meth-est { background: rgba(245, 158, 11, 0.12); color: #fbbf24; border: 1px dashed rgba(245, 158, 11, 0.3); }
+  .meth-meas { background: rgba(16, 185, 129, 0.1); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.2); }
+  
   .text-highlight {
     font-weight: 600;
     color: #e4e4e7;
@@ -2805,7 +2840,7 @@ STATUS_HTML = """<!DOCTYPE html>
     <div class="metric-card">
       <div class="metric-label">Estimated USD Cost</div>
       <div class="metric-value" id="val-total-cost">-</div>
-      <div class="metric-footer">Based on custom Llama 3 & Gemini rates</div>
+      <div class="metric-footer">Dynamically calculated by model rates</div>
     </div>
     <div class="metric-card">
       <div class="metric-label">Operations Logged</div>
@@ -2843,6 +2878,32 @@ STATUS_HTML = """<!DOCTYPE html>
           <div class="allocation-value" id="exec-percent">-</div>
         </div>
         <div class="progress-bg"><div class="progress-fill" id="exec-progress" style="background:#06b6d4"></div></div>
+      </div>
+    </div>
+    
+    <div class="dashboard-panel reasoning-panel" style="grid-column: span 2; margin-bottom: 32px;">
+      <div class="panel-title">
+        <span>Reasoning Efficiency Cockpit (Outcome &divide; Resources)</span>
+        <span class="text-muted" style="font-weight: normal;">Latest Swarm Goals</span>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Goal / Query</th>
+              <th>Status</th>
+              <th style="text-align: right;">Total Resources (Tokens)</th>
+              <th style="text-align: right;">System Latency (Duration)</th>
+              <th style="text-align: right;">Cost (USD)</th>
+            </tr>
+          </thead>
+          <tbody id="reasoning-body">
+            <tr>
+              <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 20px;">No goals completed yet.</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
     
@@ -2928,6 +2989,7 @@ STATUS_HTML = """<!DOCTYPE html>
     
     const aggregates = telemetryData.aggregates;
     const ledger = telemetryData.ledger;
+    const reasoning = telemetryData.reasoning_efficiency || [];
     
     // Update Counter Cards
     document.getElementById('val-total-tokens').textContent = aggregates.total_tokens.toLocaleString();
@@ -2998,6 +3060,33 @@ STATUS_HTML = """<!DOCTYPE html>
     document.getElementById('exec-percent').textContent = `${workerTokens.toLocaleString()} tokens (${workerPercent}%)`;
     document.getElementById('exec-progress').style.width = `${workerPercent}%`;
     
+    // Update Reasoning Efficiency Table
+    const reasoningBody = document.getElementById('reasoning-body');
+    reasoningBody.innerHTML = '';
+    
+    if (reasoning.length === 0) {
+      reasoningBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 20px;">No completed goals found.</td></tr>`;
+    } else {
+      reasoning.forEach(goal => {
+        const tr = document.createElement('tr');
+        const ts = goal.timestamp.replace('T', ' ').substring(0, 19);
+        
+        let statusBadge = 'badge-governance';
+        if (goal.status === 'COMPLETED' || goal.status === 'SUCCESS') statusBadge = 'badge-execution';
+        else if (goal.status === 'FAILED') statusBadge = 'badge-pa';
+        
+        tr.innerHTML = `
+          <td class="text-muted">${ts}</td>
+          <td><div class="text-highlight" style="max-width: 450px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${goal.query}">${goal.query}</div></td>
+          <td><span class="badge-category ${statusBadge}">${goal.status}</span></td>
+          <td style="text-align: right;"><strong class="text-highlight">${goal.total_tokens.toLocaleString()}</strong> <span class="text-muted">tokens</span></td>
+          <td style="text-align: right;"><strong style="color:#06b6d4;">${goal.duration.toFixed(2)}</strong> <span class="text-muted">sec</span></td>
+          <td style="text-align: right; font-weight: 700; color:#e4e4e7;">$${goal.total_cost.toFixed(5)}</td>
+        `;
+        reasoningBody.appendChild(tr);
+      });
+    }
+    
     // Update Ledger Table with Search + Filters
     const searchQuery = document.getElementById('search-input').value.toLowerCase().trim();
     const ledgerBody = document.getElementById('ledger-body');
@@ -3016,7 +3105,9 @@ STATUS_HTML = """<!DOCTYPE html>
           row.goal_id.toLowerCase().includes(searchQuery) ||
           (row.task_id && row.task_id.toLowerCase().includes(searchQuery)) ||
           row.event_type.toLowerCase().includes(searchQuery) ||
-          (row.department && row.department.toLowerCase().includes(searchQuery));
+          (row.department && row.department.toLowerCase().includes(searchQuery)) ||
+          (row.model && row.model.toLowerCase().includes(searchQuery)) ||
+          (row.provider && row.provider.toLowerCase().includes(searchQuery));
         if (!matchesQuery) return false;
       }
       return true;
@@ -3029,9 +3120,14 @@ STATUS_HTML = """<!DOCTYPE html>
     
     filteredLedger.forEach(row => {
       const tr = document.createElement('tr');
-      
-      // clean timestamp
       const ts = row.timestamp.replace('T', ' ').substring(0, 19);
+      
+      const isEstBadge = row.is_estimated ? 
+        `<span class="badge-method meth-est">Estimated</span>` : 
+        `<span class="badge-method meth-meas">Measured</span>`;
+        
+      const provClass = `prov-${row.provider}`;
+      const provBadge = `<span class="badge-provider ${provClass}">${row.provider}</span>`;
       
       tr.innerHTML = `
         <td class="text-muted">${ts}</td>
@@ -3040,8 +3136,14 @@ STATUS_HTML = """<!DOCTYPE html>
           <div class="text-muted" style="font-size: 0.72rem;">Sess: ${row.session_id}</div>
         </td>
         <td><code style="background:rgba(255,255,255,0.06); padding:2px 6px; border-radius:4px; font-size:0.75rem;">${row.task_id || '-'}</code></td>
-        <td><span class="badge-category badge-${row.category}">${row.category}</span></td>
-        <td><strong style="color:rgba(255,255,255,0.85);">${row.event_type}</strong></td>
+        <td>
+          <span class="badge-category badge-${row.category}">${row.category}</span>
+          <div style="margin-top: 4px;">${isEstBadge}</div>
+        </td>
+        <td>
+          <strong style="color:rgba(255,255,255,0.85);">${row.event_type}</strong>
+          <div class="text-muted" style="font-size:0.72rem; margin-top:4px;">${provBadge}${row.model}</div>
+        </td>
         <td style="text-align: right;">
           <div class="text-highlight">${row.total_tokens.toLocaleString()}</div>
           <div class="text-muted" style="font-size: 0.72rem;">P: ${row.prompt_tokens.toLocaleString()} • C: ${row.completion_tokens.toLocaleString()}</div>
@@ -3064,14 +3166,49 @@ STATUS_HTML = """<!DOCTYPE html>
 
 
 def get_telemetry_data(limit=100) -> dict:
-    """Query execution_ledger database to extract global real-time aggregates and ledger records."""
+    """Query execution_ledger database to extract global real-time aggregates, reasoning efficiency, and ledger records."""
     import sqlite3
     import json
     
-    # Custom pricing constants (Llama 3 & Gemini models avg)
-    PROMPT_COST_PER_TOKEN = 0.15 / 1_000_000
-    COMPLETION_COST_PER_TOKEN = 0.60 / 1_000_000
+    # Model-specific pricing per 1M tokens: (prompt, completion)
+    PRICING_TABLE = {
+        "gemini-2.5-pro": (1.25, 5.00),
+        "gemini-2.5-flash": (0.075, 0.30),
+        "gemini-1.5-pro": (1.25, 5.00),
+        "gemini-1.5-flash": (0.075, 0.30),
+        "llama-3.3-70b-versatile": (0.59, 0.79),
+        "llama-3.1-70b-versatile": (0.59, 0.79),
+        "llama-3.1-8b-instant": (0.05, 0.08),
+        "llama3-70b-8192": (0.59, 0.79),
+        "llama3-8b-8208": (0.05, 0.08),
+        "gpt-4o": (2.50, 10.00),
+        "gpt-4o-mini": (0.150, 0.600),
+        "o1-mini": (3.00, 12.00)
+    }
     
+    def get_token_costs(model_name: str) -> tuple[float, float]:
+        if not model_name:
+            return 0.15 / 1_000_000, 0.60 / 1_000_000 # default fallback
+        m_lower = model_name.lower().strip()
+        for key, rates in PRICING_TABLE.items():
+            if key in m_lower:
+                return rates[0] / 1_000_000, rates[1] / 1_000_000
+        return 0.15 / 1_000_000, 0.60 / 1_000_000
+
+    def get_provider(model_name: str) -> str:
+        if not model_name:
+            return "unknown"
+        m_lower = model_name.lower().strip()
+        if "gemini" in m_lower:
+            return "google"
+        elif "gpt-" in m_lower or "o1-" in m_lower:
+            return "openai"
+        elif "/" in m_lower:
+            return "openrouter"
+        elif "llama" in m_lower or "mixtral" in m_lower or "gemma" in m_lower:
+            return "groq"
+        return "provider"
+
     aggregates = {
         "total_tokens": 0,
         "total_cost": 0.0,
@@ -3086,6 +3223,7 @@ def get_telemetry_data(limit=100) -> dict:
     }
     
     ledger_rows = []
+    goals_map = {}
     
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -3104,6 +3242,9 @@ def get_telemetry_data(limit=100) -> dict:
             prompt = 0
             completion = 0
             total = 0
+            latency = 0.0
+            model_name = ""
+            is_estimated = False
             
             if meta_str:
                 try:
@@ -3113,6 +3254,10 @@ def get_telemetry_data(limit=100) -> dict:
                         prompt = tokens.get("prompt", 0) or 0
                         completion = tokens.get("completion", 0) or 0
                         total = tokens.get("total", 0) or (prompt + completion)
+                    
+                    latency = float(meta.get("latency", 0.0))
+                    model_name = meta.get("model", "")
+                    is_estimated = bool(meta.get("is_estimated", False))
                 except Exception:
                     pass
             
@@ -3125,8 +3270,12 @@ def get_telemetry_data(limit=100) -> dict:
                     
             if ev_type in ("PLANNING", "AUDIT_PRE", "AUDIT_PRE_FAIL", "AUDIT_PRE_PASS", "AUDIT_POST", "AUDIT_POST_FAIL", "AUDIT_POST_PASS"):
                 category = "governance"
+                if ev_type == "PLANNING":
+                    is_estimated = is_estimated or (total == 2300 and prompt == 1800) # fallback
                 
-            cost = (prompt * PROMPT_COST_PER_TOKEN) + (completion * COMPLETION_COST_PER_TOKEN)
+            p_rate, c_rate = get_token_costs(model_name)
+            cost = (prompt * p_rate) + (completion * c_rate)
+            provider = get_provider(model_name)
             
             # Update aggregates
             aggregates["total_tokens"] += total
@@ -3150,8 +3299,51 @@ def get_telemetry_data(limit=100) -> dict:
                 "completion_tokens": completion,
                 "total_tokens": total,
                 "cost": round(cost, 6),
-                "timestamp": ts
+                "timestamp": ts,
+                "model": model_name or "default",
+                "provider": provider,
+                "is_estimated": is_estimated
             })
+            
+            # Reasoning efficiency goal aggregates
+            if g_id not in goals_map:
+                goals_map[g_id] = {
+                    "goal_id": g_id,
+                    "session_id": sess_id,
+                    "query": "",
+                    "total_tokens": 0,
+                    "total_cost": 0.0,
+                    "duration": 0.0,
+                    "status": "ACTIVE",
+                    "timestamp": ts
+                }
+                
+            goals_map[g_id]["total_tokens"] += total
+            goals_map[g_id]["total_cost"] += cost
+            goals_map[g_id]["duration"] += latency
+            
+            if meta_str:
+                try:
+                    meta = json.loads(meta_str)
+                    if "query" in meta and meta["query"] and not goals_map[g_id]["query"]:
+                        goals_map[g_id]["query"] = meta["query"]
+                    elif "goal" in meta and meta["goal"] and not goals_map[g_id]["query"]:
+                        goals_map[g_id]["query"] = meta["goal"]
+                except Exception:
+                    pass
+            
+            if ev_type == "GOAL_CREATED" and meta_str:
+                try:
+                    meta = json.loads(meta_str)
+                    goals_map[g_id]["status"] = meta.get("planner_status", "ACTIVE")
+                except Exception:
+                    pass
+            elif ev_type in ("AUDIT_POST_FAIL", "AUDIT_PRE_FAIL"):
+                goals_map[g_id]["status"] = "FAILED"
+            elif ev_type == "AUDIT_POST_PASS" and t_id == "T-PA":
+                goals_map[g_id]["status"] = "COMPLETED"
+            elif ev_type == "PA_SYNTHESIS":
+                goals_map[g_id]["status"] = "COMPLETED"
             
     except Exception as e:
         print(f"[DB TELEMETRY ERROR] get_telemetry_data failed: {e}", flush=True)
@@ -3160,9 +3352,20 @@ def get_telemetry_data(limit=100) -> dict:
     for cat in aggregates["categories"]:
         aggregates["categories"][cat]["cost"] = round(aggregates["categories"][cat]["cost"], 5)
         
+    reasoning_list = []
+    for g_id, g_data in goals_map.items():
+        if not g_data["query"]:
+            g_data["query"] = f"Operations Swarm Task ({g_id})"
+        g_data["total_cost"] = round(g_data["total_cost"], 5)
+        g_data["duration"] = round(g_data["duration"], 2)
+        reasoning_list.append(g_data)
+        
+    reasoning_list.sort(key=lambda x: x["timestamp"], reverse=True)
+    
     return {
         "aggregates": aggregates,
-        "ledger": ledger_rows[:limit]
+        "ledger": ledger_rows[:limit],
+        "reasoning_efficiency": reasoning_list[:5]
     }
 
 

@@ -184,6 +184,7 @@ class GoalGraph:
     goal_type: str = "NEW"
     planner_status: str = "SUCCESS"
     intent_packet: Optional[dict] = None
+    planning_tokens: Optional[dict] = None
 
     def __post_init__(self) -> None:
         if not self.created_at:
@@ -203,6 +204,7 @@ class GoalGraph:
             "goal_type": self.goal_type,
             "planner_status": self.planner_status,
             "intent_packet": self.intent_packet,
+            "planning_tokens": self.planning_tokens,
         }
 
     @classmethod
@@ -218,6 +220,7 @@ class GoalGraph:
             goal_type=data.get("goal_type", "NEW"),
             planner_status=data.get("planner_status", "SUCCESS"),
             intent_packet=data.get("intent_packet"),
+            planning_tokens=data.get("planning_tokens"),
         )
 
 

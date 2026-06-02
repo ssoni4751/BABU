@@ -388,6 +388,7 @@ def plan_goal(
 
     start = time.time()
     goal_type = "CORRECTION" if is_correction else "NEW"
+    p_tokens = None
 
     # Build the user prompt ------------------------------------------------
     now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -446,6 +447,22 @@ def plan_goal(
             temp=0.1,
         )
         raw_text: str = response.content  # type: ignore[union-attr]
+        
+        # Extract planning tokens dynamically
+        p_tokens = {"prompt": 0, "completion": 0, "total": 0}
+        if response:
+            usage_meta = getattr(response, "usage_metadata", None)
+            if usage_meta:
+                p_tokens["prompt"] = usage_meta.get("input_tokens", 0) or usage_meta.get("prompt_tokens", 0) or 0
+                p_tokens["completion"] = usage_meta.get("output_tokens", 0) or usage_meta.get("completion_tokens", 0) or 0
+                p_tokens["total"] = usage_meta.get("total_tokens", 0) or (p_tokens["prompt"] + p_tokens["completion"])
+            else:
+                metadata = getattr(response, "response_metadata", {})
+                token_usage = metadata.get("token_usage")
+                if token_usage:
+                    p_tokens["prompt"] = token_usage.get("prompt_tokens", 0)
+                    p_tokens["completion"] = token_usage.get("completion_tokens", 0)
+                    p_tokens["total"] = token_usage.get("total_tokens", 0)
     except Exception as exc:
         print(f"[PLANNER] LLM call failed: {exc}")
         exc_str = str(exc).lower()
@@ -587,6 +604,7 @@ def plan_goal(
         goal_type=goal_type,
         planner_status="SUCCESS",
         intent_packet=intent_packet.to_dict() if intent_packet else None,
+        planning_tokens=p_tokens,
     )
 
     # Validate DAG (no cycles) ---------------------------------------------
