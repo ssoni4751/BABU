@@ -1989,28 +1989,30 @@ def resolve_action_params(params: dict, research_text: str = "") -> dict:
     def resolve_value(val):
         if not isinstance(val, str):
             return val
-        val_clean = val.strip().lower().replace("_", " ").replace("'", "").replace("\"", "")
-        if val_clean in (
-            "my official email", "my official mail", "user official email", "user official mail", 
-            "users official email", "users official mail", "official email", "official mail", "my_official_email"
-        ):
+        val_clean = val.strip().lower().replace("_", " ").replace("'", "").replace('"', "")
+        # Fuzzy substring resolution — catches 'official mail address', 'user official mail', etc.
+        official_email_triggers = (
+            "my official email", "my official mail", "official email address", "official mail address",
+            "user official email", "user official mail", "users official email", "users official mail",
+            "official email", "official mail", "my_official_email"
+        )
+        if any(t in val_clean for t in official_email_triggers):
             return details.get("official_email", "")
-        if val_clean in (
-            "my personal email", "my personal mail", "user personal email", "user personal mail", 
-            "users personal email", "users personal mail", "personal email", "personal mail", "my_personal_email"
-        ):
+        personal_email_triggers = (
+            "my personal email", "my personal mail", "personal email address", "personal mail address",
+            "user personal email", "user personal mail", "users personal email", "users personal mail",
+            "personal email", "personal mail", "my_personal_email"
+        )
+        if any(t in val_clean for t in personal_email_triggers):
             return details.get("personal_email", "")
-        if val_clean in (
-            "my mobile", "my mobile number", "my phone", "my phone number", "user mobile", "user phone", "my_mobile", "my_mobile_number"
-        ):
+        if any(t in val_clean for t in (
+            "my mobile", "my mobile number", "my phone", "my phone number",
+            "user mobile", "user phone", "my_mobile", "my_mobile_number"
+        )):
             return details.get("mobile_number", "")
-        if val_clean in (
-            "my name", "user name", "users name", "my_name"
-        ):
+        if any(t in val_clean for t in ("my name", "user name", "users name", "my_name")):
             return details.get("full_name", "")
-        if val_clean in (
-            "my address", "user address", "users address", "my_address"
-        ):
+        if any(t in val_clean for t in ("my address", "user address", "users address", "my_address")):
             return address_str
         return val
 

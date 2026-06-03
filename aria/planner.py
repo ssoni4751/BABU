@@ -125,6 +125,16 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
         print("[INTENT CLASSIFIER] Fast-track classification: CHORE", flush=True)
         return IntentPacket(lookup=True, research=False, generate=False, execute=False, websearch=False, writer=False, execution_mode="READ_ONLY", confidence=1.0)
 
+    # 1b. Rule-based programmatic override: force lookup=True when query contains personal data references
+    # The LLM (small model) frequently ignores this for email/phone/name/address patterns
+    _personal_data_markers = (
+        "my official mail", "my official email", "official mail", "official email",
+        "my personal mail", "my personal email", "personal mail", "personal email",
+        "my phone", "my number", "my mobile", "my address", "my name", "my nickname",
+        "my email", "my mail", "to my mail", "to my email",
+    )
+    _force_lookup = any(marker in t for marker in _personal_data_markers)
+
     # 2. LLM-based robust classification
     from langchain_core.messages import SystemMessage, HumanMessage
     try:
@@ -157,11 +167,24 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
         raw_text = response.content.strip()
         data = _extract_json(raw_text)
         packet = IntentPacket.from_dict(data)
+        # Programmatic override: ensure lookup is True if personal data is referenced
+        if _force_lookup and not packet.lookup:
+            print("[INTENT CLASSIFIER] Programmatic override: forcing lookup=True due to personal data reference in query.", flush=True)
+            packet = IntentPacket(
+                lookup=True,
+                research=packet.research,
+                generate=packet.generate,
+                execute=packet.execute,
+                websearch=packet.websearch,
+                writer=packet.writer,
+                execution_mode=packet.execution_mode,
+                confidence=packet.confidence,
+            )
         print(f"[INTENT CLASSIFIER] Classified: lookup={packet.lookup}, research={packet.research}, gen={packet.generate}, exec={packet.execute}, websearch={packet.websearch}, writer={packet.writer}, mode={packet.execution_mode}, conf={packet.confidence}", flush=True)
         return packet
     except Exception as e:
         print(f"[INTENT CLASSIFIER] Failed to classify intent: {e}. Defaulting to READ_ONLY fallback.", flush=True)
-        return IntentPacket(lookup=True, research=False, generate=False, execute=False, websearch=False, writer=False, execution_mode="READ_ONLY", confidence=0.5)
+        return IntentPacket(lookup=_force_lookup, research=False, generate=False, execute=False, websearch=False, writer=False, execution_mode="READ_ONLY", confidence=0.5)
 
 # ---------------------------------------------------------------------------
 # System prompt
