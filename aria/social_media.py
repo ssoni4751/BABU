@@ -85,8 +85,30 @@ def generate_daily_post(custom_topic: str = None) -> tuple[str, str, str, list, 
             f"IMPORTANT: Please draft a daily tax or compliance advice/marketing post that naturally addresses or draws inspiration from the real-time Indian tax/compliance news above. Ensure it connects seamlessly to the professional tax, compliance, and e-governance services offered by 'Anshu Computer & Tax Consultancy'!"
         )
     
-    llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.7)
-    res = llm.invoke([SystemMessage(content=DAILY_POST_PROMPT), HumanMessage(content=user_prompt)])
+    res = None
+    try:
+        llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.7)
+        res = llm.invoke([SystemMessage(content=DAILY_POST_PROMPT), HumanMessage(content=user_prompt)])
+    except Exception as groq_err:
+        print(f"[SOCIAL LLM WARNING] Groq Llama-3.3 failed: {groq_err}. Falling back to gemini-2.5-flash...", flush=True)
+        gemini_key = os.environ.get("GEMINI_API_KEY", "")
+        openrouter_key = os.environ.get("OPENROUTER_API_KEY", "")
+        if gemini_key:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7, google_api_key=gemini_key)
+            res = llm.invoke([SystemMessage(content=DAILY_POST_PROMPT), HumanMessage(content=user_prompt)])
+        elif openrouter_key:
+            from langchain_openai import ChatOpenAI
+            llm = ChatOpenAI(
+                model="google/gemini-2.5-flash",
+                temperature=0.7,
+                api_key=openrouter_key,
+                base_url="https://openrouter.ai/api/v1",
+                max_tokens=1500
+            )
+            res = llm.invoke([SystemMessage(content=DAILY_POST_PROMPT), HumanMessage(content=user_prompt)])
+        else:
+            raise groq_err
     
     text = res.content.strip()
     match = re.search(r'\{.*\}', text, re.DOTALL)

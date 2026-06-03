@@ -995,6 +995,7 @@ MAKE_ACTIONS = {
     "copy_contacts_to_drive": "Fetch Google Contacts and write them to a Google Sheet in Google Drive",
     "search_sheet":     "Search for a query or name inside a specific Google Sheet (e.g. Contacts)",
     "search_image":     "Search the web for an image of a given topic and return it",
+    "post_to_facebook": "Publish a post (with image and caption) to Facebook Page",
 }
 
 
@@ -1029,16 +1030,17 @@ def sanitize_single_action_payload(payload: Optional[dict]) -> Optional[dict]:
 ACTION_DETECTION_PROMPT = (
     "Detect if the user message requests a SINGLE, DIRECT automation action.\n"
     "Actions: send_email, create_event, log_to_sheet, create_doc, send_slack, "
-    "create_task, copy_photos_to_drive, copy_contacts_to_drive, search_sheet, search_image\n\n"
+    "create_task, copy_photos_to_drive, copy_contacts_to_drive, search_sheet, search_image, post_to_facebook\n\n"
     "CRITICAL RULES:\n"
     "- If the query is complex, has multiple steps, requires research, asks for a 'report', or is conversational, reply exactly: NO_ACTION\n"
     "- Do NOT classify goals requiring planning, web search, or synthesis as single actions. Reply NO_ACTION.\n"
-    "- Only classify direct, single-action commands (e.g. 'send email to x', 'schedule y', 'search sheet z') as actions.\n\n"
+    "- Only classify direct, single-action commands (e.g. 'send email to x', 'schedule y', 'search sheet z', 'post to facebook') as actions.\n\n"
     "If action found, reply with JSON ONLY containing 'action' and 'params' keys.\n"
     "Params by action: send_email(to,subject,body), create_event(title,date,time,duration,description), "
     "log_to_sheet(sheet_name,data), create_doc(title,content), send_slack(channel,message), "
     "create_task(title,due_date,notes), copy_photos_to_drive(category,folder_name), "
-    "copy_contacts_to_drive(sheet_name), search_sheet(sheet_name,query), search_image(query)\n\n"
+    "copy_contacts_to_drive(sheet_name), search_sheet(sheet_name,query), search_image(query), "
+    "post_to_facebook(caption,topic)\n\n"
     "If NO action: reply exactly NO_ACTION"
 )
 

@@ -992,5 +992,36 @@ def execute_google_action(action: str, params: dict) -> tuple[bool, str]:
             return False, "Missing 'file_path' parameter to upload."
         return upload_file_to_drive(file_path, folder_name)
 
+    elif action == "post_to_facebook":
+        caption = params.get("caption", "")
+        topic = params.get("topic", "")
+        try:
+            try:
+                from .social_media import generate_social_post_draft, publish_to_facebook_page
+            except ImportError:
+                from social_media import generate_social_post_draft, publish_to_facebook_page
+            target_topic = topic or caption or "general computer consultancy"
+            print(f"[FACEBOOK ACTION] Generating draft for topic: {target_topic}", flush=True)
+            draft = generate_social_post_draft(custom_topic=target_topic)
+            if caption and not topic:
+                draft["caption"] = caption
+            print(f"[FACEBOOK ACTION] Publishing draft to Facebook Page...", flush=True)
+            ok, msg = publish_to_facebook_page(draft["image_path"], draft["caption"])
+            try:
+                try:
+                    from .memory import append_to_profile_ledger
+                except ImportError:
+                    from memory import append_to_profile_ledger
+                append_to_profile_ledger("work_summaries", {
+                    "task_name": "Causal FB Marketing Post",
+                    "status": "SUCCESS" if ok else "FAILED",
+                    "details": f"Message: {msg} | Topic: {target_topic}"
+                })
+            except Exception as e:
+                print(f"[FACEBOOK ACTION WARNING] Failed to write ledger: {e}", flush=True)
+            return ok, msg
+        except Exception as e:
+            return False, f"Failed to post to Facebook: {e}"
+
     else:
         return False, f"Action `{action}` is not natively supported in direct Google Workspace integration."
