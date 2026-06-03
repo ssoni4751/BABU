@@ -32,7 +32,7 @@ DEPARTMENTS: Dict[str, str] = {
     "research": "Deep academic or comprehensive multi-source web research requiring strict citations, verifications, and source listing (ONLY when user explicitly requests research)",
     "analysis": "Data analysis, sentiment analysis, comparison, pattern recognition",
     "writing": "Report generation, content creation, summarization, formatting",
-    "execution": "Google Workspace actions (email, calendar, sheets, docs)",
+    "execution": "Google Workspace actions (email, calendar, sheets, docs),Post_to_facebook",
     "pa": "Direct user response synthesis",
 }
 
@@ -88,7 +88,7 @@ INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
     "This includes any query referencing personal details, business context, or profile info (such as 'my official mail', 'my business name', 'my phone', 'my name', etc.) to ensure the system is permitted to retrieve this information from the local profile/memory.\n"
     "- research: True if deep information gathering, multiple source evaluation, or cross-referencing is required.\n"
     "- generate: True if data analysis, content creation, report drafting, comparison, or synthesis is required.\n"
-    "- execute: True if a physical mutation action (sending emails, creating Google Docs/Events, logging to sheets, publishing posts) is explicitly requested.\n"
+    "- execute: True if a physical mutation action (sending emails, creating Google Docs/Events, logging to sheets, publishing posts to facebook) is explicitly requested.\n"
     "- websearch: True if searching the web or Wikipedia for external general knowledge is required.\n"
     "- writer: True if drafting text, emails, or reports is required.\n"
     "\n"
@@ -211,7 +211,7 @@ PLANNER_SYSTEM_PROMPT: str = (
     "  CRITICAL: For 'writing' tasks that synthesize upstream 'research' findings, you MUST always include a checklist item requiring that all research citations, source links, or references are explicitly preserved and listed at the end of the report.\n"
     "  CRITICAL: For any 'research' department task, you MUST always include compliance checklist items requiring: (1) source credibility and verifiability, (2) recency and evidence verification, (3) confidence assessment, and (4) explicit evidence citations (naming specific sections, documents, or reports where possible).\n"
     "  CRITICAL: For the 'information' department (used for general lookups, quick web searches, or simple profile searches), do NOT require academic-level citations or verifications. Checklists should only verify factual correctness and coverage.\n"
-    "  CRITICAL: Use the 'information' department as the default for all standard queries, quick web lookups, and general information checks. ONLY allocate the 'research' department when the user explicitly requests deep, formal, or comprehensive 'research' in their query.\n"
+    "  CRITICAL: Use the 'information' department as the default for all standard queries,Profile lookup,Emaillookup,task lookup, google workspace lookup,quick web lookups, and general information checks. ONLY allocate the 'research' department when the user explicitly requests deep, formal, or comprehensive 'research' in their query.\n"
     "- Valid departments: information, research, analysis, writing, execution, pa\n"
     "- depends_on must reference existing task_ids only\n"
     "- Tasks with no dependencies get depends_on: []\n"
