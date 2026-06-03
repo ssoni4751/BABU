@@ -1241,9 +1241,9 @@ def intent_router(state: AriaState):
     session_id = state.get("session_id", "default")
 
     # Respect the requested gear passed in the state (e.g. from UI or API)
-    requested_gear = state.get("gear", "WALK")
-    if requested_gear not in ("WALK", "SPRINT", "LAUNCH"):
-        requested_gear = "WALK"
+    requested_gear = state.get("gear", "LAUNCH")
+    if requested_gear not in ("SPRINT", "LAUNCH"):
+        requested_gear = "LAUNCH"
 
     # Check for command override prefixes in user query
     cmd_gear = None
@@ -1254,25 +1254,20 @@ def intent_router(state: AriaState):
         elif cmd.startswith("sprint"):
             cmd_gear = "SPRINT"
         elif cmd.startswith("walk"):
-            cmd_gear = "WALK"
+            cmd_gear = "LAUNCH"
     elif lowered.startswith("launch"):
         cmd_gear = "LAUNCH"
     elif lowered.startswith("sprint"):
         cmd_gear = "SPRINT"
     elif lowered.startswith("walk"):
-        cmd_gear = "WALK"
+        cmd_gear = "LAUNCH"
 
     if cmd_gear:
         manual_gear = cmd_gear
         print(f"[ROUTER] Command override detected: Selected gear '{manual_gear}' based on prefix.", flush=True)
     else:
-        # Dynamic Goal Correction: Escalate to LAUNCH only if NOT explicitly in WALK gear
-        # to prevent hijacking conversational WALK mode for general questions.
-        if requested_gear == "WALK":
-            manual_gear = "WALK"
-        else:
-            is_correction = should_escalate_to_workflow(query, history_text=history_text)
-            manual_gear = requested_gear if is_correction else requested_gear
+        is_correction = should_escalate_to_workflow(query, history_text=history_text)
+        manual_gear = requested_gear if is_correction else requested_gear
 
     # Strip command prefix overrides to keep the processed query clean
     clean_query = query
@@ -1479,7 +1474,10 @@ def planner_node(state: AriaState):
         }
     )
         
-    return {"goal_graph": graph.to_dict()}
+    ret = {"goal_graph": graph.to_dict()}
+    if len(graph.tasks) == 1 and graph.tasks[0].department == "pa":
+        ret["gear"] = "WALK"
+    return ret
 
 
 def task_executor_node(state: AriaState):
@@ -2496,7 +2494,7 @@ else:
 
 # â”€â”€ Core invoke helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-def invoke_aria(message: str, session_id: str = "default", goal_id: Optional[str] = None, gear: str = "WALK") -> tuple[str, str, dict]:
+def invoke_aria(message: str, session_id: str = "default", goal_id: Optional[str] = None, gear: str = "LAUNCH") -> tuple[str, str, dict]:
     if not goal_id:
         goal_id = f"G-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
     
@@ -3199,8 +3197,8 @@ STATUS_HTML = """<!DOCTYPE html>
     <div class="query-controls">
       <input type="text" id="query-input" class="search-box" style="flex: 1; padding: 14px 20px; font-size: 1rem;" placeholder="Analyze spreadsheet, compile research report, send email summary...">
       <div class="gear-selector">
-        <button class="gear-btn active" id="gear-walk" onclick="selectGear('WALK')">WALK GEAR</button>
-        <button class="gear-btn" id="gear-launch" onclick="selectGear('LAUNCH')">LAUNCH GEAR</button>
+        <button class="gear-btn active" id="gear-launch" onclick="selectGear('LAUNCH')">LAUNCH GEAR</button>
+        <button class="gear-btn" id="gear-sprint" onclick="selectGear('SPRINT')">SPRINT GEAR</button>
       </div>
       <button class="trigger-btn" id="trigger-btn" onclick="submitQuery()">
         <span id="trigger-text">TRIGGER ACTION</span>
@@ -3434,7 +3432,7 @@ STATUS_HTML = """<!DOCTYPE html>
 
   let telemetryData = null;
   let activeCategory = 'all';
-  let selectedGear = 'WALK';
+  let selectedGear = 'LAUNCH';
 
   // Authorization token management
   function saveAuthToken() {
@@ -3460,13 +3458,15 @@ STATUS_HTML = """<!DOCTYPE html>
   // Gear selectors
   function selectGear(gear) {
     selectedGear = gear;
-    document.getElementById('gear-walk').classList.remove('active');
-    document.getElementById('gear-launch').classList.remove('active');
+    const gearLaunch = document.getElementById('gear-launch');
+    const gearSprint = document.getElementById('gear-sprint');
+    if (gearLaunch) gearLaunch.classList.remove('active');
+    if (gearSprint) gearSprint.classList.remove('active');
     
-    if (gear === 'WALK') {
-      document.getElementById('gear-walk').classList.add('active');
-    } else {
-      document.getElementById('gear-launch').classList.add('active');
+    if (gear === 'LAUNCH') {
+      if (gearLaunch) gearLaunch.classList.add('active');
+    } else if (gear === 'SPRINT') {
+      if (gearSprint) gearSprint.classList.add('active');
     }
   }
 
@@ -4249,9 +4249,9 @@ class HealthHandler(BaseHTTPRequestHandler):
             body   = json.loads(self.rfile.read(length))
             msg    = str(body.get("message", "")).strip()
             sid    = str(body.get("session_id", "web_anon")).strip() or "web_anon"
-            gear   = str(body.get("gear", "WALK")).strip().upper()
-            if gear not in ("WALK", "LAUNCH", "SPRINT"):
-                gear = "WALK"
+            gear   = str(body.get("gear", "LAUNCH")).strip().upper()
+            if gear not in ("LAUNCH", "SPRINT"):
+                gear = "LAUNCH"
                 
             if not msg:
                 raise ValueError("empty message")
