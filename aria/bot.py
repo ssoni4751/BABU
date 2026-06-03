@@ -2428,7 +2428,8 @@ def pa_node(state: AriaState):
     token_stats = extract_tokens(response)
     try:
         goal_graph_dict = state.get("goal_graph") or {}
-        g_id = goal_graph_dict.get("goal_id", "G-WALK")
+        active_goal_dict = state.get("active_goal") or {}
+        g_id = goal_graph_dict.get("goal_id") or active_goal_dict.get("goal_id") or "G-WALK"
         log_execution_ledger_event(
             session_id=state.get("session_id", "default"),
             goal_id=g_id,
@@ -4052,6 +4053,8 @@ def get_telemetry_data(limit=100) -> dict:
         
     reasoning_list = []
     for g_id, g_data in goals_map.items():
+        if g_id == "G-WALK":
+            continue
         if not g_data["query"]:
             g_data["query"] = f"Operations Swarm Task ({g_id})"
         g_data["total_cost"] = round(g_data["total_cost"], 5)
