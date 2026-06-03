@@ -32,6 +32,37 @@ else:
 CREDENTIALS_PATH = os.path.join(BASE_DIR, "credentials.json")
 TOKEN_PATH = os.path.join(BASE_DIR, "token.json")
 
+# Restore credentials/token from environment variables if not present on disk
+if not os.path.exists(CREDENTIALS_PATH) and os.environ.get("GOOGLE_CREDENTIALS_JSON"):
+    try:
+        creds_data = os.environ.get("GOOGLE_CREDENTIALS_JSON").strip()
+        try:
+            decoded = base64.b64decode(creds_data).decode("utf-8")
+            json.loads(decoded)
+            creds_data = decoded
+        except Exception:
+            pass
+        with open(CREDENTIALS_PATH, "w", encoding="utf-8") as f:
+            f.write(creds_data)
+        print("[GOOGLE AUTH] Restored credentials.json from environment", flush=True)
+    except Exception as e:
+        print(f"[GOOGLE AUTH] Failed to restore credentials.json: {e}", flush=True)
+
+if not os.path.exists(TOKEN_PATH) and os.environ.get("GOOGLE_TOKEN_JSON"):
+    try:
+        token_data = os.environ.get("GOOGLE_TOKEN_JSON").strip()
+        try:
+            decoded = base64.b64decode(token_data).decode("utf-8")
+            json.loads(decoded)
+            token_data = decoded
+        except Exception:
+            pass
+        with open(TOKEN_PATH, "w", encoding="utf-8") as f:
+            f.write(token_data)
+        print("[GOOGLE AUTH] Restored token.json from environment", flush=True)
+    except Exception as e:
+        print(f"[GOOGLE AUTH] Failed to restore token.json: {e}", flush=True)
+
 def get_google_creds() -> Credentials:
     """Load, refresh, or request user OAuth 2.0 credentials."""
     creds = None
