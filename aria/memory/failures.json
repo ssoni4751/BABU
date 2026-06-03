@@ -13,35 +13,5 @@
     "failure_type": "METHODOLOGY",
     "goal": "Daily Autonomous Marketing Post",
     "last_reinforced": "2026-06-01T09:42:41.277678+00:00"
-  },
-  {
-    "failure_signature": "GOVERNANCE.CLASSIFICATION_20260603_142312",
-    "domain": "governance.classification",
-    "attempted_methodology": "Send tax form email",
-    "observed_consequence": "The intent classifier misclassified the query as LOOKUP instead of RESEARCH, leading to missing analysis tasks and incorrect assignment of execution mode, resulting in a read-only user being assigned an execution task",
-    "active_anti_pattern_rule": "NEVER assign execution tasks to read-only users, and NEVER classify queries containing research keywords as LOOKUP; always route to RESEARCH and ensure proper execution mode assignment",
-    "confidence": 1.0,
-    "decay_rate": 0.15,
-    "success_count": 5,
-    "ttl_sessions_remaining": 20,
-    "timestamp": "2026-06-03T14:23:12.000000+05:30",
-    "failure_type": "METHODOLOGY",
-    "goal": "Email Governance Enforcement",
-    "last_reinforced": "2026-06-03T14:23:12.000000+05:30"
-  },
-  {
-    "failure_signature": "GOVERNANCE.PLANNING_20260603_142312",
-    "domain": "governance.planning",
-    "attempted_methodology": "Route general query to auto execution",
-    "observed_consequence": "The intent classifier misclassified the query as having execute permissions for a read-only user, leading to a banned execution task and audit failure.",
-    "active_anti_pattern_rule": "NEVER assign execute permissions to read-only user queries; always restrict to research and lookup tasks to prevent capability leaks.",
-    "confidence": 1.0,
-    "decay_rate": 0.15,
-    "success_count": 5,
-    "ttl_sessions_remaining": 20,
-    "timestamp": "2026-06-03T14:23:12.000000+05:30",
-    "failure_type": "METHODOLOGY",
-    "goal": "Planning Capability Check",
-    "last_reinforced": "2026-06-03T14:23:12.000000+05:30"
   }
 ]
