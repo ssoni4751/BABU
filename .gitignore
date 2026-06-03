@@ -61,7 +61,13 @@ token.json
 
 # Databases & Local Memory
 *.db
+*.db-shm
+*.db-wal
 aria/memory/aria_checkpoint.db
+aria/memory/orchestration/
+aria/memory/routing/
+aria/chat_id.txt
+aria/last_post_date.txt
 temp/
 
 # Compiled Output Artifacts
@@ -71,3 +77,8 @@ temp/
 *failures_test.json
 *failures.json.tmp
 *.bak_test
+
+# Attached Assets & Local Scratches
+attached_assets/
+scratch/
+
