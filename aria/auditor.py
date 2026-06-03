@@ -71,7 +71,8 @@ class PreExecutionGatekeeper:
             "send_slack",
             "create_task",
             "search_image",
-            "search_gmail"
+            "search_gmail",
+            "post_to_facbook"
         }
 
     def audit(self, task: TaskDTO) -> Tuple[bool, str]:
