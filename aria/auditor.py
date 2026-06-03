@@ -22,35 +22,22 @@ except ImportError:
     from google_service import is_google_configured
 def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]]:
     """Dynamically resolve allowed departments and allowed actions based on intent packet capabilities union."""
-    try:
-        from .planner import TEMPLATES
-    except ImportError:
-        try:
-            from planner import TEMPLATES
-        except ImportError:
-            TEMPLATES = {}
-
-    allowed_depts = set()
+    allowed_depts = {"pa"}
     allowed_actions = set()
 
-    # 1. Base template-level allowed boundaries if specified
-    workflow_template = intent_packet_dict.get("workflow_template", "LOOKUP")
-    if workflow_template and TEMPLATES and workflow_template in TEMPLATES:
-        tmpl = TEMPLATES[workflow_template]
-        allowed_depts.update(tmpl.get("allowed_departments", set()))
-        allowed_actions.update(tmpl.get("allowed_actions", set()))
-
-    # 2. Dynamic capability-level union (prevents rigid halting on combined intents)
-    if intent_packet_dict.get("lookup", False) or intent_packet_dict.get("research", False):
-        allowed_depts.update({"information", "research", "pa"})
+    if intent_packet_dict.get("lookup", False) or intent_packet_dict.get("websearch", False):
+        allowed_depts.update({"information", "execution"})
         allowed_actions.update({"search_sheet", "search_gmail"})
 
-    if intent_packet_dict.get("generate", False):
-        allowed_depts.update({"analysis", "writing", "pa"})
+    if intent_packet_dict.get("research", False):
+        allowed_depts.update({"research", "information", "execution"})
+        allowed_actions.update({"search_gmail"})
+
+    if intent_packet_dict.get("generate", False) or intent_packet_dict.get("writer", False):
+        allowed_depts.update({"analysis", "writing"})
 
     if intent_packet_dict.get("execute", False):
-        allowed_depts.update({"execution", "pa"})
-        # Allow all execution actions if execute capability is explicitly enabled
+        allowed_depts.add("execution")
         all_actions = {
             "send_email", "create_event", "log_to_sheet", "create_doc", 
             "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
@@ -58,7 +45,7 @@ def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]
         }
         allowed_actions.update(all_actions)
 
-    # 3. Dynamic capability pruning for execute=False
+    # Dynamic capability pruning for execute=False
     if not intent_packet_dict.get("execute", False):
         if "execution" in allowed_depts:
             allowed_actions = allowed_actions.intersection({"search_sheet", "search_gmail"})

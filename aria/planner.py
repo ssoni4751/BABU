@@ -42,29 +42,6 @@ DEPARTMENTS: Dict[str, str] = {
 
 from dataclasses import dataclass
 
-TEMPLATES: Dict[str, Dict[str, Any]] = {
-    "LOOKUP": {
-        "allowed_departments": {"information", "research", "pa", "execution"},
-        "allowed_actions": {"search_sheet", "search_gmail"},
-        "default_mode": "READ_ONLY"
-    },
-    "RESEARCH": {
-        "allowed_departments": {"information", "research", "analysis", "writing", "pa", "execution"},
-        "allowed_actions": {"search_gmail"},
-        "default_mode": "READ_ONLY"
-    },
-    "PUBLISH": {
-        "allowed_departments": {"information", "research", "analysis", "writing", "execution", "pa"},
-        "allowed_actions": {"send_email", "send_slack", "create_doc", "log_to_sheet"},
-        "default_mode": "APPROVAL_REQUIRED"
-    },
-    "EXECUTE": {
-        "allowed_departments": {"execution", "pa", "information", "research"},
-        "allowed_actions": {"create_event", "log_to_sheet", "create_doc", "copy_photos_to_drive", "copy_contacts_to_drive", "create_task"},
-        "default_mode": "APPROVAL_REQUIRED"
-    }
-}
-
 @dataclass
 class IntentPacket:
     """Represents a classified query intent with strict execution capability limits and execution modes."""
@@ -72,9 +49,10 @@ class IntentPacket:
     research: bool = False
     generate: bool = False
     execute: bool = False
+    websearch: bool = False
+    writer: bool = False
     execution_mode: str = "READ_ONLY"  # "READ_ONLY", "APPROVAL_REQUIRED", "AUTO_EXECUTE"
     confidence: float = 1.0
-    workflow_template: str = "LOOKUP"  # "LOOKUP", "RESEARCH", "PUBLISH", "EXECUTE"
 
     def to_dict(self) -> dict:
         return {
@@ -82,9 +60,10 @@ class IntentPacket:
             "research": self.research,
             "generate": self.generate,
             "execute": self.execute,
+            "websearch": self.websearch,
+            "writer": self.writer,
             "execution_mode": self.execution_mode,
-            "confidence": self.confidence,
-            "workflow_template": self.workflow_template
+            "confidence": self.confidence
         }
 
     @classmethod
@@ -94,9 +73,10 @@ class IntentPacket:
             research=data.get("research", False),
             generate=data.get("generate", False),
             execute=data.get("execute", False),
+            websearch=data.get("websearch", False),
+            writer=data.get("writer", False),
             execution_mode=data.get("execution_mode", "READ_ONLY"),
-            confidence=data.get("confidence", 1.0),
-            workflow_template=data.get("workflow_template", "LOOKUP")
+            confidence=data.get("confidence", 1.0)
         )
 
 INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
@@ -104,21 +84,17 @@ INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
     "conversational intent into a structured IntentPacket JSON.\n"
     "\n"
     "CAPABILITIES DEFINITION:\n"
-    "- lookup: True if finding facts, searching the web, checking knowledge base, or gathering profile context is required.\n"
+    "- lookup: True if finding facts, checking chitchat, or searching local profile/memory is required.\n"
     "- research: True if deep information gathering, multiple source evaluation, or cross-referencing is required.\n"
     "- generate: True if data analysis, content creation, report drafting, comparison, or synthesis is required.\n"
     "- execute: True if a physical mutation action (sending emails, creating Google Docs/Events, logging to sheets, publishing posts) is explicitly requested.\n"
+    "- websearch: True if searching the web or Wikipedia for external general knowledge is required.\n"
+    "- writer: True if drafting text, emails, or reports is required.\n"
     "\n"
     "EXECUTION MODE DEFINITION:\n"
     "- READ_ONLY: The query is informational or research-based. No changes, drafts, or execution actions allowed.\n"
     "- APPROVAL_REQUIRED: User requested a mutation action (e.g. email, document creation, sheet logging) that requires user audit and approval before dispatch.\n"
     "- AUTO_EXECUTE: User requested a highly structured, scheduled, or automated background task (like daily marketing posts) that does not need explicit user approval.\n"
-    "\n"
-    "WORKFLOW TEMPLATE DEFINITION:\n"
-    "- LOOKUP: Simple queries asking to look up family details, facts, contact info, chitchat, or simple sheet lookups.\n"
-    "- RESEARCH: Deeper search queries, comparison, text synthesis, or content writing that does not involve physical mutation or external updates.\n"
-    "- PUBLISH: Query explicitly requests to post, draft, or transmit updates to external channels (e.g. Facebook posts, Slack, or emails).\n"
-    "- EXECUTE: Programmatic transactional operations such as scheduling events, logging spreadsheet entries, or document creation.\n"
     "\n"
     "CONFIDENCE RATING:\n"
     "Provide a rating between 0.0 and 1.0 representing how clear and unambiguous the user query is. If the query is vague, nonsensical, or lacks required context (e.g., 'Take care of this thing', 'do it', or 'test'), rate the confidence below 0.65.\n"
@@ -129,9 +105,10 @@ INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
     '  "research": true | false,\n'
     '  "generate": true | false,\n'
     '  "execute": true | false,\n'
+    '  "websearch": true | false,\n'
+    '  "writer": true | false,\n'
     '  "execution_mode": "READ_ONLY | APPROVAL_REQUIRED | AUTO_EXECUTE",\n'
-    '  "confidence": 0.0 to 1.0,\n'
-    '  "workflow_template": "LOOKUP | RESEARCH | PUBLISH | EXECUTE"\n'
+    '  "confidence": 0.0 to 1.0\n'
     "}\n"
     "\n"
     "CRITICAL: Output ONLY valid raw JSON. No explanation, no markdown fences."
@@ -145,7 +122,7 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
     greetings = {"hi", "hello", "hey", "good morning", "good afternoon", "good evening", "how are you", "help", "clear", "stats", "model"}
     if t in greetings or len(t) < 15:
         print("[INTENT CLASSIFIER] Fast-track classification: CHORE", flush=True)
-        return IntentPacket(lookup=False, research=False, generate=False, execute=False, execution_mode="READ_ONLY", confidence=1.0, workflow_template="LOOKUP")
+        return IntentPacket(lookup=True, research=False, generate=False, execute=False, websearch=False, writer=False, execution_mode="READ_ONLY", confidence=1.0)
 
     # 2. LLM-based robust classification
     from langchain_core.messages import SystemMessage, HumanMessage
@@ -179,11 +156,11 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
         raw_text = response.content.strip()
         data = _extract_json(raw_text)
         packet = IntentPacket.from_dict(data)
-        print(f"[INTENT CLASSIFIER] Classified: lookup={packet.lookup}, research={packet.research}, gen={packet.generate}, exec={packet.execute}, mode={packet.execution_mode}, template={packet.workflow_template}, conf={packet.confidence}", flush=True)
+        print(f"[INTENT CLASSIFIER] Classified: lookup={packet.lookup}, research={packet.research}, gen={packet.generate}, exec={packet.execute}, websearch={packet.websearch}, writer={packet.writer}, mode={packet.execution_mode}, conf={packet.confidence}", flush=True)
         return packet
     except Exception as e:
         print(f"[INTENT CLASSIFIER] Failed to classify intent: {e}. Defaulting to READ_ONLY fallback.", flush=True)
-        return IntentPacket(lookup=False, research=False, generate=False, execute=False, execution_mode="READ_ONLY", confidence=0.5, workflow_template="LOOKUP")
+        return IntentPacket(lookup=True, research=False, generate=False, execute=False, websearch=False, writer=False, execution_mode="READ_ONLY", confidence=0.5)
 
 # ---------------------------------------------------------------------------
 # System prompt
@@ -196,15 +173,11 @@ PLANNER_SYSTEM_PROMPT: str = (
     "RULES:\n"
     "- Output ONLY valid JSON. No markdown, no explanation.\n"
     "- GOAL CORRECTIONS: If the user query is a correction, typo fix, or modification of a previous goal in the recent conversation history (e.g. 'I meant monitoring, not monetary' or 'correct the topic to X'), you must identify the corrected goal topic and plan the task DAG for the corrected goal, not the incorrect one.\n"
-    "- INTENT & TEMPLATE CONSTRAINTS: The system has pre-classified the user's intent boundaries and selected a WORKFLOW TEMPLATE. You must strictly obey these constraints:\n"
-    "  * If lookup is false and research is false, you must NOT create any 'research' tasks.\n"
-    "  * If generate is false, you must NOT create any 'analysis' or 'writing' tasks.\n"
+    "- INTENT CONSTRAINTS: The system has pre-classified the user's intent boundaries. You must strictly obey these constraints:\n"
+    "  * If lookup is false and websearch is false and research is false, you must NOT create any 'information' or 'research' tasks.\n"
+    "  * If research is false, you are STRICTLY FORBIDDEN from creating 'research' tasks. Only use 'information' tasks for general lookups.\n"
+    "  * If generate is false and writer is false, you must NOT create any 'analysis' or 'writing' tasks.\n"
     "  * If execute is false, you are STRICTLY FORBIDDEN from creating mutating 'execution' department tasks (e.g. sending emails, creating events, or creating docs). You are only allowed to plan read-only actions like 'search_sheet' or 'search_gmail'. Creating unauthorized mutating execution tasks is a critical safety violation.\n"
-    "  * workflow_template: Read this setting carefully and obey its strict bounds:\n"
-    "    - LOOKUP: Only allow 'information', 'research', 'pa', and read-only 'execution' tasks. Permitted actions: 'search_sheet', 'search_gmail'. No writing, analysis, or mutating execution tasks are allowed.\n"
-    "    - RESEARCH: Only allow 'information', 'research', 'analysis', 'writing', 'pa', and read-only 'execution' tasks. Permitted execution actions: 'search_gmail'. No mutating execution tasks are allowed.\n"
-    "    - PUBLISH: Allow 'information', 'research', 'analysis', 'writing', 'execution', and 'pa' tasks. Permitted execution actions: 'send_email', 'send_slack', 'create_doc', 'log_to_sheet', 'search_gmail'.\n"
-    "    - EXECUTE: Only allow 'execution', 'pa', 'information', and 'research' tasks. Permitted execution actions: 'create_event', 'log_to_sheet', 'create_doc', 'copy_photos_to_drive', 'copy_contacts_to_drive', 'create_task', 'search_gmail'.\n"
     "  * execution_mode: Read this setting carefully. If it is 'READ_ONLY', you must only plan read-only informational/research tasks and end with a 'pa' task; no draft or mutation actions are allowed. If it is 'APPROVAL_REQUIRED', you can create 'execution' tasks but they will go through an approval check. If it is 'AUTO_EXECUTE', you are allowed to plan automated background execution dispatches.\n"
     "- CORRECT TASK SEQUENCING: If the goal requires multiple sequential steps or multiple execution actions (e.g. first research X, then write a report, then create a Google Doc, and finally send an email), you must establish strict dependency links (depends_on) between these tasks to ensure they execute in the correct chronological order (e.g. writing depends on research, Doc creation depends on writing, and email sending depends on Doc creation). If there are multiple execution department tasks, chain them sequentially (T_execution_N depends on T_execution_N-1) to ensure the user audits and approves them in the correct sequence.\n"
     "- Each task must have: task_id (T1, T2, ...), objective, department, "
@@ -315,27 +288,22 @@ def _build_fallback_graph(
 
 def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]]:
     """Dynamically resolve allowed departments and allowed actions based on intent packet capabilities union."""
-    allowed_depts = set()
+    allowed_depts = {"pa"}
     allowed_actions = set()
 
-    # 1. Base template-level allowed boundaries if specified
-    workflow_template = intent_packet_dict.get("workflow_template", "LOOKUP")
-    if workflow_template and "TEMPLATES" in globals():
-        tmpl = TEMPLATES.get(workflow_template, {})
-        allowed_depts.update(tmpl.get("allowed_departments", set()))
-        allowed_actions.update(tmpl.get("allowed_actions", set()))
-
-    # 2. Dynamic capability-level union (prevents rigid halting on combined intents)
-    if intent_packet_dict.get("lookup", False) or intent_packet_dict.get("research", False):
-        allowed_depts.update({"research", "pa"})
+    if intent_packet_dict.get("lookup", False) or intent_packet_dict.get("websearch", False):
+        allowed_depts.update({"information", "execution"})
         allowed_actions.update({"search_sheet", "search_gmail"})
 
-    if intent_packet_dict.get("generate", False):
-        allowed_depts.update({"analysis", "writing", "pa"})
+    if intent_packet_dict.get("research", False):
+        allowed_depts.update({"research", "information", "execution"})
+        allowed_actions.update({"search_gmail"})
+
+    if intent_packet_dict.get("generate", False) or intent_packet_dict.get("writer", False):
+        allowed_depts.update({"analysis", "writing"})
 
     if intent_packet_dict.get("execute", False):
-        allowed_depts.update({"execution", "pa"})
-        # Allow all execution actions if execute capability is explicitly enabled
+        allowed_depts.add("execution")
         all_actions = {
             "send_email", "create_event", "log_to_sheet", "create_doc", 
             "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
@@ -343,7 +311,7 @@ def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]
         }
         allowed_actions.update(all_actions)
 
-    # 3. Dynamic capability pruning for execute=False
+    # Dynamic capability pruning for execute=False
     if not intent_packet_dict.get("execute", False):
         if "execution" in allowed_depts:
             allowed_actions = allowed_actions.intersection({"search_sheet", "search_gmail"})
@@ -412,8 +380,9 @@ def plan_goal(
             f"- research: {intent_packet.research}\n"
             f"- generate: {intent_packet.generate}\n"
             f"- execute: {intent_packet.execute}\n"
+            f"- websearch: {intent_packet.websearch}\n"
+            f"- writer: {intent_packet.writer}\n"
             f"- execution_mode: {intent_packet.execution_mode}\n"
-            f"- workflow_template: {intent_packet.workflow_template}\n"
             f"- confidence: {intent_packet.confidence}"
         )
     if is_correction:
@@ -568,19 +537,18 @@ def plan_goal(
     if intent_packet:
         intent_dict = intent_packet.to_dict()
         allowed_depts, allowed_actions = get_allowed_boundaries(intent_dict)
-        tmpl_name = intent_packet.workflow_template
         
         for t in tasks:
             # 1. Verify permitted department
             if t.department not in allowed_depts:
-                print(f"[PLANNER] Programmatic Template Restriction: Task '{t.task_id}' uses unauthorized department '{t.department}' for template '{tmpl_name}'. Triggering fallback.", flush=True)
+                print(f"[PLANNER] Programmatic Intent Restriction: Task '{t.task_id}' uses unauthorized department '{t.department}' for intent boundaries. Triggering fallback.", flush=True)
                 return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status="TEMPLATE_VIOLATION", intent_packet=intent_dict)
             
             # 2. Verify permitted actions for execution tasks
             if t.department == "execution":
                 action = t.context.get("action")
                 if action not in allowed_actions:
-                    print(f"[PLANNER] Programmatic Template Restriction: Task '{t.task_id}' uses unauthorized execution action '{action}' for template '{tmpl_name}'. Triggering fallback.", flush=True)
+                    print(f"[PLANNER] Programmatic Intent Restriction: Task '{t.task_id}' uses unauthorized execution action '{action}' for intent boundaries. Triggering fallback.", flush=True)
                     return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status="TEMPLATE_VIOLATION", intent_packet=intent_dict)
 
     # ── Post-processing: Enforce content dependencies for execution tasks ──

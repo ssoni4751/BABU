@@ -18,7 +18,7 @@ sys.path.append(CURRENT_DIR)
 sys.path.append(os.path.join(CURRENT_DIR, "aria"))
 
 from aria.task_engine import TaskDTO, TaskState, GoalGraph
-from aria.planner import classify_intent, plan_goal, IntentPacket, _build_fallback_graph, TEMPLATES
+from aria.planner import classify_intent, plan_goal, IntentPacket, _build_fallback_graph
 from aria.auditor import PreExecutionGatekeeper
 from aria.memory import log_execution_failure, get_anti_pattern_rules, FAILURES_PATH
 
@@ -42,21 +42,19 @@ class TestIntentGovernance(unittest.TestCase):
             os.remove(FAILURES_PATH)
 
     def test_01_intent_classification_lookup(self):
-        """Test that lookup/information queries are classified as LOOKUP template and READ_ONLY."""
+        """Test that lookup/information queries are classified as lookup and READ_ONLY."""
         query = "Who is my mother and what are my family details?"
         packet = classify_intent(query)
         self.assertTrue(packet.lookup or packet.research)
         self.assertFalse(packet.execute)
-        self.assertEqual(packet.workflow_template, "LOOKUP")
         self.assertEqual(packet.execution_mode, "READ_ONLY")
         self.assertGreaterEqual(packet.confidence, 0.65)
 
     def test_02_intent_classification_mutation(self):
-        """Test that action/email queries are classified as PUBLISH template with approval required."""
+        """Test that action/email queries are classified as execute with approval required."""
         query = "Draft and send an email to my mother summarizing the tax reforms."
         packet = classify_intent(query)
         self.assertTrue(packet.execute)
-        self.assertEqual(packet.workflow_template, "PUBLISH")
         self.assertEqual(packet.execution_mode, "APPROVAL_REQUIRED")
         self.assertGreaterEqual(packet.confidence, 0.65)
 
@@ -66,7 +64,6 @@ class TestIntentGovernance(unittest.TestCase):
         packet = classify_intent(query)
         self.assertTrue(packet.execute)
         self.assertEqual(packet.execution_mode, "AUTO_EXECUTE")
-        self.assertIn(packet.workflow_template, ("PUBLISH", "EXECUTE"))
         self.assertGreaterEqual(packet.confidence, 0.65)
 
     def test_04_confidence_clarification_gate(self):
@@ -85,7 +82,7 @@ class TestIntentGovernance(unittest.TestCase):
     def test_05_planner_template_constraint_enforcement(self):
         """Test that plan_goal programmatically rejects tasks that violate template boundaries."""
         # Query with LOOKUP intent packet
-        intent = IntentPacket(lookup=True, research=False, generate=False, execute=False, execution_mode="READ_ONLY", workflow_template="LOOKUP")
+        intent = IntentPacket(lookup=True, research=False, generate=False, execute=False, execution_mode="READ_ONLY")
         
         # We mock a planner response by patching the LLM call or calling plan_goal with a query that would return an unauthorized task
         # To test the programmatic validation directly, let's call plan_goal.
@@ -119,7 +116,7 @@ class TestIntentGovernance(unittest.TestCase):
 
         # Build an execution task with 'send_email' under 'LOOKUP' template
         # LOOKUP only allows 'search_sheet' action. 'send_email' is strictly prohibited.
-        intent = IntentPacket(lookup=True, research=False, generate=False, execute=False, execution_mode="READ_ONLY", workflow_template="LOOKUP")
+        intent = IntentPacket(lookup=True, research=False, generate=False, execute=False, execution_mode="READ_ONLY")
         
         task = TaskDTO(
             task_id="T2",
@@ -137,9 +134,9 @@ class TestIntentGovernance(unittest.TestCase):
         passed, reason = gatekeeper.audit(task)
         self.assertFalse(passed)
         self.assertIn("strictly prohibited under current intent capability boundaries", reason)
-        print(f"✅ Pre-execution gatekeeper successfully blocked unauthorized action send_email under LOOKUP: {reason}")
+        print(f"✅ Pre-execution gatekeeper successfully blocked unauthorized action send_email: {reason}")
 
-        # Build an execution task with allowed action 'search_sheet' under 'LOOKUP' template
+        # Build an execution task with allowed action 'search_sheet'
         task_allowed = TaskDTO(
             task_id="T3",
             objective="Search family sheet",
@@ -163,7 +160,7 @@ class TestIntentGovernance(unittest.TestCase):
         try:
             passed, reason = gatekeeper.audit(task_allowed)
             self.assertTrue(passed, f"Gatekeeper failed unexpectedly: {reason}")
-            print(f"✅ Pre-execution gatekeeper successfully allowed authorized action search_sheet under LOOKUP.")
+            print(f"✅ Pre-execution gatekeeper successfully allowed authorized action search_sheet.")
         finally:
             if not is_google_configured():
                 gs.is_google_configured = original_func
@@ -171,7 +168,7 @@ class TestIntentGovernance(unittest.TestCase):
     def test_07_immune_system_root_cause_learning(self):
         """Test that the Epistemic Immune System learns from planning root causes and synthesizes governance rules."""
         # Mock an intent-level classification failure
-        intent = IntentPacket(lookup=True, research=True, generate=True, execute=True, execution_mode="AUTO_EXECUTE", workflow_template="PUBLISH")
+        intent = IntentPacket(lookup=True, research=True, generate=True, execute=True, execution_mode="AUTO_EXECUTE")
         
         # The user's query was actually informational, but the classifier misclassified it as AUTO_EXECUTE, causing a post-audit fail
         query = "Research standard tax forms in India and list the details."
@@ -198,9 +195,9 @@ class TestIntentGovernance(unittest.TestCase):
             print(f"Planning Rules:\n{planning_rules}")
 
     def test_08_auditor_allows_read_only_search_gmail_under_lookup(self):
-        """Test that PreExecutionGatekeeper allows search_gmail under LOOKUP even when execute=False."""
+        """Test that PreExecutionGatekeeper allows search_gmail even when execute=False."""
         gatekeeper = PreExecutionGatekeeper()
-        intent = IntentPacket(lookup=True, research=False, generate=False, execute=False, execution_mode="READ_ONLY", workflow_template="LOOKUP")
+        intent = IntentPacket(lookup=True, research=False, generate=False, execute=False, execution_mode="READ_ONLY")
 
         task = TaskDTO(
             task_id="T2",
@@ -313,7 +310,7 @@ class TestIntentGovernance(unittest.TestCase):
 
         # 2. Verify PreExecutionGatekeeper allows 'information' department
         gatekeeper = PreExecutionGatekeeper()
-        intent = IntentPacket(lookup=True, research=False, generate=False, execute=False, execution_mode="READ_ONLY", workflow_template="LOOKUP")
+        intent = IntentPacket(lookup=True, research=False, generate=False, execute=False, execution_mode="READ_ONLY")
         task = TaskDTO(
             task_id="T1",
             objective="Retrieve general facts about Delhi",

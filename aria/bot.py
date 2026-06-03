@@ -1392,54 +1392,55 @@ def planner_node(state: AriaState):
     
     print(f"[PLANNER NODE] Planning goal for query: '{query[:50]}' (goal_id: {pre_goal_id})", flush=True)
     
-    if is_simple_query(query):
+    # 1. Intent Governance stage
+    intent_packet = classify_intent(query, history_text, model_name=CURRENT_DEPT_MODEL)
+
+    # 2. Bounded Governance Gate: Clarification fallback on low confidence
+    if intent_packet.confidence < 0.65:
+        print(f"[INTENT GOVERNANCE] Low confidence ({intent_packet.confidence} < 0.65) -> bypassing planner and returning AMBIGUOUS_QUERY fallback.", flush=True)
+        graph = _build_fallback_graph(
+            query,
+            goal_id=pre_goal_id,
+            goal_type="NEW",
+            planner_status="AMBIGUOUS_QUERY",
+            intent_packet=intent_packet.to_dict()
+        )
+    # 3. Simple Lookup or Websearch (No other complex intents like execute, research or generate are active)
+    elif (intent_packet.lookup or intent_packet.websearch) and not (intent_packet.research or intent_packet.generate or intent_packet.execute):
+        print(f"[PLANNER NODE] Fast-tracking simple lookup/websearch query (lookup={intent_packet.lookup}, websearch={intent_packet.websearch}) directly to PA response", flush=True)
         graph = build_walk_graph(query, goal_id=pre_goal_id)
     else:
-        # 1. Intent Governance stage
-        intent_packet = classify_intent(query, history_text, model_name=CURRENT_DEPT_MODEL)
-
-        # 2. Bounded Governance Gate: Clarification fallback on low confidence
-        if intent_packet.confidence < 0.65:
-            print(f"[INTENT GOVERNANCE] Low confidence ({intent_packet.confidence} < 0.65) -> bypassing planner and returning AMBIGUOUS_QUERY fallback.", flush=True)
-            graph = _build_fallback_graph(
-                query,
-                goal_id=pre_goal_id,
-                goal_type="NEW",
-                planner_status="AMBIGUOUS_QUERY",
-                intent_packet=intent_packet.to_dict()
+        # Check if this query is a correction referencing a recent workflow
+        is_correction = False
+        last_goal_text = None
+        last_graph = get_last_goal_graph(session_id)
+        if last_graph:
+            last_goal_text = last_graph.get("goal")
+            # If the escalation router classified this as a workflow escalation, AND it doesn't explicitly start with a command trigger keyword,
+            # it is a corrective query referencing the last goal.
+            t_clean = query.lower().strip()
+            has_command_trigger = (
+                t_clean.startswith("/") or 
+                t_clean.startswith("!") or 
+                t_clean.startswith("launch") or 
+                t_clean.startswith("sprint") or 
+                t_clean.startswith("postnow")
             )
-        else:
-            # Check if this query is a correction referencing a recent workflow
-            is_correction = False
-            last_goal_text = None
-            last_graph = get_last_goal_graph(session_id)
-            if last_graph:
-                last_goal_text = last_graph.get("goal")
-                # If the escalation router classified this as a workflow escalation, AND it doesn't explicitly start with a command trigger keyword,
-                # it is a corrective query referencing the last goal.
-                t_clean = query.lower().strip()
-                has_command_trigger = (
-                    t_clean.startswith("/") or 
-                    t_clean.startswith("!") or 
-                    t_clean.startswith("launch") or 
-                    t_clean.startswith("sprint") or 
-                    t_clean.startswith("postnow")
-                )
-                if should_escalate_to_workflow(query, history_text=history_text) and not has_command_trigger:
-                    is_correction = True
-                    print(f"[PLANNER NODE] Correction detected. Previous goal: '{last_goal_text}'", flush=True)
+            if should_escalate_to_workflow(query, history_text=history_text) and not has_command_trigger:
+                is_correction = True
+                print(f"[PLANNER NODE] Correction detected. Previous goal: '{last_goal_text}'", flush=True)
 
-            graph = plan_goal(
-                query,
-                "LAUNCH",
-                history_text,
-                profile_text,
-                model_name=CURRENT_DEPT_MODEL,
-                goal_id=pre_goal_id,
-                is_correction=is_correction,
-                last_goal_text=last_goal_text,
-                intent_packet=intent_packet,
-            )
+        graph = plan_goal(
+            query,
+            "LAUNCH",
+            history_text,
+            profile_text,
+            model_name=CURRENT_DEPT_MODEL,
+            goal_id=pre_goal_id,
+            is_correction=is_correction,
+            last_goal_text=last_goal_text,
+            intent_packet=intent_packet,
+        )
         
     # Log GOAL_CREATED lifecycle event
     log_execution_ledger_event(
