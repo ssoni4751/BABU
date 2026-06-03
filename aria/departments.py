@@ -214,9 +214,9 @@ class InformationHead(DepartmentHead):
         scoped["query"] = search_query
 
         try:
-            from .bot import web_search, search_knowledge
+            from .bot import web_search, search_knowledge, search_profile
         except ImportError:
-            from bot import web_search, search_knowledge
+            from bot import web_search, search_knowledge, search_profile
 
         print(f"[DEPT:information] Executing general information web search for: '{search_query}'", flush=True)
         web_hits = web_search(search_query)
@@ -226,6 +226,11 @@ class InformationHead(DepartmentHead):
         kb_hits = search_knowledge(search_query)
         if kb_hits:
             scoped["knowledge_base"] = kb_hits
+
+        if task.context.get("grant_profile_access", False):
+            profile_slice = search_profile(search_query, bypass_filter=True)
+            if profile_slice:
+                scoped["profile_slice"] = profile_slice
 
         return scoped
 

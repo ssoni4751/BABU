@@ -439,7 +439,7 @@ def is_profile_relevant_query(query: str) -> bool:
         return False
     q = query.lower()
     
-    # User nicknames, names, and business identifiers
+    # User nicknames, names, business identifiers, and contact placeholders
     personal_keywords = {
         "anshu", "shubham", "swarnkar", "ash", "ssoni", "computer", "consultancy", 
         "tax", "consultant", "consultants", "compliance", "e-governance", "csc",
@@ -450,7 +450,8 @@ def is_profile_relevant_query(query: str) -> bool:
         "my number", "my address", "my location", "where i live", "where do i live",
         "tell me about me", "my profile", "my biography", "my bio", "who is speaking",
         "who is talking", "about me", "know about me", "know about my", "pf", "itr", "gst",
-        "orai", "jalaun"
+        "orai", "jalaun", "official mail", "official email", "personal mail", "personal email",
+        "my mail", "to my mail", "to my email"
     }
     
     # Check exact keyword matching or substring match
