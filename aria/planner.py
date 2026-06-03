@@ -331,7 +331,8 @@ def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]
         all_actions = {
             "send_email", "create_event", "log_to_sheet", "create_doc", 
             "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
-            "send_slack", "create_task", "search_image", "search_gmail"
+            "send_slack", "create_task", "search_image", "search_gmail",
+            "post_to_facebook"
         }
         allowed_actions.update(all_actions)
 
