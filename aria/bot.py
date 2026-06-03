@@ -5287,14 +5287,30 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         traceback.print_exc(file=sys.stdout)
 
 
+CONFLICT_TIMESTAMPS = []
+
 async def telegram_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle unexpected errors in Telegram Bot. Exit immediately on Conflict to prevent infinite reconnection loop."""
     from telegram.error import Conflict
     if isinstance(context.error, Conflict):
+        import time
+        now = time.time()
+        global CONFLICT_TIMESTAMPS
+        # Clean up timestamps older than 60 seconds
+        CONFLICT_TIMESTAMPS = [t for t in CONFLICT_TIMESTAMPS if now - t < 60]
+        
         print("\n" + "="*80, flush=True)
-        print("⚠️  CRITICAL CONFLICT DETECTED!", flush=True)
-        print("Another instance of this bot is already running and polling.", flush=True)
-        print("To prevent a reconnection loop battle, this duplicate instance will now exit.", flush=True)
+        print("⚠️  CRITICAL CONFLICT DETECTED", flush=True)
+        print("Another instance of this bot is already running and polling", flush=True)
+        
+        if len(CONFLICT_TIMESTAMPS) < 3:
+            CONFLICT_TIMESTAMPS.append(now)
+            print(f"Deployment rollover buffer: sleeping 15s before retrying (conflict count: {len(CONFLICT_TIMESTAMPS)}/3)...", flush=True)
+            print("="*80 + "\n", flush=True)
+            await asyncio.sleep(15)
+            return
+            
+        print("To prevent a reconnection loop battle, this duplicate instance will now exit", flush=True)
         print("="*80 + "\n", flush=True)
         import os
         os._exit(1)
