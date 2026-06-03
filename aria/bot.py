@@ -1240,13 +1240,43 @@ def intent_router(state: AriaState):
     lowered = query.lower().strip()
     session_id = state.get("session_id", "default")
 
-    # Dynamic Interaction Mode Classification
-    is_workflow = should_escalate_to_workflow(query, history_text=history_text)
-    manual_gear = "LAUNCH" if is_workflow else "WALK"
+    # Respect the requested gear passed in the state (e.g. from UI or API)
+    requested_gear = state.get("gear", "WALK")
+    if requested_gear not in ("WALK", "SPRINT", "LAUNCH"):
+        requested_gear = "WALK"
+
+    # Check for command override prefixes in user query
+    cmd_gear = None
+    if lowered.startswith("/") or lowered.startswith("!"):
+        cmd = lowered.removeprefix("/").removeprefix("!")
+        if cmd.startswith("launch"):
+            cmd_gear = "LAUNCH"
+        elif cmd.startswith("sprint"):
+            cmd_gear = "SPRINT"
+        elif cmd.startswith("walk"):
+            cmd_gear = "WALK"
+    elif lowered.startswith("launch"):
+        cmd_gear = "LAUNCH"
+    elif lowered.startswith("sprint"):
+        cmd_gear = "SPRINT"
+    elif lowered.startswith("walk"):
+        cmd_gear = "WALK"
+
+    if cmd_gear:
+        manual_gear = cmd_gear
+        print(f"[ROUTER] Command override detected: Selected gear '{manual_gear}' based on prefix.", flush=True)
+    else:
+        # Dynamic Goal Correction: Escalate to LAUNCH only if NOT explicitly in WALK gear
+        # to prevent hijacking conversational WALK mode for general questions.
+        if requested_gear == "WALK":
+            manual_gear = "WALK"
+        else:
+            is_correction = should_escalate_to_workflow(query, history_text=history_text)
+            manual_gear = requested_gear if is_correction else requested_gear
 
     # Strip command prefix overrides to keep the processed query clean
     clean_query = query
-    if is_workflow:
+    if manual_gear != "WALK":
         t_lower = query.lower().strip()
         if t_lower.startswith("launch"):
             clean_query = query[len("launch"):].strip()

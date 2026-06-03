@@ -36,6 +36,8 @@ WORKFLOW_LOGS_PATH = os.path.join(LAYERED_MEMORY_DIR, "orchestration", "workflow
 # Thread Locks for Atomic Writing
 PROFILE_LOCK = threading.Lock()
 FAILURES_LOCK = threading.Lock()
+ROUTING_LOCK = threading.Lock()
+WORKFLOW_LOCK = threading.Lock()
 
 # Load Keys
 GROQ_KEY = os.environ.get("GROQ_API_KEY", "")
@@ -690,70 +692,76 @@ def prune_expired_memory_entries(default_ttl_days: int = 10) -> dict:
     """Prune stale layered memory entries using TTL metadata (default 10 days)."""
     stats = {"routing_removed": 0, "workflow_removed": 0}
 
-    routing_items = _read_json_list(ROUTING_STATS_PATH)
-    kept_routing = []
-    for item in routing_items:
-        if "ttl_days" not in item:
-            item["ttl_days"] = default_ttl_days
-        if _is_expired(item):
-            stats["routing_removed"] += 1
-        else:
-            kept_routing.append(item)
-    _write_json_list(ROUTING_STATS_PATH, kept_routing)
+    with ROUTING_LOCK:
+        routing_items = _read_json_list(ROUTING_STATS_PATH)
+        kept_routing = []
+        for item in routing_items:
+            if "ttl_days" not in item:
+                item["ttl_days"] = default_ttl_days
+            if _is_expired(item):
+                stats["routing_removed"] += 1
+            else:
+                kept_routing.append(item)
+        _write_json_list(ROUTING_STATS_PATH, kept_routing)
 
-    workflow_items = _read_json_list(WORKFLOW_LOGS_PATH)
-    kept_workflows = []
-    for item in workflow_items:
-        if "ttl_days" not in item:
-            item["ttl_days"] = default_ttl_days
-        if _is_expired(item):
-            stats["workflow_removed"] += 1
-        else:
-            kept_workflows.append(item)
-    _write_json_list(WORKFLOW_LOGS_PATH, kept_workflows)
+    with WORKFLOW_LOCK:
+        workflow_items = _read_json_list(WORKFLOW_LOGS_PATH)
+        kept_workflows = []
+        for item in workflow_items:
+            if "ttl_days" not in item:
+                item["ttl_days"] = default_ttl_days
+            if _is_expired(item):
+                stats["workflow_removed"] += 1
+            else:
+                kept_workflows.append(item)
+        _write_json_list(WORKFLOW_LOGS_PATH, kept_workflows)
     return stats
 
 
 def log_routing_decision(session_id: str, query: str, selected_gear: str, reason: str, has_action: bool, ttl_days: int = 10) -> bool:
-    entry = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "last_used": datetime.now(timezone.utc).isoformat(),
-        "session_id": session_id,
-        "query_preview": query[:180],
-        "selected_gear": selected_gear,
-        "reason": reason,
-        "has_action": bool(has_action),
-        "ttl_days": ttl_days,
-        "confidence": 1.0,
-    }
-    items = _read_json_list(ROUTING_STATS_PATH)
-    items.append(entry)
-    ok = _write_json_list(ROUTING_STATS_PATH, items)
-    if ok:
-        prune_expired_memory_entries(default_ttl_days=ttl_days)
-    return ok
+    def _run():
+        with ROUTING_LOCK:
+            entry = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "last_used": datetime.now(timezone.utc).isoformat(),
+                "session_id": session_id,
+                "query_preview": query[:180],
+                "selected_gear": selected_gear,
+                "reason": reason,
+                "has_action": bool(has_action),
+                "ttl_days": ttl_days,
+                "confidence": 1.0,
+            }
+            items = _read_json_list(ROUTING_STATS_PATH)
+            items.append(entry)
+            _write_json_list(ROUTING_STATS_PATH, items)
+
+    threading.Thread(target=_run, daemon=True).start()
+    return True
 
 
 def log_workflow_event(session_id: str, gear: str, sequence: list, total_tokens: int, latency_seconds: float, success: bool, note: str = "", ttl_days: int = 10) -> bool:
-    entry = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "last_used": datetime.now(timezone.utc).isoformat(),
-        "session_id": session_id,
-        "gear": gear,
-        "sequence": sequence,
-        "total_tokens": int(total_tokens or 0),
-        "latency_seconds": float(latency_seconds or 0.0),
-        "success": bool(success),
-        "note": note[:220],
-        "ttl_days": ttl_days,
-        "confidence": 1.0 if success else 0.5,
-    }
-    items = _read_json_list(WORKFLOW_LOGS_PATH)
-    items.append(entry)
-    ok = _write_json_list(WORKFLOW_LOGS_PATH, items)
-    if ok:
-        prune_expired_memory_entries(default_ttl_days=ttl_days)
-    return ok
+    def _run():
+        with WORKFLOW_LOCK:
+            entry = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "last_used": datetime.now(timezone.utc).isoformat(),
+                "session_id": session_id,
+                "gear": gear,
+                "sequence": sequence,
+                "total_tokens": int(total_tokens or 0),
+                "latency_seconds": float(latency_seconds or 0.0),
+                "success": bool(success),
+                "note": note[:220],
+                "ttl_days": ttl_days,
+                "confidence": 1.0 if success else 0.5,
+            }
+            items = _read_json_list(WORKFLOW_LOGS_PATH)
+            items.append(entry)
+            _write_json_list(WORKFLOW_LOGS_PATH, items)
+
+    threading.Thread(target=_run, daemon=True).start()
+    return True
 
 
 def get_runtime_stats(limit: int = 50) -> dict:
@@ -789,3 +797,11 @@ def get_runtime_stats(limit: int = 50) -> dict:
         "avg_latency_seconds": round(latency_total / workflow_count, 2) if workflow_count else 0.0,
         "success_rate": round(success_total / workflow_count, 3) if workflow_count else 0.0,
     }
+
+
+# Run pruning once in a background thread on startup to keep data clean
+try:
+    threading.Thread(target=prune_expired_memory_entries, daemon=True).start()
+except Exception as e:
+    print(f"[MEMORY PRUNING] Failed to spawn background pruning thread: {e}", flush=True)
+
