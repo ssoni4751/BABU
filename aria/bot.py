@@ -1983,20 +1983,42 @@ def resolve_action_params(params: dict, research_text: str = "") -> dict:
     """Resolve profile placeholders and optional research placeholders."""
     profile = get_current_profile()
     details = profile.get("personal_details", {}) if profile else {}
-    placeholder_map = {
-        "my_official_email": details.get("official_email", ""),
-        "my_personal_email": details.get("personal_email", ""),
-        "my_mobile": details.get("mobile_number", ""),
-        "my_mobile_number": details.get("mobile_number", ""),
-        "my_name": details.get("full_name", ""),
-        "my_address": details.get("residential_address", {}).get("address", "") if isinstance(details.get("residential_address"), dict) else details.get("residential_address", "")
-    }
+    address_str = details.get("residential_address", {}).get("address", "") if isinstance(details.get("residential_address"), dict) else details.get("residential_address", "")
+    
+    def resolve_value(val):
+        if not isinstance(val, str):
+            return val
+        val_clean = val.strip().lower().replace("_", " ").replace("'", "").replace("\"", "")
+        if val_clean in (
+            "my official email", "my official mail", "user official email", "user official mail", 
+            "users official email", "users official mail", "official email", "official mail", "my_official_email"
+        ):
+            return details.get("official_email", "")
+        if val_clean in (
+            "my personal email", "my personal mail", "user personal email", "user personal mail", 
+            "users personal email", "users personal mail", "personal email", "personal mail", "my_personal_email"
+        ):
+            return details.get("personal_email", "")
+        if val_clean in (
+            "my mobile", "my mobile number", "my phone", "my phone number", "user mobile", "user phone", "my_mobile", "my_mobile_number"
+        ):
+            return details.get("mobile_number", "")
+        if val_clean in (
+            "my name", "user name", "users name", "my_name"
+        ):
+            return details.get("full_name", "")
+        if val_clean in (
+            "my address", "user address", "users address", "my_address"
+        ):
+            return address_str
+        return val
 
     resolved_params = {}
     for k, v in (params or {}).items():
         val_str = str(v).strip()
-        if val_str in placeholder_map and placeholder_map[val_str]:
-            resolved_params[k] = placeholder_map[val_str]
+        resolved_val = resolve_value(v)
+        if resolved_val != v:
+            resolved_params[k] = resolved_val
         elif "[NEEDS_RESEARCH_CONTEXT]" in val_str:
             resolved_params[k] = val_str.replace("[NEEDS_RESEARCH_CONTEXT]", research_text.strip() if research_text else "(No research context found)")
         else:

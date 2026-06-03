@@ -418,14 +418,33 @@ class ExecutionHead(DepartmentHead):
         else:
             address_str = str(residential)
 
-        placeholder_map = {
-            "my_official_email": details.get("official_email", ""),
-            "my_personal_email": details.get("personal_email", ""),
-            "my_mobile": details.get("mobile_number", ""),
-            "my_mobile_number": details.get("mobile_number", ""),
-            "my_name": details.get("full_name", ""),
-            "my_address": address_str,
-        }
+        def resolve_value(val):
+            if not isinstance(val, str):
+                return val
+            val_clean = val.strip().lower().replace("_", " ").replace("'", "").replace("\"", "")
+            if val_clean in (
+                "my official email", "my official mail", "user official email", "user official mail", 
+                "users official email", "users official mail", "official email", "official mail", "my_official_email"
+            ):
+                return details.get("official_email", "")
+            if val_clean in (
+                "my personal email", "my personal mail", "user personal email", "user personal mail", 
+                "users personal email", "users personal mail", "personal email", "personal mail", "my_personal_email"
+            ):
+                return details.get("personal_email", "")
+            if val_clean in (
+                "my mobile", "my mobile number", "my phone", "my phone number", "user mobile", "user phone", "my_mobile", "my_mobile_number"
+            ):
+                return details.get("mobile_number", "")
+            if val_clean in (
+                "my name", "user name", "users name", "my_name"
+            ):
+                return details.get("full_name", "")
+            if val_clean in (
+                "my address", "user address", "users address", "my_address"
+            ):
+                return address_str
+            return val
 
         resolved: dict[str, Any] = {}
         for key, value in (params or {}).items():
@@ -445,8 +464,9 @@ class ExecutionHead(DepartmentHead):
                 val_str = re.sub(r'\[(your\s+)?nickname\]', nickname, val_str, flags=re.IGNORECASE)
                 val_str = re.sub(r'\[recipient(\s+name)?\]|\[recipient\'s\s+name\]', nickname, val_str, flags=re.IGNORECASE)
             
-            if val_str in placeholder_map and placeholder_map[val_str]:
-                resolved[key] = placeholder_map[val_str]
+            resolved_val = resolve_value(value)
+            if resolved_val != value:
+                resolved[key] = resolved_val
             elif "[NEEDS_RESEARCH_CONTEXT]" in val_str:
                 resolved[key] = val_str.replace("[NEEDS_RESEARCH_CONTEXT]", research_text.strip() if research_text else "(No research/analysis context found)")
             elif key in ("body", "content") and research_text:
