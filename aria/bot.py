@@ -2302,11 +2302,19 @@ def pa_node(state: AriaState):
             return {"messages": state["messages"] + [response], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
 
     # Dynamic L2/L3 profile retrieval fallback:
-    # If there's no research, query search_profile to fetch matching personal details!
+    # If there's no research, query search_profile to fetch matching personal details.
     if not research and not action_result:
         profile_ctx = search_profile(state["user_query"])
         if profile_ctx and ("[Local User Profile Matches]" in profile_ctx or "[Local User Profile" in profile_ctx):
             research = profile_ctx
+
+    # Full profile injection for broad identity/family/business queries in conversational mode:
+    # search_profile keyword search is too narrow for general questions like "what do you know about me".
+    if not research and not action_result and is_profile_relevant_query(user_query):
+        full_profile = get_user_profile_text("FULL")
+        if full_profile:
+            research = full_profile
+            print(f"[PA NODE] Injecting full user profile for profile-relevant conversational query.", flush=True)
 
     if is_conversational:
         style = "[CONVERSATIONAL]\nBrief, warm, direct. Max two short paragraphs. Confirm any automation action clearly."
