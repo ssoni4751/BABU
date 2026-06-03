@@ -175,13 +175,13 @@ PLANNER_SYSTEM_PROMPT: str = (
     "- GOAL CORRECTIONS: If the user query is a correction, typo fix, or modification of a previous goal in the recent conversation history (e.g. 'I meant monitoring, not monetary' or 'correct the topic to X'), you must identify the corrected goal topic and plan the task DAG for the corrected goal, not the incorrect one.\n"
     "- INTENT CONSTRAINTS: The system has pre-classified the user's intent boundaries. You must strictly obey these constraints:\n"
     "  * If lookup is false and websearch is false and research is false, you must NOT create any 'information' or 'research' tasks.\n"
-    "  * If research is false, you are STRICTLY FORBIDDEN from creating 'research' tasks. Only use 'information' tasks for general lookups.\n"
+    "  * If research is false, the 'research' department is a conditional branch and you are STRICTLY FORBIDDEN from creating 'research' tasks. Only use 'information' tasks for general lookups if external info retrieval is needed.\n"
+    "  * INDEPENDENT WORKERS: Other departments (such as 'writing', 'analysis', and 'execution') operate completely independently. Do NOT prepend a 'research' task to every goal. If the query does not require deep research (research is false), workers like the writer or synthesizer should work directly using user queries or profile context without a preceding research task.\n"
     "  * If generate is false and writer is false, you must NOT create any 'analysis' or 'writing' tasks.\n"
     "  * If execute is false, you are STRICTLY FORBIDDEN from creating mutating 'execution' department tasks (e.g. sending emails, creating events, or creating docs). You are only allowed to plan read-only actions like 'search_sheet' or 'search_gmail'. Creating unauthorized mutating execution tasks is a critical safety violation.\n"
     "  * execution_mode: Read this setting carefully. If it is 'READ_ONLY', you must only plan read-only informational/research tasks and end with a 'pa' task; no draft or mutation actions are allowed. If it is 'APPROVAL_REQUIRED', you can create 'execution' tasks but they will go through an approval check. If it is 'AUTO_EXECUTE', you are allowed to plan automated background execution dispatches.\n"
     "- CORRECT TASK SEQUENCING: If the goal requires multiple sequential steps or multiple execution actions (e.g. first research X, then write a report, then create a Google Doc, and finally send an email), you must establish strict dependency links (depends_on) between these tasks to ensure they execute in the correct chronological order (e.g. writing depends on research, Doc creation depends on writing, and email sending depends on Doc creation). If there are multiple execution department tasks, chain them sequentially (T_execution_N depends on T_execution_N-1) to ensure the user audits and approves them in the correct sequence.\n"
-    "- Each task must have: task_id (T1, T2, ...), objective, department, "
-    "depends_on (list of task_ids), priority (1=highest), compliance_checklist (list of strings), and grant_profile_access (boolean).\n"
+    "- Each task must have: task_id (T1, T2, ...), objective, department, depends_on (list of task_ids), priority (1=highest), compliance_checklist (list of strings), and grant_profile_access (boolean).\n"
     "- grant_profile_access: Set to true ONLY for the single, specific 'research' task that requires access to the local user profile (family graph, business services, contact info) to fulfill the user's personal query. For all other tasks, this MUST be false. Do NOT grant profile access to multiple tasks to prevent token bloat and ensure security isolation.\n"
     "- compliance_checklist: A list of 2-3 specific, concrete criteria that the task's output must satisfy for the auditor to approve it (e.g., verifying specific factual items, formatting style, checking profile matches, or ensuring it is not a raw status message).\n"
     "  CRITICAL: For 'writing' tasks that synthesize upstream 'research' findings, you MUST always include a checklist item requiring that all research citations, source links, or references are explicitly preserved and listed at the end of the report.\n"
@@ -205,7 +205,7 @@ PLANNER_SYSTEM_PROMPT: str = (
     "  In 'params', use the placeholder '[NEEDS_RESEARCH_CONTEXT]' for parameters that depend on upstream findings (e.g. content: '[NEEDS_RESEARCH_CONTEXT]' or body: '[NEEDS_RESEARCH_CONTEXT]').\n"
     "  CRITICAL: If a task (like send_email) is designed to transmit/report findings or content generated upstream, it MUST depend directly on the 'writing', 'analysis', or 'research' task that generated that content, NOT on intermediate execution tasks (like 'create_doc' or 'log_to_sheet') which only return a status confirmation message.\n"
     "- Keep tasks atomic — one clear objective each\n"
-    "- Minimum 2 tasks for SPRINT, 3-6 for LAUNCH\n"
+    "- Minimum 2 tasks for planned workflows\n"
     "- HISTORICAL FAILURE ADAPTATION: Read the [CRITICAL EXECUTION CONSTRAINTS - HISTORICAL FAILURES DETECTED] section carefully. If historical failures or anti-patterns exist for any department (e.g. writing, research, execution), you must actively adapt the task graph to avoid these failures:\n"
     "  * For writing/research citation or structure failures: You MUST explicitly include citation verifier tasks or add specific sub-tasks/dependencies (such as citation formatting and source verification tasks in case of research).\n"
     "  * You MUST explicitly address these constraints in the task objectives and the compliance checklists of the planned tasks to satisfy the quality verifications.\n"
@@ -327,7 +327,7 @@ def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]
 
 def plan_goal(
     query: str,
-    gear: str,
+    gear: Optional[str] = None,
     history_text: str = "",
     profile_text: str = "",
     model_name: str = "llama-3.1-8b-instant",
@@ -342,8 +342,8 @@ def plan_goal(
     ----------
     query : str
         The user's natural-language goal.
-    gear : str
-        Planning gear — ``"SPRINT"`` or ``"LAUNCH"``.
+    gear : Optional[str]
+        Ignored (retained for backward compatibility).
     history_text : str, optional
         Recent conversation history (truncated to 500 chars internally).
     profile_text : str, optional
@@ -370,7 +370,6 @@ def plan_goal(
 
     user_content_parts: List[str] = [
         f"Current datetime: {now_utc}",
-        f"Gear: {gear}",
         f"User query: {query}",
     ]
     if intent_packet:

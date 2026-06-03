@@ -93,7 +93,7 @@ class TestPlannerImmuneAdaptation(unittest.TestCase):
         
         # Invoke planner
         print("\n[TEST] Running planner goal decomposition with injected writing citation failures...")
-        graph = plan_goal(query, gear="LAUNCH")
+        graph = plan_goal(query)
         self.assertIsInstance(graph, GoalGraph)
         self.assertTrue(len(graph.tasks) >= 2)
         

@@ -239,7 +239,6 @@ class TestIntentGovernance(unittest.TestCase):
         # Generate plan using plan_goal
         graph = plan_goal(
             query=query,
-            gear="SPRINT",
             intent_packet=packet,
             model_name="llama-3.3-70b-versatile"
         )

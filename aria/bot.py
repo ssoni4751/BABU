@@ -456,8 +456,8 @@ def is_profile_relevant_query(query: str) -> bool:
     # Check exact keyword matching or substring match
     return any(kw in q for kw in personal_keywords)
 
-def get_user_profile_text(gear: str = "LAUNCH") -> str:
-    """Return L1 Daily Profile Context, selectively retrieving context based on gear."""
+def get_user_profile_text(profile_type: str = "FULL") -> str:
+    """Return L1 Daily Profile Context, selectively retrieving context based on type."""
     profile = get_current_profile()
     if not profile:
         return ""
@@ -466,7 +466,7 @@ def get_user_profile_text(gear: str = "LAUNCH") -> str:
     prefs = profile.get("preferences", {})
     nickname = details.get("primary_nickname", "") or details.get("full_name", "Anshu")
     
-    if gear == "WALK":
+    if profile_type in ("THIN", "WALK"):
         # Ultra-thin identity context for casual conversation
         lines = [
             "[USER PERSONALIZATION CONTEXT]",
@@ -795,14 +795,14 @@ def search_profile(query: str, bypass_filter: bool = False) -> str:
 KNOWLEDGE_BASE = {
     "aria": (
         "ARIA (Adaptive Research Intelligence Assistant) is a multi-agent AI system "
-        "built on LangGraph + Groq/Llama. It routes every query to one of three gears: "
-        "WALK (quick replies), SPRINT (3-agent swarm), or LAUNCH (6-agent deep dive). "
+        "built on LangGraph + Groq/Llama. It dynamically classifies user intent "
+        "and plans a custom task graph executed by independent departments. "
         "Available on Telegram and the web."
     ),
-    "gears": (
-        "WALK: single PA call for casual chat. "
-        "SPRINT: Analyst + Skeptic + Strategist in sequence. "
-        "LAUNCH: SPRINT + Historian + Futurist + Synthesizer across 2 rounds."
+    "planning": (
+        "Intent routing: dynamically builds a custom task graph (DAG). "
+        "Workers like writing, analysis, and execution run independently "
+        "while research executes as a branch only when deep research is explicitly required."
     ),
     "tools": (
         "Every ARIA agent has access to: live web search (DuckDuckGo), "
@@ -1163,7 +1163,6 @@ def add_tokens(existing: dict, new: dict) -> dict:
 
 class AriaState(TypedDict):
     messages:       Annotated[list[BaseMessage], "Conversation"]
-    gear:           Literal["WALK", "SPRINT", "LAUNCH"]
     research_data:  List[str]
     user_query:     str
     history_text:   str
@@ -1240,47 +1239,13 @@ def intent_router(state: AriaState):
     lowered = query.lower().strip()
     session_id = state.get("session_id", "default")
 
-    # Respect the requested gear passed in the state (e.g. from UI or API)
-    requested_gear = state.get("gear", "LAUNCH")
-    if requested_gear not in ("SPRINT", "LAUNCH"):
-        requested_gear = "LAUNCH"
-
-    # Check for command override prefixes in user query
-    cmd_gear = None
-    if lowered.startswith("/") or lowered.startswith("!"):
-        cmd = lowered.removeprefix("/").removeprefix("!")
-        if cmd.startswith("launch"):
-            cmd_gear = "LAUNCH"
-        elif cmd.startswith("sprint"):
-            cmd_gear = "SPRINT"
-        elif cmd.startswith("walk"):
-            cmd_gear = "LAUNCH"
-    elif lowered.startswith("launch"):
-        cmd_gear = "LAUNCH"
-    elif lowered.startswith("sprint"):
-        cmd_gear = "SPRINT"
-    elif lowered.startswith("walk"):
-        cmd_gear = "LAUNCH"
-
-    if cmd_gear:
-        manual_gear = cmd_gear
-        print(f"[ROUTER] Command override detected: Selected gear '{manual_gear}' based on prefix.", flush=True)
-    else:
-        is_correction = should_escalate_to_workflow(query, history_text=history_text)
-        manual_gear = requested_gear if is_correction else requested_gear
-
     # Strip command prefix overrides to keep the processed query clean
     clean_query = query
-    if manual_gear != "WALK":
-        t_lower = query.lower().strip()
-        if t_lower.startswith("launch"):
-            clean_query = query[len("launch"):].strip()
-        elif t_lower.startswith("sprint"):
-            clean_query = query[len("sprint"):].strip()
-        elif t_lower.startswith("/launch"):
-            clean_query = query[len("/launch"):].strip()
-        elif t_lower.startswith("/sprint"):
-            clean_query = query[len("/sprint"):].strip()
+    t_lower = query.lower().strip()
+    for prefix in ("/launch", "!launch", "launch", "/sprint", "!sprint", "sprint", "/walk", "!walk", "walk"):
+        if t_lower.startswith(prefix):
+            clean_query = query[len(prefix):].strip()
+            break
 
     detected_action = None
     pending_action_notice = ""
@@ -1298,9 +1263,6 @@ def intent_router(state: AriaState):
         pending_action_notice = "Pending action cancelled."
     elif pending:
         pending_action_notice = "You already have a pending action approval. Reply with '1' / 'approve' to execute, or '0' / 'cancel' to discard."
-    elif manual_gear == "WALK":
-        # Direct action detection is disabled in conversational fast path to prevent contamination
-        detected_action = None
 
     try:
         try:
@@ -1310,8 +1272,8 @@ def intent_router(state: AriaState):
         log_routing_decision(
             session_id=state.get("session_id", "default"),
             query=query,
-            selected_gear=manual_gear,
-            reason="command_override" if manual_gear != "WALK" else "walk_default",
+            selected_gear="DYNAMIC",
+            reason="routing_dispatch",
             has_action=bool(detected_action),
         )
     except Exception as e:
@@ -1325,7 +1287,6 @@ def intent_router(state: AriaState):
         "action_duration": 0.0
     }
     return {
-        "gear": manual_gear,
         "user_query": clean_query,
         "research_data": [],
         "search_results": "",
@@ -1335,7 +1296,7 @@ def intent_router(state: AriaState):
         "compressed_research": "",
         "routing_metadata": {
             "mode": "command_only",
-            "reason": "walk_default" if manual_gear == "WALK" else "explicit_command",
+            "reason": "explicit_command",
         },
         "pending_action_notice": pending_action_notice,
         "tokens": {"prompt": 0, "completion": 0, "total": 0}
@@ -1346,15 +1307,6 @@ def route_after_router(state: AriaState) -> str:
     notice = state.get("pending_action_notice", "")
     if notice:
         return "pending"
-    
-    gear = state["gear"]
-    detected_action = state.get("detected_action")
-    
-    if gear == "WALK":
-        if detected_action:
-            return "walk_action"
-        return "walk_direct"
-    
     return "plan"
 
 
@@ -1368,6 +1320,12 @@ def is_simple_query(text: str) -> bool:
     if t in greetings or len(t) < 15:
         return True
     return False
+
+
+def requires_workspace_access(query: str) -> bool:
+    t = query.lower()
+    pattern = r'\b(mail|email|gmail|sheet|sheets|spreadsheet|spreadsheets|calendar|calendars|event|events|meeting|meetings|slack|contact|contacts|photos|drive)\b'
+    return bool(re.search(pattern, t))
 
 
 def planner_node(state: AriaState):
@@ -1400,8 +1358,8 @@ def planner_node(state: AriaState):
             planner_status="AMBIGUOUS_QUERY",
             intent_packet=intent_packet.to_dict()
         )
-    # 3. Simple Lookup or Websearch (No other complex intents like execute, research or generate are active)
-    elif (intent_packet.lookup or intent_packet.websearch) and not (intent_packet.research or intent_packet.generate or intent_packet.execute):
+    # 3. Simple Lookup or Websearch (No other complex intents like execute, research or generate are active, and doesn't require workspace access)
+    elif (intent_packet.lookup or intent_packet.websearch) and not (intent_packet.research or intent_packet.generate or intent_packet.execute or requires_workspace_access(query)):
         print(f"[PLANNER NODE] Fast-tracking simple lookup/websearch query (lookup={intent_packet.lookup}, websearch={intent_packet.websearch}) directly to PA response", flush=True)
         graph = build_walk_graph(query, goal_id=pre_goal_id)
     else:
@@ -1426,10 +1384,9 @@ def planner_node(state: AriaState):
                 print(f"[PLANNER NODE] Correction detected. Previous goal: '{last_goal_text}'", flush=True)
 
         graph = plan_goal(
-            query,
-            "LAUNCH",
-            history_text,
-            profile_text,
+            query=query,
+            history_text=history_text,
+            profile_text=profile_text,
             model_name=CURRENT_DEPT_MODEL,
             goal_id=pre_goal_id,
             is_correction=is_correction,
@@ -1474,10 +1431,7 @@ def planner_node(state: AriaState):
         }
     )
         
-    ret = {"goal_graph": graph.to_dict()}
-    if len(graph.tasks) == 1 and graph.tasks[0].department == "pa":
-        ret["gear"] = "WALK"
-    return ret
+    return {"goal_graph": graph.to_dict()}
 
 
 def task_executor_node(state: AriaState):
@@ -1650,6 +1604,9 @@ def task_executor_node(state: AriaState):
             # If the task is an execution task, we MUST ask the user for approval
             # with the fully resolved parameters (including upstream findings!)
             if task.department == "execution":
+                action = task.context.get("action", "")
+                if action in ("search_sheet", "search_gmail"):
+                    task.context["approved"] = True
                 if not task.context.get("approved"):
                     action = task.context.get("action", "")
                     params = task.context.get("params", {})
@@ -2260,12 +2217,19 @@ def department_synthesizer(state: AriaState):
     return {"compressed_research": deterministic_compress_reports(reports)}
 
 def pa_node(state: AriaState):
-    gear          = state["gear"]
     research      = state.get("final_brief") or state.get("compressed_research") or "\n\n".join(state.get("research_data", []))
     history       = state.get("history_text", "")
     action_result = state.get("action_result", "")
     user_query    = state["user_query"]
     pending_action_notice = state.get("pending_action_notice", "")
+
+    # Determine conversational vs workflow mode dynamically based on the planned graph
+    is_conversational = True
+    graph_dict = state.get("goal_graph")
+    if graph_dict:
+        tasks = graph_dict.get("tasks", [])
+        if len(tasks) > 1:
+            is_conversational = False
 
     # Soft Continuity: Suppress conversational history for fresh greetings to avoid residual bias
     lowered_query = user_query.lower().strip().removeprefix("/").removeprefix("!")
@@ -2280,7 +2244,7 @@ def pa_node(state: AriaState):
     }
     is_fresh_greeting = lowered_query in greetings or any(lowered_query.startswith(g + " ") for g in greetings)
     
-    if is_fresh_greeting or gear in ("SPRINT", "LAUNCH"):
+    if is_fresh_greeting or not is_conversational:
         history = ""
 
     if pending_action_notice:
@@ -2290,7 +2254,7 @@ def pa_node(state: AriaState):
     # Hard guard: if no action was executed this turn, never claim execution.
     if not action_result and is_action_status_query(user_query):
         response_text = "No action was executed in this turn."
-        if gear == "LAUNCH":
+        if not is_conversational:
             tracker = state.get("execution_tracker", {})
             if tracker and "start_time" in tracker:
                 import time
@@ -2303,7 +2267,7 @@ def pa_node(state: AriaState):
     if not action_result:
         direct_fact = get_profile_fact_answer(user_query)
         if direct_fact:
-            if gear == "LAUNCH":
+            if not is_conversational:
                 tracker = state.get("execution_tracker", {})
                 if tracker and "start_time" in tracker:
                     import time
@@ -2312,26 +2276,24 @@ def pa_node(state: AriaState):
             response = AIMessage(content=direct_fact)
             return {"messages": state["messages"] + [response], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
 
-    # Dynamic L2/L3 profile retrieval fallback (All gears including WALK):
+    # Dynamic L2/L3 profile retrieval fallback:
     # If there's no research, query search_profile to fetch matching personal details!
     if not research and not action_result:
         profile_ctx = search_profile(state["user_query"])
         if profile_ctx and ("[Local User Profile Matches]" in profile_ctx or "[Local User Profile" in profile_ctx):
             research = profile_ctx
 
-    if gear == "WALK":
-        style = "[WALK]\nBrief, warm, direct. Max two short paragraphs. Confirm any automation action clearly."
-    elif gear == "SPRINT":
-        style = "[SPRINT]\nActionable, fast-paced summary. Direct bullets, immediate takeaway."
+    if is_conversational:
+        style = "[CONVERSATIONAL]\nBrief, warm, direct. Max two short paragraphs. Confirm any automation action clearly."
     else:
-        style = "[LAUNCH]\nStructured briefing: ## headers. Cover overview, findings, risks, outlook. End with one concrete recommendation. Dense and precise."
+        style = "[WORKFLOW]\nStructured briefing: ## headers. Cover overview, findings, risks, outlook. End with one concrete recommendation. Dense and precise."
 
     # Inject live temporal awareness for PA synthesis
     from datetime import datetime, timezone
     now_str = datetime.now(timezone.utc).strftime("%A, %d %B %Y, %H:%M UTC")
 
     # Tiered Prompt Architecture
-    if gear == "WALK":
+    if is_conversational:
         # Ultra-thin manifesto for casual conversational mode
         profile = get_current_profile()
         details = profile.get("personal_details", {}) if profile else {}
@@ -2344,13 +2306,13 @@ def pa_node(state: AriaState):
             f"If the required personal/business/family information is NOT present in [Internal Research] or [Conversation History], DO NOT invent, infer, or hallucinate any details (such as occupation, business name, meetings, or clients). In such cases, politely and warmly state that you do not have that information in their profile yet."
         )
     else:
-        # Full Workflow/Launch/Sprint Mode Prompt
+        # Full Workflow Prompt
         # Only inject the full user profile if the query is profile-relevant
         if is_profile_relevant_query(user_query):
-            profile_text = get_user_profile_text(gear)
+            profile_text = get_user_profile_text("FULL")
         else:
             # Otherwise, use ultra-thin context just for username and style warmness
-            profile_text = get_user_profile_text("WALK")
+            profile_text = get_user_profile_text("THIN")
         profile_ctx = f"\n\nUser Profile:\n{profile_text}" if profile_text else ""
         google_tools = ", ".join(MAKE_ACTIONS.keys())
         google_ctx = f"\n\nGoogle Workspace active [{google_tools}]. Confirm any triggered actions clearly."
@@ -2362,7 +2324,7 @@ def pa_node(state: AriaState):
         pa_rules = get_anti_pattern_rules("pa")
 
         manifesto = (
-            f"ARIA [{gear}]. Current date/time: {now_str}. Never reveal internal agents. {style}"
+            f"ARIA. Current date/time: {now_str}. Never reveal internal agents. {style}"
             f" Use history for context, never repeat it verbatim."
             f"{google_ctx}{profile_ctx}"
         )
@@ -2383,7 +2345,6 @@ def pa_node(state: AriaState):
     response = llm_pa.invoke([SystemMessage(content=manifesto), HumanMessage(content="\n\n".join(parts))])
     
     # Check for planner degradation and append warning card if active
-    graph_dict = state.get("goal_graph")
     if graph_dict and graph_dict.get("planner_status", "SUCCESS") != "SUCCESS":
         p_status = graph_dict.get("planner_status")
         reason_map = {
@@ -2413,7 +2374,7 @@ def pa_node(state: AriaState):
                 response.content += "\n\n" + match.group(1)
                 
     # ​​Performance Telemetry Footnote ​​
-    if gear == "LAUNCH":
+    if not is_conversational:
         tracker = state.get("execution_tracker", {})
         if tracker and "start_time" in tracker:
             import time
@@ -2455,8 +2416,8 @@ def pa_node(state: AriaState):
         tracker = state.get("execution_tracker", {})
         log_workflow_event(
             session_id=state.get("session_id", "default"),
-            gear=gear,
-            sequence=["router", "planner", "executor", "pa"] if gear != "WALK" else ["router", "pa"],
+            gear="DYNAMIC",
+            sequence=["router", "planner", "executor", "pa"] if not is_conversational else ["router", "pa"],
             total_tokens=token_stats.get("total", 0),
             latency_seconds=tracker.get("research_duration", 0.0) + tracker.get("task_manager_duration", 0.0) + tracker.get("action_duration", 0.0),
             success=True,
@@ -2478,8 +2439,6 @@ workflow.add_node("pa",           pa_node)
 
 workflow.set_entry_point("router")
 workflow.add_conditional_edges("router", route_after_router, {
-    "walk_direct": "pa",
-    "walk_action": "executor",
     "plan": "planner",
     "pending": "pa",
 })
@@ -2512,7 +2471,6 @@ def invoke_aria(message: str, session_id: str = "default", goal_id: Optional[str
         
     output = aria_brain.invoke({
         "messages":       [HumanMessage(content=message)],
-        "gear":           gear,
         "research_data":  [],
         "user_query":     message,
         "history_text":   history_text,
@@ -2531,7 +2489,6 @@ def invoke_aria(message: str, session_id: str = "default", goal_id: Optional[str
     }, config)
     
     reply = output["messages"][-1].content
-    gear_out = output.get("gear", gear)
     tokens = output.get("tokens", {"prompt": 0, "completion": 0, "total": 0})
     
     add_to_history(session_id, message, reply)
@@ -2543,7 +2500,7 @@ def invoke_aria(message: str, session_id: str = "default", goal_id: Optional[str
             seal_epoch(epoch_id)
             compact_completed_session_history(session_id)
             
-    return reply, gear_out, tokens
+    return reply, "DYNAMIC", tokens
 
 
 # â”€â”€ Health / chat HTTP server â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -3196,10 +3153,6 @@ STATUS_HTML = """<!DOCTYPE html>
     </div>
     <div class="query-controls">
       <input type="text" id="query-input" class="search-box" style="flex: 1; padding: 14px 20px; font-size: 1rem;" placeholder="Analyze spreadsheet, compile research report, send email summary...">
-      <div class="gear-selector">
-        <button class="gear-btn active" id="gear-launch" onclick="selectGear('LAUNCH')">LAUNCH GEAR</button>
-        <button class="gear-btn" id="gear-sprint" onclick="selectGear('SPRINT')">SPRINT GEAR</button>
-      </div>
       <button class="trigger-btn" id="trigger-btn" onclick="submitQuery()">
         <span id="trigger-text">TRIGGER ACTION</span>
         <div class="spinner" id="trigger-spinner" style="display: none;"></div>
@@ -3432,7 +3385,6 @@ STATUS_HTML = """<!DOCTYPE html>
 
   let telemetryData = null;
   let activeCategory = 'all';
-  let selectedGear = 'LAUNCH';
 
   // Authorization token management
   function saveAuthToken() {
@@ -3455,21 +3407,6 @@ STATUS_HTML = """<!DOCTYPE html>
     return headers;
   }
 
-  // Gear selectors
-  function selectGear(gear) {
-    selectedGear = gear;
-    const gearLaunch = document.getElementById('gear-launch');
-    const gearSprint = document.getElementById('gear-sprint');
-    if (gearLaunch) gearLaunch.classList.remove('active');
-    if (gearSprint) gearSprint.classList.remove('active');
-    
-    if (gear === 'LAUNCH') {
-      if (gearLaunch) gearLaunch.classList.add('active');
-    } else if (gear === 'SPRINT') {
-      if (gearSprint) gearSprint.classList.add('active');
-    }
-  }
-
   // Submit Query to /api/chat
   async function submitQuery() {
     const queryInput = document.getElementById('query-input');
@@ -3490,7 +3427,7 @@ STATUS_HTML = """<!DOCTYPE html>
     
     outWrapper.style.display = "block";
     outDiv.textContent = "Swarm is initializing... Routing query through Intent Governance Gatekeeper...";
-    outMeta.textContent = "Mode: " + selectedGear;
+    outMeta.textContent = "Swarm Mode: Dynamic";
     
     try {
       const response = await fetch('/api/chat', {
@@ -3498,8 +3435,7 @@ STATUS_HTML = """<!DOCTYPE html>
         headers: getHeaders(),
         body: JSON.stringify({
           message: query,
-          session_id: 'web_dashboard_' + Math.floor(Date.now() / 1000),
-          gear: selectedGear
+          session_id: 'web_dashboard_' + Math.floor(Date.now() / 1000)
         })
       });
       
@@ -3513,7 +3449,7 @@ STATUS_HTML = """<!DOCTYPE html>
       }
       
       outDiv.textContent = resData.reply;
-      outMeta.textContent = `Gear: ${resData.gear} • Finished`;
+      outMeta.textContent = "Finished";
       
       // Instantly refresh telemetry to show new ledger logs
       fetchTelemetry();
@@ -4249,16 +4185,12 @@ class HealthHandler(BaseHTTPRequestHandler):
             body   = json.loads(self.rfile.read(length))
             msg    = str(body.get("message", "")).strip()
             sid    = str(body.get("session_id", "web_anon")).strip() or "web_anon"
-            gear   = str(body.get("gear", "LAUNCH")).strip().upper()
-            if gear not in ("LAUNCH", "SPRINT"):
-                gear = "LAUNCH"
-                
             if not msg:
                 raise ValueError("empty message")
-            print(f"[WEB] session={sid[:16]} msg={msg[:80]} gear={gear}", flush=True)
-            reply, gear_res, tokens = invoke_aria(msg, sid, gear=gear)
-            print(f"[WEB OK] gear={gear_res} len={len(reply)} | Tokens: {tokens.get('total', 0)}", flush=True)
-            response = json.dumps({"reply": reply, "gear": gear_res}).encode()
+            print(f"[WEB] session={sid[:16]} msg={msg[:80]}", flush=True)
+            reply, gear_res, tokens = invoke_aria(msg, sid)
+            print(f"[WEB OK] len={len(reply)} | Tokens: {tokens.get('total', 0)}", flush=True)
+            response = json.dumps({"reply": reply, "gear": "DYNAMIC"}).encode()
             self.send_response(200)
             self.send_header("Content-Type",   "application/json")
             self.send_header("Content-Length", str(len(response)))
@@ -5073,7 +5005,6 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "ARIA Runtime Stats\n\n"
             f"Routing events: {stats.get('routing_events', 0)}\n"
             f"Workflow events: {stats.get('workflow_events', 0)}\n"
-            f"Gear usage: WALK={gears.get('WALK', 0)}, SPRINT={gears.get('SPRINT', 0)}, LAUNCH={gears.get('LAUNCH', 0)}\n"
             f"Detected actions: {stats.get('action_detected_count', 0)}\n"
             f"Average tokens: {stats.get('avg_tokens', 0)}\n"
             f"Average latency (s): {stats.get('avg_latency_seconds', 0)}\n"

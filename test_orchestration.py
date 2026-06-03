@@ -393,10 +393,9 @@ class TestBipartiteAuditor(unittest.TestCase):
         from aria.bot import intent_router, AriaState
         from langchain_core.messages import HumanMessage
         
-        # Test 1: explicit /launch command should route to LAUNCH and strip prefix
+        # Test 1: explicit /launch command should strip prefix
         state_launch = AriaState(
             messages=[HumanMessage(content="/launch Research the latest space tech advancements")],
-            gear="WALK",
             research_data=[],
             user_query="",
             history_text="",
@@ -415,13 +414,11 @@ class TestBipartiteAuditor(unittest.TestCase):
         )
         
         res = intent_router(state_launch)
-        self.assertEqual(res["gear"], "LAUNCH")
         self.assertEqual(res["user_query"], "Research the latest space tech advancements")
         
-        # Test 2: explicit launch command (plain text) should route to LAUNCH and strip prefix
+        # Test 2: explicit launch command (plain text) should strip prefix
         state_plain = AriaState(
             messages=[HumanMessage(content="launch research quantum computing")],
-            gear="WALK",
             research_data=[],
             user_query="",
             history_text="",
@@ -440,7 +437,6 @@ class TestBipartiteAuditor(unittest.TestCase):
         )
         
         res_plain = intent_router(state_plain)
-        self.assertEqual(res_plain["gear"], "LAUNCH")
         self.assertEqual(res_plain["user_query"], "research quantum computing")
 
     @patch("requests.get")
