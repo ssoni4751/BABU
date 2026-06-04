@@ -2246,7 +2246,10 @@ def department_synthesizer(state: AriaState):
     return {"compressed_research": deterministic_compress_reports(reports)}
 
 def pa_node(state: AriaState):
-    research      = state.get("final_brief") or state.get("compressed_research") or "\n\n".join(state.get("research_data", []))
+    final_brief = state.get("final_brief")
+    if final_brief and "Respond directly to user query" in final_brief:
+        final_brief = None
+    research      = final_brief or state.get("compressed_research") or "\n\n".join(state.get("research_data", []))
     history       = state.get("history_text", "")
     action_result = state.get("action_result", "")
     user_query    = state["user_query"]
