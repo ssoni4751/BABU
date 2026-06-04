@@ -107,6 +107,13 @@ class IntentPacket:
             if "execution" not in self.allowed_departments:
                 self.allowed_departments = list(self.allowed_departments) + ["execution"]
 
+        # If mutating execution actions that require drafting/content generation are allowed, ensure "writing" and "analysis" are allowed
+        _drafting_actions = {"send_email", "create_doc", "post_to_facebook"}
+        if any(act in self.allowed_actions for act in _drafting_actions):
+            for dept in ("writing", "analysis"):
+                if dept not in self.allowed_departments:
+                    self.allowed_departments = list(self.allowed_departments) + [dept]
+
     @property
     def lookup(self) -> bool:
         return "information" in self.allowed_departments
