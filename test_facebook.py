@@ -35,8 +35,12 @@ def main():
         
         # 2. Download Image via FLUX & render Pillow glass card
         print("\n[STEP 2] Downloading custom graphic from Pollinations.ai FLUX...")
-        bg_path = generate_flux_graphic(img_prompt)
-        print(f"✅ Backdrop saved at: {bg_path}")
+        bg_path = None
+        try:
+            bg_path = generate_flux_graphic(img_prompt)
+            print(f"✅ Backdrop saved at: {bg_path}")
+        except Exception as e:
+            print(f"⚠️ Backdrop download failed: {e}. Falling back to default layout.")
         
         print("\n[STEP 2.5] Rendering premium Pillow dashboard graphic card...")
         from aria.social_media import generate_pillow_graphic

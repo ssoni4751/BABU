@@ -41,7 +41,8 @@ def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]
         all_actions = {
             "send_email", "create_event", "log_to_sheet", "create_doc", 
             "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
-            "send_slack", "create_task", "search_image", "search_gmail"
+            "send_slack", "create_task", "search_image", "search_gmail",
+            "post_to_facebook"
         }
         allowed_actions.update(all_actions)
 
@@ -117,8 +118,13 @@ class PreExecutionGatekeeper:
             if action not in self.supported_actions:
                 return False, f"Unsupported Workspace action '{action}' in task '{task.task_id}'."
 
-            # Verify Google Integration credentials
-            if not is_google_configured():
+            # Verify Google Integration credentials for Google-related actions
+            google_actions = {
+                "send_email", "create_event", "log_to_sheet", "create_doc",
+                "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive",
+                "search_gmail"
+            }
+            if action in google_actions and not is_google_configured():
                 return False, f"Google Workspace credentials not configured. Cannot run execution action '{action}'."
 
         # 3. Check anti-pattern gates before wasting tokens
