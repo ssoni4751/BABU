@@ -5324,7 +5324,41 @@ async def telegram_error_handler(update: object, context: ContextTypes.DEFAULT_T
 
 # â”€â”€ Entry point â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+def cleanup_corrupt_failures():
+    try:
+        from .memory import _read_json_list, _write_json_list, FAILURES_PATH
+    except ImportError:
+        from memory import _read_json_list, _write_json_list, FAILURES_PATH
+        
+    try:
+        failures = _read_json_list(FAILURES_PATH)
+        if failures:
+            cleaned = []
+            for f in failures:
+                sig = f.get("failure_signature", "").upper()
+                rule = f.get("active_anti_pattern_rule", "").lower()
+                domain = f.get("domain", "").lower()
+                
+                is_bad_facebook_rule = (
+                    "social media posting tasks" in rule or
+                    "verification of page details" in rule or
+                    "facebook page" in rule or
+                    "page name and accessibility" in rule
+                )
+                if is_bad_facebook_rule or domain in ("governance.planning", "governance.classification"):
+                    print(f"[CLEANUP] Removing corrupt failure rule: {f.get('failure_signature')}", flush=True)
+                    continue
+                cleaned.append(f)
+            
+            if len(cleaned) != len(failures):
+                _write_json_list(FAILURES_PATH, cleaned)
+                print(f"[CLEANUP SUCCESS] Cleared corrupt failures. Active rules remaining: {len(cleaned)}", flush=True)
+    except Exception as e:
+        print(f"[CLEANUP ERROR] Failed to clean failures: {e}", flush=True)
+
+
 if __name__ == "__main__":
+    cleanup_corrupt_failures()
     health_thread = threading.Thread(target=start_health_server, daemon=True)
     health_thread.start()
     google_status = f"Google Workspace ({'active' if is_google_configured() else 'NOT configured'})"
