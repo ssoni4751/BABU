@@ -709,8 +709,8 @@ def plan_goal(
             for t in tasks:
                 if t.department == "execution":
                     action = t.context.get("action")
-                    if action in ("search_sheet", "search_gmail"):
-                        continue  # Do not add content dependency to read-only lookup/retrieval actions
+                    if action not in ("send_email", "create_doc", "post_to_facebook"):
+                        continue  # Only propagate writing/analysis content to actions that consume text drafts
                     if preferred_dep not in t.depends_on and t.task_id != preferred_dep:
                         print(f"[PLANNER] Post-processing: adding dependency {preferred_dep} to execution task {t.task_id} to ensure context propagation.", flush=True)
                         t.depends_on.append(preferred_dep)

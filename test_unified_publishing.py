@@ -158,6 +158,39 @@ class TestUnifiedPublishing(unittest.TestCase):
         # Verify message send execution
         mock_service.users().messages().send.assert_called_once()
 
+    @patch("aria.bot.ChatGroq")
+    def test_planner_no_cycle_for_image_generation(self, mock_chat_groq):
+        """Verify that the planner does not introduce cyclic dependencies for generate_image task during post-processing."""
+        mock_llm = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = """
+        {
+          "goal": "Generate image and post to Facebook",
+          "tasks": [
+            {"task_id": "T1", "objective": "Fetch details", "department": "information", "depends_on": [], "priority": 1},
+            {"task_id": "T2", "objective": "Generate image", "department": "execution", "action": "generate_image", "params": {"prompt": "ITR filing started"}, "depends_on": ["T1"], "priority": 2},
+            {"task_id": "T3", "objective": "Draft caption", "department": "writing", "protocol": "publishing", "depends_on": ["T1", "T2"], "priority": 3},
+            {"task_id": "T4", "objective": "Post to Facebook", "department": "execution", "action": "post_to_facebook", "params": {"caption": "[NEEDS_RESEARCH_CONTEXT]", "image_path": "[NEEDS_RESEARCH_CONTEXT]"}, "depends_on": ["T2", "T3"], "priority": 4},
+            {"task_id": "T5", "objective": "Report success", "department": "pa", "depends_on": ["T4"], "priority": 5}
+          ]
+        }
+        """
+        mock_llm.invoke.return_value = mock_response
+        mock_chat_groq.return_value = mock_llm
+
+        from aria.planner import plan_goal
+        # Run plan_goal
+        graph = plan_goal("generate image and post to facebook", model_name="llama-3.1-8b-instant")
+        
+        # Verify that T2 (generate_image) does NOT depend on T3 (writing)
+        t2_task = next(t for t in graph.tasks if t.task_id == "T2")
+        self.assertNotIn("T3", t2_task.depends_on)
+        self.assertEqual(t2_task.depends_on, ["T1"])
+        
+        # Verify that T4 (post_to_facebook) does depend on T3 (writing)
+        t4_task = next(t for t in graph.tasks if t.task_id == "T4")
+        self.assertIn("T3", t4_task.depends_on)
+
 
 if __name__ == "__main__":
     unittest.main()
