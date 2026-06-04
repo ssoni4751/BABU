@@ -226,7 +226,8 @@ PLANNER_SYSTEM_PROMPT: str = (
     "    * create_doc(title, content) -- Use ONLY if user explicitly asked to write/create/draft a separate document file.\n"
     "    * search_sheet(sheet_name, query) -- Use ONLY if user explicitly asked to query/search/find information inside a spreadsheet/sheet.\n"
     "    * search_gmail(query, max_results) -- Use ONLY if user explicitly asked to search or retrieve recent emails matching a query.\n"
-    "  In 'params', use the placeholder '[NEEDS_RESEARCH_CONTEXT]' for parameters that depend on upstream findings (e.g. content: '[NEEDS_RESEARCH_CONTEXT]' or body: '[NEEDS_RESEARCH_CONTEXT]').\n"
+    "    * post_to_facebook(caption, topic) -- Use ONLY if user explicitly asked to post/publish to Facebook Page. In 'params', specify 'caption' or 'topic' (or both).\n"
+    "  In 'params', use the placeholder '[NEEDS_RESEARCH_CONTEXT]' for parameters that depend on upstream findings (e.g. content: '[NEEDS_RESEARCH_CONTEXT]', body: '[NEEDS_RESEARCH_CONTEXT]', or caption: '[NEEDS_RESEARCH_CONTEXT]').\n"
     "  CRITICAL: If a task (like send_email) is designed to transmit/report findings or content generated upstream, it MUST depend directly on the 'writing', 'analysis', or 'research' task that generated that content, NOT on intermediate execution tasks (like 'create_doc' or 'log_to_sheet') which only return a status confirmation message.\n"
     "- Keep tasks atomic — one clear objective each\n"
     "- Minimum 2 tasks for planned workflows\n"
@@ -523,7 +524,10 @@ def plan_goal(
         # Extract action, params, and grant_profile_access if present in planner JSON
         task_context = {}
         if "action" in t:
-            task_context["action"] = t["action"]
+            act = t["action"]
+            if act in ("send_facebook_post", "facebook_post"):
+                act = "post_to_facebook"
+            task_context["action"] = act
             task_context["params"] = t.get("params", {})
         task_context["grant_profile_access"] = bool(t.get("grant_profile_access", False))
         task_context["intent_packet"] = intent_packet.to_dict() if intent_packet else None

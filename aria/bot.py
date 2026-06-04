@@ -1012,6 +1012,8 @@ def _normalize_action_name(raw_action) -> str:
     # Handle payloads like "[send_email, create_doc]" or "send_email,create_doc"
     action_text = action_text.strip("[](){}")
     first = re.split(r"[,\s|;/]+", action_text)[0].strip()
+    if first in ("send_facebook_post", "facebook_post"):
+        first = "post_to_facebook"
     return first if first in MAKE_ACTIONS else ""
 
 
