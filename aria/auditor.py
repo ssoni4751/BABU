@@ -72,7 +72,7 @@ class PreExecutionGatekeeper:
             "create_task",
             "search_image",
             "search_gmail",
-            "post_to_facbook"
+            "post_to_facebook"
         }
 
     def audit(self, task: TaskDTO) -> Tuple[bool, str]:
