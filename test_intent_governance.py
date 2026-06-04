@@ -173,13 +173,22 @@ class TestIntentGovernance(unittest.TestCase):
         # The user's query was actually informational, but the classifier misclassified it as AUTO_EXECUTE, causing a post-audit fail
         query = "Research standard tax forms in India and list the details."
         
-        ok = log_execution_failure(
-            domain="department.execution",
-            method="Send tax form email",
-            exception_msg="Post-execution Audit Failed: Banned execution task for read-only user query.",
-            goal=query,
-            intent_packet=intent.to_dict()
-        )
+        from unittest.mock import patch, MagicMock
+        mock_response = MagicMock()
+        mock_response.content = json.dumps({
+            "observed_consequence": "The intent classifier misclassified the query as AUTO_EXECUTE instead of READ_ONLY, leading to inappropriate execution task planning.",
+            "active_anti_pattern_rule": "NEVER classify queries requesting India tax form details as AUTO_EXECUTE; always verify read-only lookup boundaries.",
+            "target_domain": "governance.classification"
+        })
+        
+        with patch("aria.bot.invoke_with_fallback", return_value=mock_response):
+            ok = log_execution_failure(
+                domain="department.execution",
+                method="Send tax form email",
+                exception_msg="Post-execution Audit Failed: Banned execution task for read-only user query.",
+                goal=query,
+                intent_packet=intent.to_dict()
+            )
         
         self.assertTrue(ok)
         
