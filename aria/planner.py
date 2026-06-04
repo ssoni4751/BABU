@@ -39,20 +39,102 @@ DEPARTMENTS: Dict[str, str] = {
 # ---------------------------------------------------------------------------
 # Intent Governance Layer & Packet Structures
 # ---------------------------------------------------------------------------
-
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import List, Optional
 
 @dataclass
 class IntentPacket:
-    """Represents a classified query intent with strict execution capability limits and execution modes."""
-    lookup: bool = False
-    research: bool = False
-    generate: bool = False
-    execute: bool = False
-    websearch: bool = False
-    writer: bool = False
+    """Represents a classified query intent with dynamic execution capability boundaries."""
+    allowed_departments: List[str] = field(default_factory=lambda: ["pa"])
+    allowed_actions: List[str] = field(default_factory=list)
     execution_mode: str = "READ_ONLY"  # "READ_ONLY", "APPROVAL_REQUIRED", "AUTO_EXECUTE"
     confidence: float = 1.0
+
+    def __init__(
+        self,
+        allowed_departments: Optional[List[str]] = None,
+        allowed_actions: Optional[List[str]] = None,
+        execution_mode: str = "READ_ONLY",
+        confidence: float = 1.0,
+        # Legacy keyword args for compatibility
+        lookup: Optional[bool] = None,
+        research: Optional[bool] = None,
+        generate: Optional[bool] = None,
+        execute: Optional[bool] = None,
+        websearch: Optional[bool] = None,
+        writer: Optional[bool] = None,
+    ):
+        self.execution_mode = execution_mode
+        self.confidence = confidence
+
+        if allowed_departments is not None:
+            self.allowed_departments = allowed_departments
+        else:
+            depts = ["pa"]
+            if lookup or websearch:
+                depts.extend(["information", "execution"])
+            if research:
+                depts.extend(["research", "information", "execution"])
+            if generate or writer:
+                depts.extend(["analysis", "writing"])
+            if execute:
+                depts.extend(["execution"])
+            self.allowed_departments = list(dict.fromkeys(depts))
+
+        if allowed_actions is not None:
+            self.allowed_actions = allowed_actions
+        else:
+            actions = []
+            if execute:
+                actions = [
+                    "send_email", "create_event", "log_to_sheet", "create_doc", 
+                    "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
+                    "send_slack", "create_task", "search_image", "search_gmail",
+                    "post_to_facebook"
+                ]
+            else:
+                actions = ["search_sheet", "search_gmail"]
+            self.allowed_actions = actions
+
+        # Align allowed_departments with allowed_actions: if any execution actions are specified, ensure "execution" is in allowed_departments
+        _execution_actions = {
+            "send_email", "create_event", "log_to_sheet", "create_doc", 
+            "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
+            "send_slack", "create_task", "search_image", "search_gmail",
+            "post_to_facebook"
+        }
+        if any(act in self.allowed_actions for act in _execution_actions):
+            if "execution" not in self.allowed_departments:
+                self.allowed_departments = list(self.allowed_departments) + ["execution"]
+
+    @property
+    def lookup(self) -> bool:
+        return "information" in self.allowed_departments
+
+    @property
+    def research(self) -> bool:
+        return "research" in self.allowed_departments
+
+    @property
+    def generate(self) -> bool:
+        return any(d in self.allowed_departments for d in ("analysis", "writing"))
+
+    @property
+    def execute(self) -> bool:
+        mutating_actions = {
+            "send_email", "create_event", "log_to_sheet", "create_doc", 
+            "copy_photos_to_drive", "copy_contacts_to_drive", 
+            "send_slack", "create_task", "post_to_facebook"
+        }
+        return any(act in self.allowed_actions for act in mutating_actions)
+
+    @property
+    def websearch(self) -> bool:
+        return any(d in self.allowed_departments for d in ("research", "information"))
+
+    @property
+    def writer(self) -> bool:
+        return "writing" in self.allowed_departments
 
     def to_dict(self) -> dict:
         return {
@@ -63,38 +145,67 @@ class IntentPacket:
             "websearch": self.websearch,
             "writer": self.writer,
             "execution_mode": self.execution_mode,
-            "confidence": self.confidence
+            "confidence": self.confidence,
+            "allowed_departments": self.allowed_departments,
+            "allowed_actions": self.allowed_actions,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "IntentPacket":
+        allowed_depts = data.get("allowed_departments")
+        if allowed_depts is None:
+            allowed_depts = ["pa"]
+            if data.get("lookup") or data.get("websearch"):
+                allowed_depts.extend(["information", "execution"])
+            if data.get("research"):
+                allowed_depts.extend(["research", "information", "execution"])
+            if data.get("generate") or data.get("writer"):
+                allowed_depts.extend(["analysis", "writing"])
+            if data.get("execute"):
+                allowed_depts.extend(["execution"])
+            allowed_depts = list(dict.fromkeys(allowed_depts))
+
+        allowed_actions = data.get("allowed_actions")
+        if allowed_actions is None:
+            allowed_actions = []
+            if data.get("execute"):
+                allowed_actions = [
+                    "send_email", "create_event", "log_to_sheet", "create_doc", 
+                    "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
+                    "send_slack", "create_task", "search_image", "search_gmail",
+                    "post_to_facebook"
+                ]
+            else:
+                allowed_actions = ["search_sheet", "search_gmail"]
+
         return cls(
-            lookup=data.get("lookup", False),
-            research=data.get("research", False),
-            generate=data.get("generate", False),
-            execute=data.get("execute", False),
-            websearch=data.get("websearch", False),
-            writer=data.get("writer", False),
+            allowed_departments=allowed_depts,
+            allowed_actions=allowed_actions,
             execution_mode=data.get("execution_mode", "READ_ONLY"),
             confidence=data.get("confidence", 1.0)
         )
 
 INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
     "You are ARIA's Intent Classifier. Your ONLY job is to classify the user's "
-    "conversational intent into a structured IntentPacket JSON.\n"
+    "conversational intent into a structured IntentPacket JSON containing capability routing templates.\n"
     "\n"
-    "CAPABILITIES DEFINITION:\n"
-    "- lookup: True if finding facts, checking chitchat, or searching local profile/memory is required. "
-    "This includes any query referencing personal details, business context, or profile info (such as 'my official mail', 'my business name', 'my phone', 'my name', etc.) to ensure the system is permitted to retrieve this information from the local profile/memory.\n"
-    "- research: True if deep information gathering, multiple source evaluation, or cross-referencing is required.\n"
-    "- generate: True if data analysis, content creation, report drafting, comparison, or synthesis is required.\n"
-    "- execute: True if a physical mutation action (sending emails, creating Google Docs/Events, logging to sheets, publishing posts to facebook) is explicitly requested.\n"
-    "- websearch: True if searching the web or Wikipedia for external general knowledge is required.\n"
-    "- writer: True if drafting text, emails, or reports is required.\n"
+    "DEPARTMENT DEFINITIONS:\n"
+    "- information: Set if query requires quick facts lookup, chitchat response, or searching local profile/memory "
+    "(such as user name, business info, contacts, or personal details like 'my official mail').\n"
+    "- research: Set if query requires deep academic or comprehensive multi-source web research requiring verifications and source listing.\n"
+    "- analysis: Set if query requires data analysis, reasoning, or comparing data.\n"
+    "- writing: Set if query requires report drafting, email generation, text summarization, or formatting.\n"
+    "- execution: Set if query requires a physical action (sending email, creating docs/events, logging to sheets, publishing to facebook) or read-only Workspace retrieval (search_sheet, search_gmail).\n"
+    "- pa: Direct user response synthesis (always include 'pa' in allowed_departments).\n"
+    "\n"
+    "EXECUTION ACTION DEFINITIONS (Only include in allowed_actions if execution department is active):\n"
+    "- Google/Facebook Actions: send_email, create_event, log_to_sheet, create_doc, copy_photos_to_drive, copy_contacts_to_drive, post_to_facebook\n"
+    "- Read-only Retrieval Actions: search_sheet, search_gmail\n"
+    "- Other Actions: send_slack, create_task, search_image\n"
     "\n"
     "EXECUTION MODE DEFINITION:\n"
     "- READ_ONLY: The query is informational or research-based. No changes, drafts, or execution actions allowed.\n"
-    "- APPROVAL_REQUIRED: User requested a mutation action (e.g. email, document creation, sheet logging) that requires user audit and approval before dispatch.\n"
+    "- APPROVAL_REQUIRED: User requested a mutation action (e.g. email, document creation, sheet logging, publishing to facebook) that requires user audit and approval before dispatch.\n"
     "- AUTO_EXECUTE: User requested a highly structured, scheduled, or automated background task (like daily marketing posts) that does not need explicit user approval.\n"
     "\n"
     "CONFIDENCE RATING:\n"
@@ -102,12 +213,8 @@ INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
     "\n"
     "JSON SCHEMA:\n"
     "{\n"
-    '  "lookup": true | false,\n'
-    '  "research": true | false,\n'
-    '  "generate": true | false,\n'
-    '  "execute": true | false,\n'
-    '  "websearch": true | false,\n'
-    '  "writer": true | false,\n'
+    '  "allowed_departments": ["list", "of", "required", "departments"],\n'
+    '  "allowed_actions": ["list", "of", "permitted", "actions"],\n'
     '  "execution_mode": "READ_ONLY | APPROVAL_REQUIRED | AUTO_EXECUTE",\n'
     '  "confidence": 0.0 to 1.0\n'
     "}\n"
@@ -123,9 +230,9 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
     greetings = {"hi", "hello", "hey", "good morning", "good afternoon", "good evening", "how are you", "help", "clear", "stats", "model"}
     if t in greetings or len(t) < 15:
         print("[INTENT CLASSIFIER] Fast-track classification: CHORE", flush=True)
-        return IntentPacket(lookup=True, research=False, generate=False, execute=False, websearch=False, writer=False, execution_mode="READ_ONLY", confidence=1.0)
+        return IntentPacket(allowed_departments=["information", "pa"], allowed_actions=["search_sheet", "search_gmail"], execution_mode="READ_ONLY", confidence=1.0)
 
-    # 1b. Rule-based programmatic override: force lookup=True when query contains personal data references
+    # 1b. Rule-based programmatic override: force lookup when query contains personal data references
     # The LLM (small model) frequently ignores this for email/phone/name/address patterns
     _personal_data_markers = (
         "my official mail", "my official email", "official mail", "official email",
@@ -167,24 +274,31 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
         raw_text = response.content.strip()
         data = _extract_json(raw_text)
         packet = IntentPacket.from_dict(data)
-        # Programmatic override: ensure lookup is True if personal data is referenced
+        # Programmatic override: ensure lookup/information is present if personal data is referenced
         if _force_lookup and not packet.lookup:
-            print("[INTENT CLASSIFIER] Programmatic override: forcing lookup=True due to personal data reference in query.", flush=True)
+            print("[INTENT CLASSIFIER] Programmatic override: forcing information department due to personal data reference in query.", flush=True)
+            allowed_depts = list(packet.allowed_departments)
+            if "information" not in allowed_depts:
+                allowed_depts.append("information")
+            if "execution" not in allowed_depts:
+                allowed_depts.append("execution")
+            allowed_actions = list(packet.allowed_actions)
+            for act in ("search_sheet", "search_gmail"):
+                if act not in allowed_actions:
+                    allowed_actions.append(act)
             packet = IntentPacket(
-                lookup=True,
-                research=packet.research,
-                generate=packet.generate,
-                execute=packet.execute,
-                websearch=packet.websearch,
-                writer=packet.writer,
+                allowed_departments=allowed_depts,
+                allowed_actions=allowed_actions,
                 execution_mode=packet.execution_mode,
                 confidence=packet.confidence,
             )
-        print(f"[INTENT CLASSIFIER] Classified: lookup={packet.lookup}, research={packet.research}, gen={packet.generate}, exec={packet.execute}, websearch={packet.websearch}, writer={packet.writer}, mode={packet.execution_mode}, conf={packet.confidence}", flush=True)
+        print(f"[INTENT CLASSIFIER] Classified: allowed_depts={packet.allowed_departments}, allowed_actions={packet.allowed_actions}, mode={packet.execution_mode}, conf={packet.confidence}", flush=True)
         return packet
     except Exception as e:
         print(f"[INTENT CLASSIFIER] Failed to classify intent: {e}. Defaulting to READ_ONLY fallback.", flush=True)
-        return IntentPacket(lookup=_force_lookup, research=False, generate=False, execute=False, websearch=False, writer=False, execution_mode="READ_ONLY", confidence=0.5)
+        default_depts = ["information", "pa"] if _force_lookup else ["pa"]
+        default_actions = ["search_sheet", "search_gmail"] if _force_lookup else []
+        return IntentPacket(allowed_departments=default_depts, allowed_actions=default_actions, execution_mode="READ_ONLY", confidence=0.5)
 
 # ---------------------------------------------------------------------------
 # System prompt
@@ -198,11 +312,8 @@ PLANNER_SYSTEM_PROMPT: str = (
     "- Output ONLY valid JSON. No markdown, no explanation.\n"
     "- GOAL CORRECTIONS: If the user query is a correction, typo fix, or modification of a previous goal in the recent conversation history (e.g. 'I meant monitoring, not monetary' or 'correct the topic to X'), you must identify the corrected goal topic and plan the task DAG for the corrected goal, not the incorrect one.\n"
     "- INTENT CONSTRAINTS: The system has pre-classified the user's intent boundaries. You must strictly obey these constraints:\n"
-    "  * If lookup is false and websearch is false and research is false, you must NOT create any 'information' or 'research' tasks.\n"
-    "  * If research is false, the 'research' department is a conditional branch and you are STRICTLY FORBIDDEN from creating 'research' tasks. Only use 'information' tasks for general lookups if external info retrieval is needed.\n"
-    "  * INDEPENDENT WORKERS: Other departments (such as 'writing', 'analysis', and 'execution') operate completely independently. Do NOT prepend a 'research' task to every goal. If the query does not require deep research (research is false), workers like the writer or synthesizer should work directly using user queries or profile context without a preceding research task.\n"
-    "  * If generate is false and writer is false, you must NOT create any 'analysis' or 'writing' tasks.\n"
-    "  * If execute is false, you are STRICTLY FORBIDDEN from creating mutating 'execution' department tasks (e.g. sending emails, creating events, or creating docs). You are only allowed to plan read-only actions like 'search_sheet' or 'search_gmail'. Creating unauthorized mutating execution tasks is a critical safety violation.\n"
+    "  * allowed_departments: You are ONLY allowed to create tasks for the departments listed in 'allowed_departments'. Any other department is strictly prohibited.\n"
+    "  * allowed_actions: For 'execution' department tasks, you are ONLY allowed to plan the actions listed in 'allowed_actions'. Planning any other execution action is strictly prohibited.\n"
     "  * execution_mode: Read this setting carefully. If it is 'READ_ONLY', you must only plan read-only informational/research tasks and end with a 'pa' task; no draft or mutation actions are allowed. If it is 'APPROVAL_REQUIRED', you can create 'execution' tasks but they will go through an approval check. If it is 'AUTO_EXECUTE', you are allowed to plan automated background execution dispatches.\n"
     "- CORRECT TASK SEQUENCING: If the goal requires multiple sequential steps or multiple execution actions (e.g. first research X, then write a report, then create a Google Doc, and finally send an email), you must establish strict dependency links (depends_on) between these tasks to ensure they execute in the correct chronological order (e.g. writing depends on research, Doc creation depends on writing, and email sending depends on Doc creation). If there are multiple execution department tasks, chain them sequentially (T_execution_N depends on T_execution_N-1) to ensure the user audits and approves them in the correct sequence.\n"
     "- Each task must have: task_id (T1, T2, ...), objective, department, depends_on (list of task_ids), priority (1=highest), compliance_checklist (list of strings), and grant_profile_access (boolean).\n"
@@ -312,39 +423,37 @@ def _build_fallback_graph(
 
 
 def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]]:
-    """Dynamically resolve allowed departments and allowed actions based on intent packet capabilities union."""
-    allowed_depts = {"pa"}
-    allowed_actions = set()
+    """Dynamically resolve allowed departments and allowed actions based on intent packet."""
+    allowed_depts = intent_packet_dict.get("allowed_departments")
+    allowed_actions = intent_packet_dict.get("allowed_actions")
 
-    if intent_packet_dict.get("lookup", False) or intent_packet_dict.get("websearch", False):
-        allowed_depts.update({"information", "execution"})
-        allowed_actions.update({"search_sheet", "search_gmail"})
+    if allowed_depts is None:
+        # Fallback to reconstructing from legacy boolean flags for backward compatibility
+        allowed_depts = ["pa"]
+        if intent_packet_dict.get("lookup") or intent_packet_dict.get("websearch"):
+            allowed_depts.extend(["information", "execution"])
+        if intent_packet_dict.get("research"):
+            allowed_depts.extend(["research", "information", "execution"])
+        if intent_packet_dict.get("generate") or intent_packet_dict.get("writer"):
+            allowed_depts.extend(["analysis", "writing"])
+        if intent_packet_dict.get("execute"):
+            allowed_depts.extend(["execution"])
+        allowed_depts = list(dict.fromkeys(allowed_depts))
 
-    if intent_packet_dict.get("research", False):
-        allowed_depts.update({"research", "information", "execution"})
-        allowed_actions.update({"search_gmail"})
+    if allowed_actions is None:
+        if intent_packet_dict.get("execute"):
+            allowed_actions = [
+                "send_email", "create_event", "log_to_sheet", "create_doc", 
+                "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
+                "send_slack", "create_task", "search_image", "search_gmail",
+                "post_to_facebook"
+            ]
+        else:
+            allowed_actions = ["search_sheet", "search_gmail"]
 
-    if intent_packet_dict.get("generate", False) or intent_packet_dict.get("writer", False):
-        allowed_depts.update({"analysis", "writing"})
-
-    if intent_packet_dict.get("execute", False):
-        allowed_depts.add("execution")
-        all_actions = {
-            "send_email", "create_event", "log_to_sheet", "create_doc", 
-            "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
-            "send_slack", "create_task", "search_image", "search_gmail",
-            "post_to_facebook"
-        }
-        allowed_actions.update(all_actions)
-
-    # Dynamic capability pruning for execute=False
-    if not intent_packet_dict.get("execute", False):
-        if "execution" in allowed_depts:
-            allowed_actions = allowed_actions.intersection({"search_sheet", "search_gmail"})
-            if not allowed_actions:
-                allowed_depts.discard("execution")
-
-    return allowed_depts, allowed_actions
+    allowed_depts_set = set(allowed_depts)
+    allowed_depts_set.add("pa")
+    return allowed_depts_set, set(allowed_actions)
 
 
 # ---------------------------------------------------------------------------
@@ -401,12 +510,8 @@ def plan_goal(
     if intent_packet:
         user_content_parts.append(
             f"Pre-classified Intent Boundaries:\n"
-            f"- lookup: {intent_packet.lookup}\n"
-            f"- research: {intent_packet.research}\n"
-            f"- generate: {intent_packet.generate}\n"
-            f"- execute: {intent_packet.execute}\n"
-            f"- websearch: {intent_packet.websearch}\n"
-            f"- writer: {intent_packet.writer}\n"
+            f"- allowed_departments: {intent_packet.allowed_departments}\n"
+            f"- allowed_actions: {intent_packet.allowed_actions}\n"
             f"- execution_mode: {intent_packet.execution_mode}\n"
             f"- confidence: {intent_packet.confidence}"
         )

@@ -21,39 +21,37 @@ except ImportError:
     from memory import get_anti_pattern_rules
     from google_service import is_google_configured
 def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]]:
-    """Dynamically resolve allowed departments and allowed actions based on intent packet capabilities union."""
-    allowed_depts = {"pa"}
-    allowed_actions = set()
+    """Dynamically resolve allowed departments and allowed actions based on intent packet."""
+    allowed_depts = intent_packet_dict.get("allowed_departments")
+    allowed_actions = intent_packet_dict.get("allowed_actions")
 
-    if intent_packet_dict.get("lookup", False) or intent_packet_dict.get("websearch", False):
-        allowed_depts.update({"information", "execution"})
-        allowed_actions.update({"search_sheet", "search_gmail"})
+    if allowed_depts is None:
+        # Fallback to reconstructing from legacy boolean flags for backward compatibility
+        allowed_depts = ["pa"]
+        if intent_packet_dict.get("lookup") or intent_packet_dict.get("websearch"):
+            allowed_depts.extend(["information", "execution"])
+        if intent_packet_dict.get("research"):
+            allowed_depts.extend(["research", "information", "execution"])
+        if intent_packet_dict.get("generate") or intent_packet_dict.get("writer"):
+            allowed_depts.extend(["analysis", "writing"])
+        if intent_packet_dict.get("execute"):
+            allowed_depts.extend(["execution"])
+        allowed_depts = list(dict.fromkeys(allowed_depts))
 
-    if intent_packet_dict.get("research", False):
-        allowed_depts.update({"research", "information", "execution"})
-        allowed_actions.update({"search_gmail"})
+    if allowed_actions is None:
+        if intent_packet_dict.get("execute"):
+            allowed_actions = [
+                "send_email", "create_event", "log_to_sheet", "create_doc", 
+                "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
+                "send_slack", "create_task", "search_image", "search_gmail",
+                "post_to_facebook"
+            ]
+        else:
+            allowed_actions = ["search_sheet", "search_gmail"]
 
-    if intent_packet_dict.get("generate", False) or intent_packet_dict.get("writer", False):
-        allowed_depts.update({"analysis", "writing"})
-
-    if intent_packet_dict.get("execute", False):
-        allowed_depts.add("execution")
-        all_actions = {
-            "send_email", "create_event", "log_to_sheet", "create_doc", 
-            "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
-            "send_slack", "create_task", "search_image", "search_gmail",
-            "post_to_facebook"
-        }
-        allowed_actions.update(all_actions)
-
-    # Dynamic capability pruning for execute=False
-    if not intent_packet_dict.get("execute", False):
-        if "execution" in allowed_depts:
-            allowed_actions = allowed_actions.intersection({"search_sheet", "search_gmail"})
-            if not allowed_actions:
-                allowed_depts.discard("execution")
-
-    return allowed_depts, allowed_actions
+    allowed_depts_set = set(allowed_depts)
+    allowed_depts_set.add("pa")
+    return allowed_depts_set, set(allowed_actions)
 
 
 class PreExecutionGatekeeper:
