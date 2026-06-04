@@ -745,6 +745,12 @@
         "status": "SUCCESS",
         "details": "Message: Published successfully | Topic: Manual Post Hi",
         "timestamp": "2026-06-04T09:39:23.580506+00:00"
+      },
+      {
+        "task_name": "Causal FB Marketing Post",
+        "status": "SUCCESS",
+        "details": "Message: Published successfully | Topic: Manual Post Hi",
+        "timestamp": "2026-06-04T10:19:01.503913+00:00"
       }
     ]
   }

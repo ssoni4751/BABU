@@ -1044,7 +1044,8 @@ def execute_google_action(action: str, params: dict) -> tuple[bool, str]:
             except ImportError:
                 from social_media import generate_social_post_draft, publish_to_facebook_page
             
-            if (caption and not topic) or image_path:
+            is_manual_caption = caption and "[NEEDS_RESEARCH_CONTEXT]" not in caption
+            if is_manual_caption or image_path:
                 # Manual content post: bypass heavy automated background card rendering
                 print(f"[FACEBOOK ACTION] Manual post requested. Caption: {caption} | Image: {image_path}", flush=True)
                 ok, msg = publish_to_facebook_page(image_path, caption)

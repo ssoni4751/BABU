@@ -128,8 +128,8 @@ class TestUnifiedPublishing(unittest.TestCase):
         """Test that post_to_facebook bypasses image-draft auto-generation if caption is manually specified."""
         mock_publish.return_value = (True, "Published successfully")
         
-        # Manual query: caption specified, topic not specified
-        ok, msg = execute_google_action("post_to_facebook", {"caption": "Manual Post Hi", "topic": ""})
+        # Manual query: caption specified, even if topic is set to default (like 'general')
+        ok, msg = execute_google_action("post_to_facebook", {"caption": "Manual Post Hi", "topic": "general"})
         
         self.assertTrue(ok)
         self.assertEqual(msg, "Published successfully")
