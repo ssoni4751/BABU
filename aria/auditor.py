@@ -44,7 +44,7 @@ def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]
                 "send_email", "create_event", "log_to_sheet", "create_doc", 
                 "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
                 "send_slack", "create_task", "search_image", "search_gmail",
-                "post_to_facebook"
+                "post_to_facebook", "generate_image"
             ]
         else:
             allowed_actions = ["search_sheet", "search_gmail"]
@@ -71,7 +71,8 @@ class PreExecutionGatekeeper:
             "create_task",
             "search_image",
             "search_gmail",
-            "post_to_facebook"
+            "post_to_facebook",
+            "generate_image"
         }
 
     def audit(self, task: TaskDTO) -> Tuple[bool, str]:

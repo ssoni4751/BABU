@@ -287,10 +287,11 @@ class WritingHead(DepartmentHead):
             "upstream_results": task.context.get("upstream_results", []),
             "formatting": task.context.get("formatting", {}),
             "sender_profile": user_context,
+            "protocol": task.context.get("protocol", "research"),
         }
 
     def _run_worker(self, task: TaskDTO, scoped_context: dict, llm: Any) -> tuple[str, dict]:
-        """Override to inject specific writing guidelines (e.g. preserving citations/links)."""
+        """Override to inject specific writing guidelines based on protocol."""
         from langchain_core.messages import SystemMessage, HumanMessage
         try:
             from .workers import extract_tokens
@@ -299,11 +300,65 @@ class WritingHead(DepartmentHead):
             from workers import extract_tokens
             from memory import get_anti_pattern_rules
 
+        protocol = scoped_context.get("protocol", "research").strip().lower()
+
+        if protocol == "email":
+            protocol_instruction = (
+                "WRITING PROTOCOL: Email\n"
+                "Purpose: Direct communication.\n"
+                "Rules:\n"
+                "- Write in a clear, professional, and action-oriented tone.\n"
+                "- Do NOT include citations, references, bibliographies, or source URLs/links unless explicitly requested in the objective.\n"
+                "- Avoid dumping research papers or raw data logs; summarize concisely.\n"
+                "- Follow standard professional email structure (Greeting, Body, Sign-off)."
+            )
+        elif protocol == "letter":
+            protocol_instruction = (
+                "WRITING PROTOCOL: Letter\n"
+                "Purpose: Formal communication.\n"
+                "Rules:\n"
+                "- Include standard letter parts (Address block placeholders, Subject line, formal Salutation, structured Body, formal Closing/Sign-off).\n"
+                "- Do NOT include research citations or bibliographies."
+            )
+        elif protocol in ("publishing", "facebook_post", "facebook"):
+            protocol_instruction = (
+                "WRITING PROTOCOL: Publishing / Social Media Post\n"
+                "Purpose: Public consumption and social media publishing.\n"
+                "Rules:\n"
+                "- Focus on high engagement, readability, and a modern, appealing brand voice.\n"
+                "- Keep it relatively short and engaging.\n"
+                "- Optionally include relevant hashtags at the end if suitable.\n"
+                "- Do NOT include raw research citations, bibliography, or source links unless explicitly requested."
+            )
+        elif protocol == "complaint":
+            protocol_instruction = (
+                "WRITING PROTOCOL: Complaint\n"
+                "Purpose: Escalation of issues.\n"
+                "Rules:\n"
+                "- Focus heavily on clear facts, dates, occurrences, and requested resolution/action.\n"
+                "- Maintain a formal, assertive, yet polite and structured tone."
+            )
+        elif protocol == "report":
+            protocol_instruction = (
+                "WRITING PROTOCOL: Report\n"
+                "Purpose: Internal documentation.\n"
+                "Rules:\n"
+                "- Include a structured layout with clear findings, summary, and documented sources."
+            )
+        else: # default 'research'
+            protocol_instruction = (
+                "WRITING PROTOCOL: Research Writing\n"
+                "Purpose: Comprehensive knowledge transfer.\n"
+                "Rules:\n"
+                "- If the provided upstream context contains any credible sources, reference links, URLs, or citations, you MUST carry them forward and embed or list them in a dedicated 'Sources & Citations' section at the end of your document. Do NOT lose or omit any source links.\n"
+                "- Structure the analysis factually and professionally."
+            )
+
         system = (
-            "ARIA Worker [WRITING]: You are ARIA's professional corporate copywriter and report editor.\n"
-            "Your task is to write a well-structured, clear, and easy-to-understand deliverable based on the provided upstream context.\n"
-            "CRITICAL: If the provided upstream context ('upstream_results') contains any credible sources, reference links, URLs, or citations, you MUST carry them forward and embed or list them in a dedicated 'Sources & Citations' section at the end of your document. Do NOT lose or omit any source links.\n"
-            "Be extremely factual and professional. Do not assume or invent facts outside of the provided context."
+            f"ARIA Worker [WRITING]: You are ARIA's professional corporate copywriter and editor.\n"
+            f"Your task is to write a well-structured and clear deliverable based on the provided upstream context.\n\n"
+            f"{protocol_instruction}\n\n"
+            f"Be extremely factual and professional. Do not assume or invent facts outside of the provided context."
         )
 
         anti_patterns = get_anti_pattern_rules("department.writing")
@@ -312,7 +367,7 @@ class WritingHead(DepartmentHead):
 
         user_content = json.dumps(scoped_context, ensure_ascii=False, default=str)
 
-        print(f"[WORKER:WRITING] Starting LLM invocation with strict citation-lock guidance...", flush=True)
+        print(f"[WORKER:WRITING] Starting LLM invocation with protocol: {protocol}...", flush=True)
         res = llm.invoke([
             SystemMessage(content=system),
             HumanMessage(content=user_content)
@@ -423,6 +478,28 @@ class ExecutionHead(DepartmentHead):
         else:
             address_str = str(residential)
 
+        # Helper to extract existing file path from context
+        def _extract_existing_file_path(text: str) -> Optional[str]:
+            if not text:
+                return None
+            path_candidate = text.strip()
+            if os.path.exists(path_candidate) and os.path.isfile(path_candidate):
+                return path_candidate
+            # Split by common delimiters
+            words = re.split(r'[\s"\']', text)
+            for word in words:
+                word_clean = word.strip().strip(".:()[]{}")
+                if not word_clean:
+                    continue
+                try:
+                    if os.path.exists(word_clean) and os.path.isfile(word_clean):
+                        return word_clean
+                except Exception:
+                    pass
+            return None
+
+        upstream_file_path = _extract_existing_file_path(research_text)
+
         def resolve_value(val):
             if not isinstance(val, str):
                 return val
@@ -475,7 +552,10 @@ class ExecutionHead(DepartmentHead):
             if resolved_val != value:
                 resolved[key] = resolved_val
             elif "[NEEDS_RESEARCH_CONTEXT]" in val_str:
-                resolved[key] = val_str.replace("[NEEDS_RESEARCH_CONTEXT]", research_text.strip() if research_text else "(No research/analysis context found)")
+                if key in ("image_path", "file_path") and upstream_file_path:
+                    resolved[key] = upstream_file_path
+                else:
+                    resolved[key] = val_str.replace("[NEEDS_RESEARCH_CONTEXT]", research_text.strip() if research_text else "(No research/analysis context found)")
             elif key in ("body", "content") and research_text:
                 # Dynamically inject research findings if body/content is short or a placeholder,
                 # ensuring the actual drafted work is sent instead of a generic subject line/summary.
@@ -489,6 +569,14 @@ class ExecutionHead(DepartmentHead):
                     resolved[key] = val_str
             else:
                 resolved[key] = val_str if isinstance(value, str) else value
+
+        # If we have an upstream file path but it wasn't explicitly resolved, set it
+        if upstream_file_path:
+            if "image_path" not in resolved or not resolved["image_path"]:
+                resolved["image_path"] = upstream_file_path
+            if "file_path" not in resolved or not resolved["file_path"]:
+                resolved["file_path"] = upstream_file_path
+
         return resolved
 
 

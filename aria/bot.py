@@ -1635,9 +1635,9 @@ def task_executor_node(state: AriaState):
                         }
                         
                     # Format a beautiful preview of the action plan!
-                    preview_fields = {k: v for k, v in resolved_params.items() if k not in ("body", "content")}
+                    preview_fields = {k: v for k, v in resolved_params.items() if k not in ("body", "content", "caption")}
                     fields_str = "\n".join(f"  • {k.capitalize()}: {v}" for k, v in preview_fields.items())
-                    body_preview = resolved_params.get("body", resolved_params.get("content", ""))
+                    body_preview = resolved_params.get("body", resolved_params.get("content", resolved_params.get("caption", "")))
                     
                     preview = fields_str
                     if body_preview:
@@ -1990,6 +1990,30 @@ def resolve_action_params(params: dict, research_text: str = "") -> dict:
     details = profile.get("personal_details", {}) if profile else {}
     address_str = details.get("residential_address", {}).get("address", "") if isinstance(details.get("residential_address"), dict) else details.get("residential_address", "")
     
+    # Helper to extract existing file path from context
+    def _extract_existing_file_path(text: str) -> Optional[str]:
+        if not text:
+            return None
+        import re
+        import os
+        path_candidate = text.strip()
+        if os.path.exists(path_candidate) and os.path.isfile(path_candidate):
+            return path_candidate
+        # Split by common delimiters
+        words = re.split(r'[\s"\']', text)
+        for word in words:
+            word_clean = word.strip().strip(".:()[]{}")
+            if not word_clean:
+                continue
+            try:
+                if os.path.exists(word_clean) and os.path.isfile(word_clean):
+                    return word_clean
+            except Exception:
+                pass
+        return None
+
+    upstream_file_path = _extract_existing_file_path(research_text)
+
     def resolve_value(val):
         if not isinstance(val, str):
             return val
@@ -2027,9 +2051,20 @@ def resolve_action_params(params: dict, research_text: str = "") -> dict:
         if resolved_val != v:
             resolved_params[k] = resolved_val
         elif "[NEEDS_RESEARCH_CONTEXT]" in val_str:
-            resolved_params[k] = val_str.replace("[NEEDS_RESEARCH_CONTEXT]", research_text.strip() if research_text else "(No research context found)")
+            if k in ("image_path", "file_path") and upstream_file_path:
+                resolved_params[k] = upstream_file_path
+            else:
+                resolved_params[k] = val_str.replace("[NEEDS_RESEARCH_CONTEXT]", research_text.strip() if research_text else "(No research context found)")
         else:
             resolved_params[k] = v
+
+    # If we have an upstream file path but it wasn't explicitly resolved, set it
+    if upstream_file_path:
+        if "image_path" not in resolved_params or not resolved_params["image_path"]:
+            resolved_params["image_path"] = upstream_file_path
+        if "file_path" not in resolved_params or not resolved_params["file_path"]:
+            resolved_params["file_path"] = upstream_file_path
+
     return resolved_params
 
 

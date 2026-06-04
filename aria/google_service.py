@@ -169,8 +169,8 @@ def validate_google_token_health(bot_token: str = None, chat_id: int = None) -> 
 
 # ── Action Helper functions ──────────────────────────────────────────────────
 
-def send_gmail(to: str, subject: str, body: str) -> tuple[bool, str]:
-    """Send an email on behalf of the user using the Gmail API."""
+def send_gmail(to: str, subject: str, body: str, image_path: str = None) -> tuple[bool, str]:
+    """Send an email on behalf of the user using the Gmail API, optionally attaching an image."""
     creds = get_google_creds()
     if not creds:
         return False, "Google Workspace authentication not configured."
@@ -178,9 +178,35 @@ def send_gmail(to: str, subject: str, body: str) -> tuple[bool, str]:
     try:
         from googleapiclient.discovery import build
         service = build("gmail", "v1", credentials=creds)
-        message = MIMEText(body)
-        message["to"] = to
-        message["subject"] = subject
+
+        if image_path and os.path.exists(image_path):
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.image import MIMEImage
+            import mimetypes
+
+            message = MIMEMultipart()
+            message["to"] = to
+            message["subject"] = subject
+
+            # Attach text body
+            message.attach(MIMEText(body))
+
+            # Identify MIME type and attach image
+            content_type, encoding = mimetypes.guess_type(image_path)
+            if content_type is None or not content_type.startswith("image/"):
+                content_type = "image/jpeg"
+
+            main_type, sub_type = content_type.split("/", 1)
+            with open(image_path, "rb") as f:
+                img_data = f.read()
+
+            image_attachment = MIMEImage(img_data, name=os.path.basename(image_path), _subtype=sub_type)
+            image_attachment.add_header('Content-Disposition', 'attachment', filename=os.path.basename(image_path))
+            message.attach(image_attachment)
+        else:
+            message = MIMEText(body)
+            message["to"] = to
+            message["subject"] = subject
 
         # Encode mime message in urlsafe base64
         raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
@@ -926,9 +952,25 @@ def execute_google_action(action: str, params: dict) -> tuple[bool, str]:
         to = params.get("to", "")
         subject = params.get("subject", "Automated Message from ARIA")
         body = params.get("body", "")
+        image_path = params.get("image_path", params.get("file_path", ""))
         if not to or not body:
             return False, "Missing recipient 'to' or message 'body' parameters."
-        return send_gmail(to, subject, body)
+        return send_gmail(to, subject, body, image_path)
+
+    elif action == "generate_image":
+        prompt = params.get("prompt", "")
+        if not prompt:
+            return False, "Missing 'prompt' parameter to generate image."
+        try:
+            try:
+                from .social_media import generate_flux_graphic
+            except ImportError:
+                from social_media import generate_flux_graphic
+            print(f"[FACEBOOK/GMAIL ACTION] Generating image for prompt: {prompt}", flush=True)
+            image_path = generate_flux_graphic(prompt)
+            return True, image_path
+        except Exception as e:
+            return False, f"Failed to generate image: {e}"
 
     elif action == "create_event":
         title = params.get("title", "New Event")
@@ -995,18 +1037,27 @@ def execute_google_action(action: str, params: dict) -> tuple[bool, str]:
     elif action == "post_to_facebook":
         caption = params.get("caption", "")
         topic = params.get("topic", "")
+        image_path = params.get("image_path", params.get("file_path", ""))
         try:
             try:
                 from .social_media import generate_social_post_draft, publish_to_facebook_page
             except ImportError:
                 from social_media import generate_social_post_draft, publish_to_facebook_page
-            target_topic = topic or caption or "general computer consultancy"
-            print(f"[FACEBOOK ACTION] Generating draft for topic: {target_topic}", flush=True)
-            draft = generate_social_post_draft(custom_topic=target_topic)
-            if caption and not topic:
-                draft["caption"] = caption
-            print(f"[FACEBOOK ACTION] Publishing draft to Facebook Page...", flush=True)
-            ok, msg = publish_to_facebook_page(draft["image_path"], draft["caption"])
+            
+            if (caption and not topic) or image_path:
+                # Manual content post: bypass heavy automated background card rendering
+                print(f"[FACEBOOK ACTION] Manual post requested. Caption: {caption} | Image: {image_path}", flush=True)
+                ok, msg = publish_to_facebook_page(image_path, caption)
+                target_topic = caption or "Manual text/image post"
+            else:
+                target_topic = topic or "general computer consultancy"
+                print(f"[FACEBOOK ACTION] Generating draft for topic: {target_topic}", flush=True)
+                draft = generate_social_post_draft(custom_topic=target_topic)
+                if caption and not topic:
+                    draft["caption"] = caption
+                print(f"[FACEBOOK ACTION] Publishing draft to Facebook Page...", flush=True)
+                ok, msg = publish_to_facebook_page(draft["image_path"], draft["caption"])
+            
             try:
                 try:
                     from .memory import append_to_profile_ledger

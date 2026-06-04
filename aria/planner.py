@@ -90,7 +90,7 @@ class IntentPacket:
                     "send_email", "create_event", "log_to_sheet", "create_doc", 
                     "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
                     "send_slack", "create_task", "search_image", "search_gmail",
-                    "post_to_facebook"
+                    "post_to_facebook", "generate_image"
                 ]
             else:
                 actions = ["search_sheet", "search_gmail"]
@@ -101,14 +101,14 @@ class IntentPacket:
             "send_email", "create_event", "log_to_sheet", "create_doc", 
             "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
             "send_slack", "create_task", "search_image", "search_gmail",
-            "post_to_facebook"
+            "post_to_facebook", "generate_image"
         }
         if any(act in self.allowed_actions for act in _execution_actions):
             if "execution" not in self.allowed_departments:
                 self.allowed_departments = list(self.allowed_departments) + ["execution"]
 
         # If mutating execution actions that require drafting/content generation are allowed, ensure "writing" is allowed
-        _drafting_actions = {"send_email", "create_doc", "post_to_facebook"}
+        _drafting_actions = {"send_email", "create_doc", "post_to_facebook", "generate_image"}
         if any(act in self.allowed_actions for act in _drafting_actions):
             if "writing" not in self.allowed_departments:
                 self.allowed_departments = list(self.allowed_departments) + ["writing"]
@@ -205,9 +205,9 @@ INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
     "- pa: Direct user response synthesis (always include 'pa' in allowed_departments).\n"
     "\n"
     "EXECUTION ACTION DEFINITIONS (Only include in allowed_actions if execution department is active):\n"
-    "- Google/Facebook Actions: send_email, create_event, log_to_sheet, create_doc, copy_photos_to_drive, copy_contacts_to_drive, post_to_facebook\n"
+    "- Google/Facebook Actions: send_email, create_event, log_to_sheet, create_doc, copy_photos_to_drive, copy_contacts_to_drive, post_to_facebook, generate_image\n"
     "- Read-only Retrieval Actions: search_sheet, search_gmail\n"
-    "- Other Actions: send_slack, create_task, search_image\n"
+    "- Other Actions: send_slack, create_task, search_image, generate_image\n"
     "\n"
     "EXECUTION MODE DEFINITION:\n"
     "- READ_ONLY: The query is informational or research-based. No changes, drafts, or execution actions allowed.\n"
@@ -322,7 +322,8 @@ PLANNER_SYSTEM_PROMPT: str = (
     "  * allowed_actions: For 'execution' department tasks, you are ONLY allowed to plan the actions listed in 'allowed_actions'. Planning any other execution action is strictly prohibited.\n"
     "  * execution_mode: Read this setting carefully. If it is 'READ_ONLY', you must only plan read-only informational/research tasks and end with a 'pa' task; no draft or mutation actions are allowed. If it is 'APPROVAL_REQUIRED', you can create 'execution' tasks but they will go through an approval check. If it is 'AUTO_EXECUTE', you are allowed to plan automated background execution dispatches.\n"
     "- CORRECT TASK SEQUENCING: If the goal requires multiple sequential steps or multiple execution actions (e.g. first research X, then write a report, then create a Google Doc, and finally send an email), you must establish strict dependency links (depends_on) between these tasks to ensure they execute in the correct chronological order (e.g. writing depends on research, Doc creation depends on writing, and email sending depends on Doc creation). If there are multiple execution department tasks, chain them sequentially (T_execution_N depends on T_execution_N-1) to ensure the user audits and approves them in the correct sequence.\n"
-    "- Each task must have: task_id (T1, T2, ...), objective, department, depends_on (list of task_ids), priority (1=highest), compliance_checklist (list of strings), and grant_profile_access (boolean).\n"
+    "- Each task must have: task_id (T1, T2, ...), objective, department, depends_on (list of task_ids), priority (1=highest), compliance_checklist (list of strings), grant_profile_access (boolean), and optionally protocol (string) or action (string) with params (object).\n"
+    "- protocol: For 'writing' department tasks, you MUST specify the writing protocol based on the task purpose. Valid protocols: 'research' (default, for detailed research analysis), 'email' (for concise email drafts), 'letter' (for formal letters), 'publishing' (for public blog/social posts), 'complaint' (for formal escalations), 'report' (for structured internal docs). This guides the writing style.\n"
     "- grant_profile_access: Set to true ONLY for the single, specific 'information' or 'research' task that requires access to the local user profile (family graph, business services, contact info) to fulfill the user's personal query. For all other tasks, this MUST be false. Do NOT grant profile access to multiple tasks to prevent token bloat and ensure security isolation.\n"
     "- compliance_checklist: A list of 2-3 specific, concrete criteria that the task's output must satisfy for the auditor to approve it (e.g., verifying specific factual items, formatting style, checking profile matches, or ensuring it is not a raw status message).\n"
     "  CRITICAL: For 'writing' tasks that synthesize upstream 'research' findings, you MUST always include a checklist item requiring that all research citations, source links, or references are explicitly preserved and listed at the end of the report.\n"
@@ -333,18 +334,19 @@ PLANNER_SYSTEM_PROMPT: str = (
     "- depends_on must reference existing task_ids only\n"
     "- Tasks with no dependencies get depends_on: []\n"
     "- The LAST task should synthesize/deliver the final result to the user and MUST belong to the 'pa' department.\n"
-    "- CRITICAL: ONLY create an 'execution' department task if the user's request explicitly asks for a physical action (e.g. sending an email, logging to sheets, creating a document, scheduling a calendar event, or performing read-only search/retrieval like search_sheet or search_gmail). Do NOT default to creating execution/action tasks for general informational, question-answering, or web research queries (e.g. 'get the weather update' or 'research cyber security trends'). Such requests should only use 'research', 'analysis', and 'writing' tasks, and end directly with a 'pa' task.\n"
+    "- CRITICAL: ONLY create an 'execution' department task if the user's request explicitly asks for a physical action (e.g. sending an email, logging to sheets, creating a document, scheduling a calendar event, generating an image, or performing read-only search/retrieval like search_sheet or search_gmail). Do NOT default to creating execution/action tasks for general informational, question-answering, or web research queries (e.g. 'get the weather update' or 'research cyber security trends'). Such requests should only use 'research', 'analysis', and 'writing' tasks, and end directly with a 'pa' task.\n"
     "- CRITICAL: If the user's query asks to check, retrieve, search, or find information inside their Google Sheets or Gmail, you MUST create an 'execution' department task using 'search_sheet' or 'search_gmail' action. Do NOT use a general 'research' department task for Sheets or Gmail retrieval, because general research cannot access Workspace data.\n"
     "- CRITICAL: If department is 'execution', you MUST specify 'action' and 'params' in that task's JSON object! You must dynamically select the most appropriate action from the list of valid actions based on the user's intent. Do not blindly default to 'send_email'.\n"
     "  Valid actions & parameters:\n"
-    "    * send_email(to, subject, body) -- Use ONLY if user explicitly asked to send/mail an email.\n"
+    "    * send_email(to, subject, body, image_path) -- Use ONLY if user explicitly asked to send/mail an email. In 'params', specify 'to', 'subject', and optionally 'image_path'.\n"
     "    * create_event(title, date, time, duration, description) -- Use ONLY if user explicitly asked to schedule/create a calendar event.\n"
     "    * log_to_sheet(sheet_name, data) -- Use ONLY if user explicitly asked to log or add data to a spreadsheet/sheet.\n"
     "    * create_doc(title, content) -- Use ONLY if user explicitly asked to write/create/draft a separate document file.\n"
     "    * search_sheet(sheet_name, query) -- Use ONLY if user explicitly asked to query/search/find information inside a spreadsheet/sheet.\n"
     "    * search_gmail(query, max_results) -- Use ONLY if user explicitly asked to search or retrieve recent emails matching a query.\n"
-    "    * post_to_facebook(caption, topic) -- Use ONLY if user explicitly asked to post/publish to Facebook Page. In 'params', specify 'caption' or 'topic' (or both).\n"
-    "  In 'params', use the placeholder '[NEEDS_RESEARCH_CONTEXT]' for parameters that depend on upstream findings (e.g. content: '[NEEDS_RESEARCH_CONTEXT]', body: '[NEEDS_RESEARCH_CONTEXT]', or caption: '[NEEDS_RESEARCH_CONTEXT]').\n"
+    "    * post_to_facebook(caption, topic, image_path) -- Use ONLY if user explicitly asked to post/publish to Facebook Page. In 'params', specify 'caption', 'topic', or 'image_path'.\n"
+    "    * generate_image(prompt) -- Use ONLY if user explicitly asked to generate, create, draw, design, paint or produce a new custom image using AI. In 'params', specify 'prompt'.\n"
+    "  In 'params', use the placeholder '[NEEDS_RESEARCH_CONTEXT]' for parameters that depend on upstream findings (e.g. content: '[NEEDS_RESEARCH_CONTEXT]', body: '[NEEDS_RESEARCH_CONTEXT]', caption: '[NEEDS_RESEARCH_CONTEXT]', or image_path: '[NEEDS_RESEARCH_CONTEXT]').\n"
     "  CRITICAL: If a task (like send_email) is designed to transmit/report findings or content generated upstream, it MUST depend directly on the 'writing', 'analysis', or 'research' task that generated that content, NOT on intermediate execution tasks (like 'create_doc' or 'log_to_sheet') which only return a status confirmation message.\n"
     "- Keep tasks atomic — one clear objective each\n"
     "- Minimum 2 tasks for planned workflows\n"
@@ -358,9 +360,11 @@ PLANNER_SYSTEM_PROMPT: str = (
     '  "tasks": [\n'
     '    {"task_id": "T1", "objective": "...", "department": "research", '
     '"depends_on": [], "priority": 1, "compliance_checklist": ["Verify search was done", "No empty results"], "grant_profile_access": true},\n'
-    '    {"task_id": "T2", "objective": "...", "department": "pa", '
-    '"depends_on": ["T1"], "priority": 2, "compliance_checklist": ["Verify findings are synthesized factually"], "grant_profile_access": false}\n'
-    "  ]\n"
+    '    {"task_id": "T2", "objective": "...", "department": "writing", "protocol": "email", '
+    '"depends_on": ["T1"], "priority": 2, "compliance_checklist": ["Verify draft is concise"], "grant_profile_access": false},\n'
+    '    {"task_id": "T3", "objective": "...", "department": "pa", '
+    '"depends_on": ["T2"], "priority": 3, "compliance_checklist": ["Verify findings are synthesized factually"], "grant_profile_access": false}\n'
+    '  ]\n'
     "}"
 )
 
@@ -452,7 +456,7 @@ def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]
                 "send_email", "create_event", "log_to_sheet", "create_doc", 
                 "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
                 "send_slack", "create_task", "search_image", "search_gmail",
-                "post_to_facebook"
+                "post_to_facebook", "generate_image"
             ]
         else:
             allowed_actions = ["search_sheet", "search_gmail"]
@@ -640,6 +644,8 @@ def plan_goal(
                 act = "post_to_facebook"
             task_context["action"] = act
             task_context["params"] = t.get("params", {})
+        if "protocol" in t:
+            task_context["protocol"] = t["protocol"]
         task_context["grant_profile_access"] = bool(t.get("grant_profile_access", False))
         task_context["intent_packet"] = intent_packet.to_dict() if intent_packet else None
 

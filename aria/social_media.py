@@ -450,36 +450,57 @@ def generate_flux_graphic(prompt: str) -> str:
 
 
 def publish_to_facebook_page(image_path: str, caption: str) -> tuple[bool, str]:
-    """Publish the photo and caption to Facebook Page via Graph API."""
+    """Publish the photo (if provided) or caption to Facebook Page via Graph API."""
     page_id = os.environ.get("FACEBOOK_PAGE_ID")
     page_token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN")
     
     if not page_id or not page_token:
         return False, "Missing FACEBOOK_PAGE_ID or FACEBOOK_PAGE_ACCESS_TOKEN in environment variables."
         
-    url = f"https://graph.facebook.com/v19.0/{page_id}/photos"
+    has_image = image_path and os.path.exists(image_path)
     
-    try:
-        with open(image_path, "rb") as img_file:
-            files = {
-                "source": img_file
-            }
+    if has_image:
+        url = f"https://graph.facebook.com/v19.0/{page_id}/photos"
+        try:
+            with open(image_path, "rb") as img_file:
+                files = {
+                    "source": img_file
+                }
+                data = {
+                    "message": caption,
+                    "access_token": page_token
+                }
+                print(f"[FACEBOOK] Publishing photo to page {page_id}...", flush=True)
+                response = requests.post(url, files=files, data=data, timeout=30)
+                
+            res_json = response.json()
+            if response.status_code == 200 and "id" in res_json:
+                post_id = res_json["id"]
+                return True, f"Successfully published to Facebook Page! Post ID: {post_id}"
+            else:
+                error_msg = res_json.get("error", {}).get("message", "Unknown Graph API error")
+                return False, f"Facebook API Error: {error_msg}"
+        except Exception as e:
+            return False, f"Failed to publish to Facebook: {e}"
+    else:
+        url = f"https://graph.facebook.com/v19.0/{page_id}/feed"
+        try:
             data = {
                 "message": caption,
                 "access_token": page_token
             }
-            print(f"[FACEBOOK] Publishing photo to page {page_id}...", flush=True)
-            response = requests.post(url, files=files, data=data, timeout=30)
+            print(f"[FACEBOOK] Publishing text update to page {page_id}...", flush=True)
+            response = requests.post(url, data=data, timeout=30)
             
-        res_json = response.json()
-        if response.status_code == 200 and "id" in res_json:
-            post_id = res_json["id"]
-            return True, f"Successfully published to Facebook Page! Post ID: {post_id}"
-        else:
-            error_msg = res_json.get("error", {}).get("message", "Unknown Graph API error")
-            return False, f"Facebook API Error: {error_msg}"
-    except Exception as e:
-        return False, f"Failed to publish to Facebook: {e}"
+            res_json = response.json()
+            if response.status_code == 200 and "id" in res_json:
+                post_id = res_json["id"]
+                return True, f"Successfully published to Facebook Page! Post ID: {post_id}"
+            else:
+                error_msg = res_json.get("error", {}).get("message", "Unknown Graph API error")
+                return False, f"Facebook API Error: {error_msg}"
+        except Exception as e:
+            return False, f"Failed to publish to Facebook: {e}"
 
 
 def clean_old_temp_files(temp_dir: str):
