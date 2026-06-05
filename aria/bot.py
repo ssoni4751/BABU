@@ -146,6 +146,31 @@ except Exception as e:
     print(f"[CHECKPOINTER WARNING] Failed to initialize SqliteSaver: {e}", flush=True)
     checkpointer = None
 
+PRICING_TABLE = {
+    "gemini-2.5-pro": (1.25, 5.00),
+    "gemini-2.5-flash": (0.075, 0.30),
+    "gemini-1.5-pro": (1.25, 5.00),
+    "gemini-1.5-flash": (0.075, 0.30),
+    "llama-3.3-70b-versatile": (0.59, 0.79),
+    "llama-3.1-70b-versatile": (0.59, 0.79),
+    "llama-3.1-8b-instant": (0.05, 0.08),
+    "llama3-70b-8192": (0.59, 0.79),
+    "llama3-8b-8208": (0.05, 0.08),
+    "gpt-4o": (2.50, 10.00),
+    "gpt-4o-mini": (0.150, 0.600),
+    "o1-mini": (3.00, 12.00)
+}
+
+def get_token_costs(model_name: str) -> tuple[float, float]:
+    if not model_name:
+        return 0.15 / 1_000_000, 0.60 / 1_000_000 # default fallback
+    m_lower = model_name.lower().strip()
+    for key, rates in PRICING_TABLE.items():
+        if key in m_lower:
+            return rates[0] / 1_000_000, rates[1] / 1_000_000
+    return 0.15 / 1_000_000, 0.60 / 1_000_000
+
+
 def is_epoch_sealed(epoch_id: str) -> bool:
     try:
         conn, is_pg = get_db_connection()
@@ -1239,6 +1264,9 @@ def should_escalate_to_workflow(text: str, history_text: str = "") -> bool:
 
 
 def intent_router(state: AriaState):
+    import time
+    _router_t0 = time.time()
+    
     query = state["messages"][-1].content
     history_text = state.get("history_text", "")
     lowered = query.lower().strip()
@@ -1284,13 +1312,17 @@ def intent_router(state: AriaState):
     except Exception as e:
         print(f"[ROUTING MEMORY WARNING] Failed to log routing decision: {e}", flush=True)
 
-    import time
+    _router_duration = round(time.time() - _router_t0, 4)
     tracker = state.get("execution_tracker") or {
         "start_time": time.time(),
-        "research_duration": 0.0,
-        "task_manager_duration": 0.0,
-        "action_duration": 0.0
+        "router_duration": 0.0,
+        "planner_duration": 0.0,
+        "executor_duration": 0.0,
+        "pa_duration": 0.0,
+        "governance_duration": 0.0,
+        "task_latencies": [],
     }
+    tracker["router_duration"] = _router_duration
     return {
         "user_query": clean_query,
         "research_data": [],
@@ -1335,6 +1367,8 @@ def requires_workspace_access(query: str) -> bool:
 
 def planner_node(state: AriaState):
     """Decompose user goal into a structured GoalGraph."""
+    import time
+    from datetime import datetime, timezone
     try:
         from .planner import plan_goal, build_walk_graph, classify_intent, _build_fallback_graph
     except ImportError:
@@ -1351,7 +1385,42 @@ def planner_node(state: AriaState):
     print(f"[PLANNER NODE] Planning goal for query: '{query[:50]}' (goal_id: {pre_goal_id})", flush=True)
     
     # 1. Intent Governance stage
+    ic_start_time = time.time()
+    ic_start_iso = datetime.now(timezone.utc).isoformat()
     intent_packet = classify_intent(query, history_text, model_name=CURRENT_DEPT_MODEL)
+    ic_end_time = time.time()
+    ic_end_iso = datetime.now(timezone.utc).isoformat()
+    ic_latency_ms = round((ic_end_time - ic_start_time) * 1000, 2)
+    ic_latency_sec = round(ic_end_time - ic_start_time, 4)
+
+    # Log INTENT_CLASSIFICATION event
+    ic_tokens = getattr(intent_packet, "tokens", None) or {"prompt": 0, "completion": 0, "total": 0}
+    ic_model = getattr(intent_packet, "model", None) or CURRENT_DEPT_MODEL or "unknown"
+    p_ic, c_ic = get_token_costs(ic_model)
+    ic_cost = (ic_tokens.get("prompt", 0) * p_ic) + (ic_tokens.get("completion", 0) * c_ic)
+    
+    log_execution_ledger_event(
+        session_id=session_id,
+        goal_id=pre_goal_id or "G-PLAN",
+        task_id=None,
+        department=None,
+        event_type="INTENT_CLASSIFICATION",
+        state_before=None,
+        state_after="CLASSIFIED",
+        metadata={
+            "query": query,
+            "event_start_time": ic_start_iso,
+            "event_end_time": ic_end_iso,
+            "latency_ms": ic_latency_ms,
+            "latency": ic_latency_sec,
+            "tokens": ic_tokens,
+            "cost": round(ic_cost, 6),
+            "model": ic_model,
+        }
+    )
+
+    plan_start_time = time.time()
+    plan_start_iso = datetime.now(timezone.utc).isoformat()
 
     # 2. Bounded Governance Gate: Clarification fallback on low confidence
     if intent_packet.confidence < 0.65:
@@ -1398,7 +1467,15 @@ def planner_node(state: AriaState):
             last_goal_text=last_goal_text,
             intent_packet=intent_packet,
         )
-        
+
+    plan_end_time = time.time()
+    plan_end_iso = datetime.now(timezone.utc).isoformat()
+    plan_latency_ms = round((plan_end_time - plan_start_time) * 1000, 2)
+    plan_latency_sec = round(plan_end_time - plan_start_time, 4)
+    
+    # Store in graph so we can access it during execution completion
+    graph.planning_tokens = getattr(graph, "planning_tokens", None) or {"prompt": 1800, "completion": 500, "total": 2300}
+    
     # Log GOAL_CREATED lifecycle event
     log_execution_ledger_event(
         session_id=session_id,
@@ -1417,6 +1494,8 @@ def planner_node(state: AriaState):
     
     has_actual_tokens = bool(getattr(graph, "planning_tokens", None))
     plan_tokens = getattr(graph, "planning_tokens", None) or {"prompt": 1800, "completion": 500, "total": 2300}
+    p_plan, c_plan = get_token_costs(CURRENT_DEPT_MODEL)
+    plan_cost = (plan_tokens.get("prompt", 0) * p_plan) + (plan_tokens.get("completion", 0) * c_plan)
     
     log_execution_ledger_event(
         session_id=session_id,
@@ -1431,17 +1510,26 @@ def planner_node(state: AriaState):
             "graph": graph.to_dict(),
             "planner_status": graph.planner_status,
             "tokens": plan_tokens,
+            "cost": round(plan_cost, 6),
             "model": CURRENT_DEPT_MODEL,
-            "is_estimated": not has_actual_tokens
+            "is_estimated": not has_actual_tokens,
+            "event_start_time": plan_start_iso,
+            "event_end_time": plan_end_iso,
+            "latency_ms": plan_latency_ms,
+            "latency": plan_latency_sec
         }
     )
+    
+    tracker = state.get("execution_tracker") or {}
+    tracker["planner_duration"] = plan_latency_sec
         
-    return {"goal_graph": graph.to_dict()}
+    return {"goal_graph": graph.to_dict(), "execution_tracker": tracker}
 
 
 def task_executor_node(state: AriaState):
     """Executes the task DAG using TaskEngine and Department Heads."""
     import time
+    from datetime import datetime, timezone
     try:
         from .task_engine import TaskEngine, GoalGraph, TaskState
         from .departments import get_department_head
@@ -1515,6 +1603,8 @@ def task_executor_node(state: AriaState):
         "user_query": state["user_query"]
     }
     
+    total_audit_tokens = {"prompt": 0, "completion": 0, "total": 0}
+    
     # Execution loop
     while not engine.is_goal_complete() and not engine.is_goal_blocked():
         ready_tasks = engine.get_ready_tasks()
@@ -1546,6 +1636,10 @@ def task_executor_node(state: AriaState):
                 
             engine.mark_running(task.task_id)
             
+            # Time pre-execution audit
+            pre_start_time = time.time()
+            pre_start_iso = datetime.now(timezone.utc).isoformat()
+            
             # Layer 5 Bipartite Auditor: Pre-Execution Gatekeeper check
             log_execution_ledger_event(
                 session_id=session_id,
@@ -1558,6 +1652,12 @@ def task_executor_node(state: AriaState):
                 metadata={"objective": task.objective}
             )
             passed_pre, reason_pre = auditor.audit_pre(task)
+            
+            pre_end_time = time.time()
+            pre_end_iso = datetime.now(timezone.utc).isoformat()
+            pre_latency_ms = round((pre_end_time - pre_start_time) * 1000, 2)
+            pre_latency_sec = round(pre_end_time - pre_start_time, 4)
+            
             if not passed_pre:
                 print(f"[EXECUTOR] Pre-execution audit blocked task {task.task_id}: {reason_pre}", flush=True)
                 log_execution_ledger_event(
@@ -1568,7 +1668,17 @@ def task_executor_node(state: AriaState):
                     event_type="AUDIT_PRE_FAIL",
                     state_before="AUDITING_PRE",
                     state_after="FAILED",
-                    metadata={"objective": task.objective, "reason": reason_pre}
+                    metadata={
+                        "objective": task.objective,
+                        "reason": reason_pre,
+                        "event_start_time": pre_start_iso,
+                        "event_end_time": pre_end_iso,
+                        "latency_ms": pre_latency_ms,
+                        "latency": pre_latency_sec,
+                        "tokens": {"prompt": 0, "completion": 0, "total": 0},
+                        "cost": 0.0,
+                        "model": "rules_engine"
+                    }
                 )
                 track_cascading_blocks(engine.mark_failed, task.task_id, f"Pre-execution Audit Blocked: {reason_pre}")
                 execution_log.append({
@@ -1578,6 +1688,17 @@ def task_executor_node(state: AriaState):
                     "error": f"Pre-execution Audit Blocked: {reason_pre}",
                     "status": "FAILED"
                 })
+                # Add to tracker even on failure
+                tracker = state.get("execution_tracker") or {}
+                task_lats = tracker.get("task_latencies") or []
+                task_lats.append({
+                    "task_id": task.task_id,
+                    "dept": task.department,
+                    "worker_ms": 0.0,
+                    "audit_pre_ms": pre_latency_ms,
+                    "audit_post_ms": 0.0
+                })
+                tracker["task_latencies"] = task_lats
                 continue
                 
             log_execution_ledger_event(
@@ -1588,7 +1709,16 @@ def task_executor_node(state: AriaState):
                 event_type="AUDIT_PRE_PASS",
                 state_before="AUDITING_PRE",
                 state_after="RUNNING",
-                metadata={"objective": task.objective}
+                metadata={
+                    "objective": task.objective,
+                    "event_start_time": pre_start_iso,
+                    "event_end_time": pre_end_iso,
+                    "latency_ms": pre_latency_ms,
+                    "latency": pre_latency_sec,
+                    "tokens": {"prompt": 0, "completion": 0, "total": 0},
+                    "cost": 0.0,
+                    "model": "rules_engine"
+                }
             )
                 
             dept_head = get_department_head(task.department)
@@ -1674,6 +1804,10 @@ def task_executor_node(state: AriaState):
                         "pending_action_notice": pending_action_notice
                     }
             
+            exec_latency_ms = 0.0
+            exec_latency = 0.0
+            t_dispatch_start_iso = datetime.now(timezone.utc).isoformat()
+            t_dispatch_end_iso = t_dispatch_start_iso
             try:
                 # Dispatch task to the department head
                 log_execution_ledger_event(
@@ -1688,8 +1822,15 @@ def task_executor_node(state: AriaState):
                 )
                 
                 t_dispatch_start = time.time()
+                t_dispatch_start_iso = datetime.now(timezone.utc).isoformat()
                 result, task_tokens = dept_head.dispatch(task, shared_resources, llm_dept)
-                latency = round(time.time() - t_dispatch_start, 2)
+                t_dispatch_end = time.time()
+                t_dispatch_end_iso = datetime.now(timezone.utc).isoformat()
+                exec_latency = round(t_dispatch_end - t_dispatch_start, 2)
+                exec_latency_ms = round((t_dispatch_end - t_dispatch_start) * 1000, 2)
+                
+                p_rate, c_rate = get_token_costs(CURRENT_DEPT_MODEL)
+                exec_cost = (task_tokens.get("prompt", 0) * p_rate) + (task_tokens.get("completion", 0) * c_rate)
                 
                 log_execution_ledger_event(
                     session_id=session_id,
@@ -1701,10 +1842,14 @@ def task_executor_node(state: AriaState):
                     state_after="RUNNING",
                     metadata={
                         "objective": task.objective,
-                        "latency": latency,
+                        "latency": exec_latency,
+                        "latency_ms": exec_latency_ms,
+                        "event_start_time": t_dispatch_start_iso,
+                        "event_end_time": t_dispatch_end_iso,
                         "tokens": task_tokens,
-                        "result_preview": (result or "")[:500],
+                        "cost": round(exec_cost, 6),
                         "model": CURRENT_DEPT_MODEL,
+                        "result_preview": (result or "")[:500],
                         "is_estimated": False
                     }
                 )
@@ -1720,10 +1865,38 @@ def task_executor_node(state: AriaState):
                     state_after="AUDITING_POST",
                     metadata={"objective": task.objective}
                 )
+                
+                post_start_time = time.time()
+                post_start_iso = datetime.now(timezone.utc).isoformat()
                 passed_post, audit_result = auditor.audit_post(task, result)
+                post_end_time = time.time()
+                post_end_iso = datetime.now(timezone.utc).isoformat()
+                post_latency_ms = round((post_end_time - post_start_time) * 1000, 2)
+                post_latency_sec = round(post_end_time - post_start_time, 4)
+                
                 audit_tokens = getattr(auditor, "last_tokens", {"prompt": 0, "completion": 0, "total": 0})
                 if type(audit_tokens).__name__ in ("MagicMock", "Mock") or not isinstance(audit_tokens, dict):
                     audit_tokens = {"prompt": 0, "completion": 0, "total": 0}
+                
+                # Accumulate auditor tokens
+                total_audit_tokens["prompt"] += audit_tokens.get("prompt", 0)
+                total_audit_tokens["completion"] += audit_tokens.get("completion", 0)
+                total_audit_tokens["total"] += audit_tokens.get("total", 0)
+                
+                post_cost = (audit_tokens.get("prompt", 0) * p_rate) + (audit_tokens.get("completion", 0) * c_rate)
+                
+                # Update tracker with granular task latencies
+                tracker = state.get("execution_tracker") or {}
+                task_lats = tracker.get("task_latencies") or []
+                task_lats.append({
+                    "task_id": task.task_id,
+                    "dept": task.department,
+                    "worker_ms": exec_latency_ms,
+                    "audit_pre_ms": pre_latency_ms,
+                    "audit_post_ms": post_latency_ms
+                })
+                tracker["task_latencies"] = task_lats
+                
                 if not passed_post:
                     print(f"[EXECUTOR] Post-execution audit failed task {task.task_id}: {audit_result}", flush=True)
                     log_execution_ledger_event(
@@ -1738,8 +1911,13 @@ def task_executor_node(state: AriaState):
                             "objective": task.objective,
                             "audit_result": audit_result,
                             "tokens": audit_tokens,
+                            "cost": round(post_cost, 6),
                             "model": CURRENT_DEPT_MODEL,
-                            "is_estimated": False
+                            "is_estimated": False,
+                            "event_start_time": post_start_iso,
+                            "event_end_time": post_end_iso,
+                            "latency_ms": post_latency_ms,
+                            "latency": post_latency_sec
                         }
                     )
                     track_cascading_blocks(engine.mark_failed, task.task_id, f"Post-execution Audit Failed: {audit_result}")
@@ -1779,8 +1957,13 @@ def task_executor_node(state: AriaState):
                             "objective": task.objective,
                             "audit_result": audit_result,
                             "tokens": audit_tokens,
+                            "cost": round(post_cost, 6),
                             "model": CURRENT_DEPT_MODEL,
-                            "is_estimated": False
+                            "is_estimated": False,
+                            "event_start_time": post_start_iso,
+                            "event_end_time": post_end_iso,
+                            "latency_ms": post_latency_ms,
+                            "latency": post_latency_sec
                         }
                     )
                     
@@ -1820,8 +2003,25 @@ def task_executor_node(state: AriaState):
                     if task.department == "execution" and task.context.get("action"):
                         register_successful_execution(domain=f"action.{task.context['action']}")
             except Exception as e:
+                t_dispatch_end = time.time()
+                t_dispatch_end_iso = datetime.now(timezone.utc).isoformat()
+                exec_latency = round(t_dispatch_end - t_dispatch_start, 2)
+                exec_latency_ms = round((t_dispatch_end - t_dispatch_start) * 1000, 2)
                 err_msg = str(e)
                 print(f"[EXECUTOR ERROR] Task {task.task_id} failed: {err_msg}", flush=True)
+                
+                # Update tracker even on failure
+                tracker = state.get("execution_tracker") or {}
+                task_lats = tracker.get("task_latencies") or []
+                task_lats.append({
+                    "task_id": task.task_id,
+                    "dept": task.department,
+                    "worker_ms": exec_latency_ms,
+                    "audit_pre_ms": pre_latency_ms,
+                    "audit_post_ms": 0.0
+                })
+                tracker["task_latencies"] = task_lats
+                
                 log_execution_ledger_event(
                     session_id=session_id,
                     goal_id=goal_graph.goal_id,
@@ -1830,7 +2030,17 @@ def task_executor_node(state: AriaState):
                     event_type="EXECUTION_FAIL",
                     state_before="RUNNING",
                     state_after="FAILED",
-                    metadata={"objective": task.objective, "error": err_msg}
+                    metadata={
+                        "objective": task.objective,
+                        "error": err_msg,
+                        "latency": exec_latency,
+                        "latency_ms": exec_latency_ms,
+                        "event_start_time": t_dispatch_start_iso,
+                        "event_end_time": t_dispatch_end_iso,
+                        "tokens": {"prompt": 0, "completion": 0, "total": 0},
+                        "cost": 0.0,
+                        "model": CURRENT_DEPT_MODEL
+                    }
                 )
                 track_cascading_blocks(engine.mark_failed, task.task_id, err_msg)
                 execution_log.append({
@@ -1860,7 +2070,44 @@ def task_executor_node(state: AriaState):
     # Update tracker
     duration = round(time.time() - start_time, 2)
     tracker = state.get("execution_tracker") or {}
+    tracker["executor_duration"] = duration
     tracker["task_manager_duration"] = duration
+    
+    start_time_float = tracker.get("start_time", start_time)
+    goal_start_iso = datetime.fromtimestamp(start_time_float, timezone.utc).isoformat()
+    goal_end_iso = datetime.now(timezone.utc).isoformat()
+    goal_duration = time.time() - start_time_float
+    goal_latency_ms = round(goal_duration * 1000, 2)
+    goal_latency_sec = round(goal_duration, 4)
+    
+    # Calculate goal tokens & costs cumulative summary
+    total_goal_tokens = {"prompt": 0, "completion": 0, "total": 0}
+    ic_tokens = (goal_graph.intent_packet or {}).get("tokens") or {"prompt": 0, "completion": 0, "total": 0}
+    plan_tokens = goal_graph.planning_tokens or {"prompt": 0, "completion": 0, "total": 0}
+    
+    tasks_tokens = {"prompt": 0, "completion": 0, "total": 0}
+    for entry in execution_log:
+        t = entry.get("tokens") or {"prompt": 0, "completion": 0, "total": 0}
+        tasks_tokens["prompt"] += t.get("prompt", 0)
+        tasks_tokens["completion"] += t.get("completion", 0)
+        tasks_tokens["total"] += t.get("total", 0)
+        
+    total_goal_tokens["prompt"] = ic_tokens.get("prompt", 0) + plan_tokens.get("prompt", 0) + tasks_tokens.get("prompt", 0) + total_audit_tokens.get("prompt", 0)
+    total_goal_tokens["completion"] = ic_tokens.get("completion", 0) + plan_tokens.get("completion", 0) + tasks_tokens.get("completion", 0) + total_audit_tokens.get("completion", 0)
+    total_goal_tokens["total"] = total_goal_tokens["prompt"] + total_goal_tokens["completion"]
+    
+    ic_model = (goal_graph.intent_packet or {}).get("model") or CURRENT_DEPT_MODEL or "unknown"
+    p_ic, c_ic = get_token_costs(ic_model)
+    cost_ic = (ic_tokens.get("prompt", 0) * p_ic) + (ic_tokens.get("completion", 0) * c_ic)
+    
+    p_plan, c_plan = get_token_costs(CURRENT_DEPT_MODEL)
+    cost_plan = (plan_tokens.get("prompt", 0) * p_plan) + (plan_tokens.get("completion", 0) * c_plan)
+    
+    p_work, c_work = get_token_costs(CURRENT_DEPT_MODEL)
+    cost_workers = (tasks_tokens.get("prompt", 0) * p_work) + (tasks_tokens.get("completion", 0) * c_work)
+    cost_audit = (total_audit_tokens.get("prompt", 0) * p_work) + (total_audit_tokens.get("completion", 0) * c_work)
+    
+    total_goal_cost = cost_ic + cost_plan + cost_workers + cost_audit
     
     final_brief = engine.get_execution_summary()
     
@@ -1876,7 +2123,13 @@ def task_executor_node(state: AriaState):
             state_before="ACTIVE",
             state_after="COMPLETED",
             metadata={
-                "latency_sec": duration, 
+                "latency_sec": goal_latency_sec,
+                "latency_ms": goal_latency_ms,
+                "event_start_time": goal_start_iso,
+                "event_end_time": goal_end_iso,
+                "tokens": total_goal_tokens,
+                "cost": round(total_goal_cost, 6),
+                "model": CURRENT_DEPT_MODEL,
                 "summary": final_brief[:1000],
                 "graceful_recovery": is_graceful_recovery,
                 "planner_status": goal_graph.planner_status
@@ -1907,13 +2160,22 @@ def task_executor_node(state: AriaState):
             event_type="GOAL_FAILED",
             state_before="ACTIVE",
             state_after="FAILED",
-            metadata={"latency_sec": duration, "error": "Goal execution blocked or stalled"}
+            metadata={
+                "latency_sec": goal_latency_sec,
+                "latency_ms": goal_latency_ms,
+                "event_start_time": goal_start_iso,
+                "event_end_time": goal_end_iso,
+                "tokens": total_goal_tokens,
+                "cost": round(total_goal_cost, 6),
+                "model": CURRENT_DEPT_MODEL,
+                "error": "Goal execution blocked or stalled"
+            }
         )
         
     # Store action result if there was an execution task
     action_res = ""
     for entry in execution_log:
-        if entry["department"] == "execution" and entry["status"] == "SUCCESS":
+        if entry.get("department") == "execution" and entry.get("status") == "SUCCESS":
             action_res = entry.get("result", "")
             
     node_tokens = {"prompt": 0, "completion": 0, "total": 0}
@@ -2417,7 +2679,13 @@ def pa_node(state: AriaState):
     if research:
         parts.append(f"[Internal Research]\n{research}")
 
+    pa_start_time = time.time()
+    pa_start_iso = datetime.now(timezone.utc).isoformat()
     response = llm_pa.invoke([SystemMessage(content=manifesto), HumanMessage(content="\n\n".join(parts))])
+    pa_end_time = time.time()
+    pa_end_iso = datetime.now(timezone.utc).isoformat()
+    pa_latency_ms = round((pa_end_time - pa_start_time) * 1000, 2)
+    pa_latency_sec = round(pa_end_time - pa_start_time, 4)
     
     # Check for planner degradation and append warning card if active
     if graph_dict and graph_dict.get("planner_status", "SUCCESS") != "SUCCESS":
@@ -2449,18 +2717,25 @@ def pa_node(state: AriaState):
                 response.content += "\n\n" + match.group(1)
                 
     # ​​Performance Telemetry Footnote ​​
+    tracker = state.get("execution_tracker", {})
+    tracker["pa_duration"] = pa_latency_sec
     if not is_conversational:
-        tracker = state.get("execution_tracker", {})
         if tracker and "start_time" in tracker:
             import time
             tot = round(time.time() - tracker["start_time"], 2)
-            r = tracker.get("research_duration", 0.0)
-            tm = tracker.get("task_manager_duration", 0.0)
-            a = tracker.get("action_duration", 0.0)
-            telemetry_footnote = f"\n\nSwarm profile: Research {r}s | Audit {tm}s | Action {a}s | Total {tot}s"
+            router_dur = tracker.get("router_duration", 0.0)
+            planner_dur = tracker.get("planner_duration", 0.0)
+            
+            task_lats = tracker.get("task_latencies", [])
+            workers_dur = round(sum(t.get("worker_ms", 0.0) for t in task_lats) / 1000.0, 2)
+            audit_dur = round(sum(t.get("audit_pre_ms", 0.0) + t.get("audit_post_ms", 0.0) for t in task_lats) / 1000.0, 2)
+            
+            telemetry_footnote = f"\n\nSwarm profile: Router {router_dur}s | Planner {planner_dur}s | Workers {workers_dur}s | Audit {audit_dur}s | PA {pa_latency_sec}s | Total {tot}s"
             response.content += telemetry_footnote
                 
     token_stats = extract_tokens(response)
+    p_rate, c_rate = get_token_costs(CURRENT_PA_MODEL)
+    pa_cost = (token_stats.get("prompt", 0) * p_rate) + (token_stats.get("completion", 0) * c_rate)
     try:
         goal_graph_dict = state.get("goal_graph") or {}
         active_goal_dict = state.get("active_goal") or {}
@@ -2476,9 +2751,14 @@ def pa_node(state: AriaState):
             metadata={
                 "query": user_query,
                 "tokens": token_stats,
+                "cost": round(pa_cost, 6),
                 "response_preview": response.content[:300],
                 "model": CURRENT_PA_MODEL,
-                "is_estimated": False
+                "is_estimated": False,
+                "event_start_time": pa_start_iso,
+                "event_end_time": pa_end_iso,
+                "latency_ms": pa_latency_ms,
+                "latency": pa_latency_sec
             }
         )
     except Exception as e:
@@ -2501,7 +2781,7 @@ def pa_node(state: AriaState):
     except Exception as e:
         print(f"[WORKFLOW MEMORY WARNING] Failed to log workflow event: {e}", flush=True)
 
-    return {"messages": state["messages"] + [response], "tokens": token_stats}
+    return {"messages": state["messages"] + [response], "tokens": token_stats, "execution_tracker": tracker}
 
 
 # â”€â”€ Graph â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -2572,7 +2852,29 @@ def invoke_aria(message: str, session_id: str = "default", goal_id: Optional[str
     if goal_graph_dict:
         status = goal_graph_dict.get("status", "ACTIVE")
         if status in ("COMPLETED", "FAILED", "CANCELLED"):
+            t_seal_start = time.time()
             seal_epoch(epoch_id)
+            t_seal_duration = round(time.time() - t_seal_start, 4)
+            t_seal_ms = round(t_seal_duration * 1000, 2)
+            tracker = output.get("execution_tracker") or {}
+            tracker["governance_duration"] = t_seal_duration
+            
+            log_execution_ledger_event(
+                session_id=session_id,
+                goal_id=goal_id,
+                task_id=None,
+                department="governance",
+                event_type="EPOCH_SEAL",
+                state_before="ACTIVE",
+                state_after="SEALED",
+                metadata={
+                    "latency_sec": t_seal_duration,
+                    "latency_ms": t_seal_ms,
+                    "tokens": {"prompt": 0, "completion": 0, "total": 0},
+                    "cost": 0.0,
+                    "model": "rules_engine"
+                }
+            )
             compact_completed_session_history(session_id)
             
     return reply, "DYNAMIC", tokens
@@ -3178,6 +3480,28 @@ STATUS_HTML = """<!DOCTYPE html>
     border-top: 1px solid var(--border-color);
     padding-top: 24px;
   }
+  /* Latency & Heatmap Styles */
+  .heatmap-item {
+    margin-bottom: 12px;
+  }
+  .heatmap-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .heatmap-bar-bg {
+    background: rgba(255, 255, 255, 0.04);
+    height: 10px;
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  .heatmap-bar-fill {
+    height: 100%;
+    border-radius: 5px;
+    transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s;
+  }
 </style>
 </head>
 <body>
@@ -3345,6 +3669,78 @@ STATUS_HTML = """<!DOCTYPE html>
           <div class="allocation-value" id="exec-percent">-</div>
         </div>
         <div class="progress-bg"><div class="progress-fill" id="exec-progress" style="background:#06b6d4"></div></div>
+      </div>
+    </div>
+    
+    <div class="dashboard-panel latency-panel" style="grid-column: span 2; margin-bottom: 32px;">
+      <div class="panel-title">
+        <span>Swarm Event Latency &amp; Performance Cockpit</span>
+        <span class="text-muted" style="font-weight: normal;">Interactive heatmap and bottleneck tracking</span>
+      </div>
+      
+      <div class="latency-grid" style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 32px;">
+         <div>
+            <h4 style="margin: 0 0 16px 0; color: var(--text-primary); font-size: 0.88rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Component Average Latency Heatmap</h4>
+            <div id="latency-heatmap-container" style="display: flex; flex-direction: column; gap: 14px;">
+               <!-- Populated by JS -->
+            </div>
+         </div>
+         
+         <div style="display: flex; flex-direction: column; gap: 20px;">
+            <div>
+               <h4 style="margin: 0 0 12px 0; color: var(--text-primary); font-size: 0.88rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Average System Benchmarks</h4>
+               <div style="background: rgba(255,255,255,0.02); padding: 12px 16px; border-radius: 8px; border: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 8px;">
+                  <div style="display: flex; justify-content: space-between; font-size: 0.8rem;">
+                     <span class="text-muted">Planner Avg Latency:</span>
+                     <strong id="val-planner-avg-lat" style="color: #6366f1;">-</strong>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; font-size: 0.8rem;">
+                     <span class="text-muted">Auditor Avg Latency:</span>
+                     <strong id="val-auditor-avg-lat" style="color: #06b6d4;">-</strong>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; font-size: 0.8rem;">
+                     <span class="text-muted">Execution Avg Latency:</span>
+                     <strong id="val-exec-avg-lat" style="color: #34d399;">-</strong>
+                  </div>
+               </div>
+            </div>
+            
+            <div>
+               <h4 style="margin: 0 0 12px 0; color: var(--text-primary); font-size: 0.88rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Slowest Models</h4>
+               <div class="table-wrapper" style="max-height: 140px; overflow-y: auto;">
+                  <table style="font-size: 0.78rem;">
+                     <thead>
+                        <tr>
+                           <th>Model</th>
+                           <th style="text-align: right;">Avg Latency</th>
+                        </tr>
+                     </thead>
+                     <tbody id="latency-models-body">
+                        <!-- Populated by JS -->
+                     </tbody>
+                  </table>
+               </div>
+            </div>
+         </div>
+      </div>
+      
+      <div style="margin-top: 32px; border-top: 1px solid var(--border-color); padding-top: 24px;">
+         <h4 style="margin: 0 0 16px 0; color: var(--text-primary); font-size: 0.88rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Top 10 Slowest Workflows (Bottlenecks)</h4>
+         <div class="table-wrapper" style="max-height: 250px; overflow-y: auto;">
+            <table>
+               <thead>
+                  <tr>
+                     <th>Goal ID</th>
+                     <th>Query / Goal</th>
+                     <th>Timestamp</th>
+                     <th style="text-align: right;">Total Latency</th>
+                  </tr>
+               </thead>
+               <tbody id="latency-workflows-body">
+                  <!-- Populated by JS -->
+               </tbody>
+            </table>
+         </div>
       </div>
     </div>
     
@@ -3606,6 +4002,117 @@ STATUS_HTML = """<!DOCTYPE html>
     const aggregates = telemetryData.aggregates;
     const ledger = telemetryData.ledger;
     const reasoning = telemetryData.reasoning_efficiency || [];
+    const latencyMetrics = telemetryData.latency_metrics || {};
+    
+    function formatDuration(ms) {
+      if (ms === undefined || ms === null || isNaN(ms) || ms === 0.0) return '-';
+      if (ms < 1000) return `${ms.toFixed(0)}ms`;
+      return `${(ms / 1000.0).toFixed(2)}s`;
+    }
+    
+    // Update Latency Benchmarks
+    if (latencyMetrics.planner_average_latency !== undefined) {
+      const el = document.getElementById('val-planner-avg-lat');
+      if (el) el.textContent = formatDuration(latencyMetrics.planner_average_latency);
+    }
+    if (latencyMetrics.auditor_average_latency !== undefined) {
+      const el = document.getElementById('val-auditor-avg-lat');
+      if (el) el.textContent = formatDuration(latencyMetrics.auditor_average_latency);
+    }
+    if (latencyMetrics.execution_average_latency !== undefined) {
+      const el = document.getElementById('val-exec-avg-lat');
+      if (el) el.textContent = formatDuration(latencyMetrics.execution_average_latency);
+    }
+    
+    // Update Latency Heatmap
+    const heatmapContainer = document.getElementById('latency-heatmap-container');
+    if (heatmapContainer) {
+      heatmapContainer.innerHTML = '';
+      const eventLabels = {
+        'INTENT_CLASSIFICATION': 'Intent Classification',
+        'PLANNING': 'Strategic Planning',
+        'AUDIT_PRE': 'Pre-Execution Audit',
+        'EXECUTION': 'Swarm Task Execution',
+        'AUDIT_POST': 'Post-Execution Audit',
+        'PA_SYNTHESIS': 'Response Synthesis',
+        'GOAL_COMPLETE': 'Goal Lifecycle Outcomes'
+      };
+      
+      let maxVal = 2000;
+      const evAvg = latencyMetrics.avg_latency_by_event || {};
+      for (const ev in evAvg) {
+        if (evAvg[ev] > maxVal) {
+          maxVal = evAvg[ev];
+        }
+      }
+      
+      for (const ev in eventLabels) {
+        const avg = evAvg[ev] || 0.0;
+        const label = eventLabels[ev];
+        const pct = Math.min(100, (avg / maxVal * 100)).toFixed(1);
+        
+        let color = '#34d399'; // green
+        if (avg >= 500 && avg <= 2000) {
+          color = '#fbbf24'; // yellow
+        } else if (avg > 2000) {
+          color = '#f87171'; // red
+        }
+        
+        const item = document.createElement('div');
+        item.className = 'heatmap-item';
+        item.innerHTML = `
+          <div class="heatmap-header">
+            <span class="text-muted" style="font-size: 0.78rem;">${label}</span>
+            <span style="color: ${color}; font-size: 0.78rem; font-weight: 700;">${formatDuration(avg)}</span>
+          </div>
+          <div class="heatmap-bar-bg">
+            <div class="heatmap-bar-fill" style="width: ${pct}%; background-color: ${color};"></div>
+          </div>
+        `;
+        heatmapContainer.appendChild(item);
+      }
+    }
+    
+    // Update Slowest Models
+    const modelsBody = document.getElementById('latency-models-body');
+    if (modelsBody) {
+      modelsBody.innerHTML = '';
+      const slowestModels = latencyMetrics.top_10_slowest_models || [];
+      if (slowestModels.length === 0) {
+        modelsBody.innerHTML = `<tr><td colspan="2" style="text-align: center; color: var(--text-secondary); padding: 10px;">No model latencies.</td></tr>`;
+      } else {
+        slowestModels.forEach(m => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><code style="font-size: 0.72rem; color: #fff;">${m.model}</code></td>
+            <td style="text-align: right; font-weight: 700; color: #fbbf24;">${formatDuration(m.avg_latency_ms)}</td>
+          `;
+          modelsBody.appendChild(tr);
+        });
+      }
+    }
+    
+    // Update Slowest Workflows
+    const workflowsBody = document.getElementById('latency-workflows-body');
+    if (workflowsBody) {
+      workflowsBody.innerHTML = '';
+      const slowestWorkflows = latencyMetrics.top_10_slowest_workflows || [];
+      if (slowestWorkflows.length === 0) {
+        workflowsBody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-secondary); padding: 20px;">No slowest workflows logged yet.</td></tr>`;
+      } else {
+        slowestWorkflows.forEach(w => {
+          const tr = document.createElement('tr');
+          const ts = formatIST(w.timestamp);
+          tr.innerHTML = `
+            <td><code style="background:rgba(255,255,255,0.06); padding:2px 6px; border-radius:4px; font-size:0.75rem;">${w.goal_id}</code></td>
+            <td><div class="text-highlight" style="max-width: 450px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${w.query}">${w.query}</div></td>
+            <td class="text-muted">${ts}</td>
+            <td style="text-align: right; font-weight: 700; color: #f87171;">${formatDuration(w.total_latency_ms)}</td>
+          `;
+          workflowsBody.appendChild(tr);
+        });
+      }
+    }
     
     // Update Model selects if not currently active
     if (telemetryData.current_dept_model) {
@@ -3867,6 +4374,20 @@ def get_telemetry_data(limit=100) -> dict:
     
     model_mon = {m: {"latencies": [], "failures": 0, "rate_limited": False} for m in supported_models}
     
+    # Containers for derived latency metrics
+    event_latencies = {
+        "INTENT_CLASSIFICATION": [],
+        "PLANNING": [],
+        "AUDIT_PRE": [],
+        "EXECUTION": [],
+        "AUDIT_POST": [],
+        "PA_SYNTHESIS": [],
+        "GOAL_COMPLETE": []
+    }
+    model_latencies = {}
+    dept_latencies = {}
+    workflow_latencies = {}
+    
     def get_token_costs(model_name: str) -> tuple[float, float]:
         if not model_name:
             return 0.15 / 1_000_000, 0.60 / 1_000_000 # default fallback
@@ -3933,6 +4454,7 @@ def get_telemetry_data(limit=100) -> dict:
             model_name = ""
             is_estimated = False
             
+            meta = {}
             if meta_str:
                 try:
                     meta = json.loads(meta_str)
@@ -3947,6 +4469,108 @@ def get_telemetry_data(limit=100) -> dict:
                     is_estimated = bool(meta.get("is_estimated", False))
                 except Exception:
                     pass
+            
+            # Extract latency_ms with fallbacks
+            latency_ms = None
+            if meta:
+                latency_ms = meta.get("latency_ms")
+                if latency_ms is None:
+                    lat_sec = meta.get("latency")
+                    if lat_sec is not None:
+                        latency_ms = float(lat_sec) * 1000.0
+                    else:
+                        lat_sec_other = meta.get("latency_sec")
+                        if lat_sec_other is not None:
+                            latency_ms = float(lat_sec_other) * 1000.0
+                
+                # Fallback to start/end timestamp diff
+                if latency_ms is None:
+                    start_t = meta.get("event_start_time")
+                    end_t = meta.get("event_end_time")
+                    if start_t and end_t:
+                        try:
+                            from datetime import datetime
+                            def parse_iso(ts_str):
+                                ts_str = ts_str.strip().replace(' ', 'T')
+                                if ts_str.endswith('Z'):
+                                    ts_str = ts_str[:-1] + '+00:00'
+                                return datetime.fromisoformat(ts_str)
+                            diff = parse_iso(end_t) - parse_iso(start_t)
+                            latency_ms = diff.total_seconds() * 1000.0
+                        except Exception:
+                            pass
+            
+            if latency_ms is None:
+                latency_ms = latency * 1000.0 if latency > 0.0 else 0.0
+                
+            latency_ms = float(latency_ms)
+            
+            # Categorize event type
+            canonical_event = None
+            if ev_type == "INTENT_CLASSIFICATION":
+                canonical_event = "INTENT_CLASSIFICATION"
+            elif ev_type == "PLANNING":
+                canonical_event = "PLANNING"
+            elif ev_type in ("AUDIT_PRE_PASS", "AUDIT_PRE_FAIL", "AUDIT_PRE"):
+                canonical_event = "AUDIT_PRE"
+            elif ev_type in ("EXECUTION_DONE", "EXECUTION_FAIL", "EXECUTION_START"):
+                canonical_event = "EXECUTION"
+            elif ev_type in ("AUDIT_POST_PASS", "AUDIT_POST_FAIL", "AUDIT_POST"):
+                canonical_event = "AUDIT_POST"
+            elif ev_type == "PA_SYNTHESIS":
+                canonical_event = "PA_SYNTHESIS"
+            elif ev_type in ("GOAL_COMPLETED", "GOAL_FAILED"):
+                canonical_event = "GOAL_COMPLETE"
+
+            if canonical_event:
+                event_latencies[canonical_event].append(latency_ms)
+                
+            # Model latency grouping
+            if model_name:
+                m_clean = model_name.strip()
+                if m_clean:
+                    if m_clean not in model_latencies:
+                        model_latencies[m_clean] = []
+                    model_latencies[m_clean].append(latency_ms)
+                    
+            # Department latency grouping
+            dept_name = dept.lower().strip() if dept else None
+            if not dept_name:
+                if canonical_event == "PA_SYNTHESIS":
+                    dept_name = "pa"
+                elif canonical_event in ("PLANNING", "AUDIT_PRE", "AUDIT_POST"):
+                    dept_name = "governance"
+            if dept_name:
+                if dept_name not in dept_latencies:
+                    dept_latencies[dept_name] = []
+                dept_latencies[dept_name].append(latency_ms)
+                
+            # Workflow / Goal tracking
+            if g_id and g_id not in ("G-WALK", "G-PLAN"):
+                if g_id not in workflow_latencies:
+                    workflow_latencies[g_id] = {
+                        "goal_id": g_id,
+                        "query": "",
+                        "latencies": [],
+                        "completed": False,
+                        "failed": False,
+                        "ts": ts,
+                        "goal_completed_latency": None
+                    }
+                q_val = ""
+                if meta:
+                    q_val = meta.get("query") or meta.get("goal") or ""
+                if q_val and not workflow_latencies[g_id]["query"]:
+                    workflow_latencies[g_id]["query"] = q_val
+                    
+                if ev_type == "GOAL_COMPLETED":
+                    workflow_latencies[g_id]["completed"] = True
+                    workflow_latencies[g_id]["goal_completed_latency"] = latency_ms
+                elif ev_type == "GOAL_FAILED":
+                    workflow_latencies[g_id]["failed"] = True
+                    workflow_latencies[g_id]["goal_completed_latency"] = latency_ms
+                
+                workflow_latencies[g_id]["latencies"].append(latency_ms)
             
             # Extract metrics per model dynamically
             if model_name:
@@ -3963,7 +4587,6 @@ def get_telemetry_data(limit=100) -> dict:
                         model_mon[matched_model]["failures"] += 1
                     if meta_str:
                         try:
-                            meta = json.loads(meta_str)
                             meta_lower = str(meta).lower()
                             if "rate_limit" in meta_lower or "429" in meta_lower or "rate limit" in meta_lower:
                                 model_mon[matched_model]["rate_limited"] = True
@@ -4035,7 +4658,6 @@ def get_telemetry_data(limit=100) -> dict:
             
             if meta_str:
                 try:
-                    meta = json.loads(meta_str)
                     if "query" in meta and meta["query"] and not goals_map[g_id]["query"]:
                         goals_map[g_id]["query"] = meta["query"]
                     elif "goal" in meta and meta["goal"] and not goals_map[g_id]["query"]:
@@ -4045,7 +4667,6 @@ def get_telemetry_data(limit=100) -> dict:
             
             if ev_type == "GOAL_CREATED" and meta_str:
                 try:
-                    meta = json.loads(meta_str)
                     goals_map[g_id]["status"] = meta.get("planner_status", "ACTIVE")
                 except Exception:
                     pass
@@ -4075,6 +4696,70 @@ def get_telemetry_data(limit=100) -> dict:
         
     reasoning_list.sort(key=lambda x: x["timestamp"], reverse=True)
     
+    # Compute derived latency metrics
+    workflow_total_latencies = []
+    for gid, info in workflow_latencies.items():
+        if not info["query"]:
+            info["query"] = f"Operations Swarm Task ({gid})"
+        total_lat = info["goal_completed_latency"]
+        if total_lat is None:
+            total_lat = sum(info["latencies"]) if info["latencies"] else 0.0
+        if total_lat > 0:
+            workflow_total_latencies.append({
+                "goal_id": gid,
+                "query": info["query"],
+                "total_latency_ms": round(total_lat, 2),
+                "total_latency_sec": round(total_lat / 1000.0, 4),
+                "timestamp": info["ts"]
+            })
+            
+    top_10_slowest_workflows = sorted(workflow_total_latencies, key=lambda x: x["total_latency_ms"], reverse=True)[:10]
+    
+    model_averages = []
+    for model, lats in model_latencies.items():
+        avg_lat = sum(lats) / len(lats) if lats else 0.0
+        model_averages.append({
+            "model": model,
+            "avg_latency_ms": round(avg_lat, 2),
+            "avg_latency_sec": round(avg_lat / 1000.0, 4),
+            "count": len(lats)
+        })
+    top_10_slowest_models = sorted(model_averages, key=lambda x: x["avg_latency_ms"], reverse=True)[:10]
+    
+    avg_latency_by_event = {}
+    for ev, lats in event_latencies.items():
+        avg_latency_by_event[ev] = round(sum(lats) / len(lats), 2) if lats else 0.0
+        
+    avg_latency_by_model = {}
+    for m, lats in model_latencies.items():
+        avg_latency_by_model[m] = round(sum(lats) / len(lats), 2) if lats else 0.0
+        
+    avg_latency_by_department = {}
+    for d, lats in dept_latencies.items():
+        avg_latency_by_department[d] = round(sum(lats) / len(lats), 2) if lats else 0.0
+        
+    avg_latency_by_workflow = round(sum(w["total_latency_ms"] for w in workflow_total_latencies) / len(workflow_total_latencies), 2) if workflow_total_latencies else 0.0
+    
+    planner_average_latency = avg_latency_by_event.get("PLANNING", 0.0)
+    
+    auditor_lats = event_latencies.get("AUDIT_PRE", []) + event_latencies.get("AUDIT_POST", [])
+    auditor_average_latency = round(sum(auditor_lats) / len(auditor_lats), 2) if auditor_lats else 0.0
+    
+    execution_average_latency = avg_latency_by_event.get("EXECUTION", 0.0)
+    
+    latency_metrics = {
+        "avg_latency_by_event": avg_latency_by_event,
+        "avg_latency_by_model": avg_latency_by_model,
+        "avg_latency_by_department": avg_latency_by_department,
+        "avg_latency_by_workflow": avg_latency_by_workflow,
+        "latency_seconds": {ev: round(val / 1000.0, 4) for ev, val in avg_latency_by_event.items()},
+        "planner_average_latency": planner_average_latency,
+        "auditor_average_latency": auditor_average_latency,
+        "execution_average_latency": execution_average_latency,
+        "top_10_slowest_workflows": top_10_slowest_workflows,
+        "top_10_slowest_models": top_10_slowest_models
+    }
+
     # Compile Model Matrix
     model_matrix = []
     for sm in supported_models:
@@ -4110,7 +4795,8 @@ def get_telemetry_data(limit=100) -> dict:
         "reasoning_efficiency": reasoning_list[:5],
         "current_dept_model": CURRENT_DEPT_MODEL,
         "current_pa_model": CURRENT_PA_MODEL,
-        "model_matrix": model_matrix
+        "model_matrix": model_matrix,
+        "latency_metrics": latency_metrics
     }
 
 

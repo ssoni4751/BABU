@@ -49,6 +49,8 @@ class IntentPacket:
     allowed_actions: List[str] = field(default_factory=list)
     execution_mode: str = "READ_ONLY"  # "READ_ONLY", "APPROVAL_REQUIRED", "AUTO_EXECUTE"
     confidence: float = 1.0
+    tokens: Optional[dict] = None
+    model: Optional[str] = None
 
     def __init__(
         self,
@@ -56,6 +58,8 @@ class IntentPacket:
         allowed_actions: Optional[List[str]] = None,
         execution_mode: str = "READ_ONLY",
         confidence: float = 1.0,
+        tokens: Optional[dict] = None,
+        model: Optional[str] = None,
         # Legacy keyword args for compatibility
         lookup: Optional[bool] = None,
         research: Optional[bool] = None,
@@ -64,6 +68,10 @@ class IntentPacket:
         websearch: Optional[bool] = None,
         writer: Optional[bool] = None,
     ):
+        self.execution_mode = execution_mode
+        self.confidence = confidence
+        self.tokens = tokens
+        self.model = model
         self.execution_mode = execution_mode
         self.confidence = confidence
 
@@ -154,6 +162,8 @@ class IntentPacket:
             "confidence": self.confidence,
             "allowed_departments": self.allowed_departments,
             "allowed_actions": self.allowed_actions,
+            "tokens": self.tokens,
+            "model": self.model,
         }
 
     @classmethod
@@ -188,7 +198,9 @@ class IntentPacket:
             allowed_departments=allowed_depts,
             allowed_actions=allowed_actions,
             execution_mode=data.get("execution_mode", "READ_ONLY"),
-            confidence=data.get("confidence", 1.0)
+            confidence=data.get("confidence", 1.0),
+            tokens=data.get("tokens"),
+            model=data.get("model")
         )
 
 INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
@@ -236,7 +248,14 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
     greetings = {"hi", "hello", "hey", "good morning", "good afternoon", "good evening", "how are you", "help", "clear", "stats", "model"}
     if t in greetings or len(t) < 15:
         print("[INTENT CLASSIFIER] Fast-track classification: CHORE", flush=True)
-        return IntentPacket(allowed_departments=["information", "pa"], allowed_actions=["search_sheet", "search_gmail"], execution_mode="READ_ONLY", confidence=1.0)
+        return IntentPacket(
+            allowed_departments=["information", "pa"],
+            allowed_actions=["search_sheet", "search_gmail"],
+            execution_mode="READ_ONLY",
+            confidence=1.0,
+            tokens={"prompt": 0, "completion": 0, "total": 0},
+            model="rules_engine"
+        )
 
     # 1b. Rule-based programmatic override: force lookup when query contains personal data references
     # The LLM (small model) frequently ignores this for email/phone/name/address patterns
@@ -298,13 +317,26 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
                 execution_mode=packet.execution_mode,
                 confidence=packet.confidence,
             )
+        try:
+            from aria.bot import extract_tokens
+        except ImportError:
+            from bot import extract_tokens
+        packet.tokens = extract_tokens(response)
+        packet.model = model_name
         print(f"[INTENT CLASSIFIER] Classified: allowed_depts={packet.allowed_departments}, allowed_actions={packet.allowed_actions}, mode={packet.execution_mode}, conf={packet.confidence}", flush=True)
         return packet
     except Exception as e:
         print(f"[INTENT CLASSIFIER] Failed to classify intent: {e}. Defaulting to READ_ONLY fallback.", flush=True)
         default_depts = ["information", "pa"] if _force_lookup else ["pa"]
         default_actions = ["search_sheet", "search_gmail"] if _force_lookup else []
-        return IntentPacket(allowed_departments=default_depts, allowed_actions=default_actions, execution_mode="READ_ONLY", confidence=0.5)
+        return IntentPacket(
+            allowed_departments=default_depts,
+            allowed_actions=default_actions,
+            execution_mode="READ_ONLY",
+            confidence=0.5,
+            tokens={"prompt": 0, "completion": 0, "total": 0},
+            model=model_name
+        )
 
 # ---------------------------------------------------------------------------
 # System prompt

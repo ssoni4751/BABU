@@ -636,11 +636,13 @@ class TestExecutionLedger(unittest.TestCase):
         rows = cursor.fetchall()
         conn.close()
         
-        self.assertEqual(len(rows), 2)
-        self.assertEqual(rows[0][0], "GOAL_CREATED")
-        self.assertEqual(rows[0][1], "ACTIVE")
-        self.assertEqual(rows[1][0], "PLANNING")
-        self.assertEqual(rows[1][1], "PLANNED")
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(rows[0][0], "INTENT_CLASSIFICATION")
+        self.assertEqual(rows[0][1], "CLASSIFIED")
+        self.assertEqual(rows[1][0], "GOAL_CREATED")
+        self.assertEqual(rows[1][1], "ACTIVE")
+        self.assertEqual(rows[2][0], "PLANNING")
+        self.assertEqual(rows[2][1], "PLANNED")
 
 
 class TestGoalCorrection(unittest.TestCase):
