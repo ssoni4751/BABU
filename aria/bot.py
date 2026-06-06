@@ -2543,6 +2543,7 @@ def department_synthesizer(state: AriaState):
     return {"compressed_research": deterministic_compress_reports(reports)}
 
 def pa_node(state: AriaState):
+    import time
     final_brief = state.get("final_brief")
     if final_brief and "Respond directly to user query" in final_brief:
         final_brief = None
@@ -4829,41 +4830,44 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_GET(self):
-        if self.path in ("/healthz", "/api/healthz"):
-            body = json.dumps({
-                "status": "ok", "bot": "ARIA",
-                "features": ["memory", "web_search", "knowledge_base", "google_workspace"],
-                "google_configured": bool(is_google_configured()),
-            }).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self._cors()
-            self.end_headers()
-            self.wfile.write(body)
-        elif self.path in ("/api/telemetry", "/api/telemetry/"):
-            try:
-                data = get_telemetry_data(limit=100)
-                body = json.dumps(data).encode("utf-8")
+        try:
+            if self.path in ("/healthz", "/api/healthz"):
+                body = json.dumps({
+                    "status": "ok", "bot": "ARIA",
+                    "features": ["memory", "web_search", "knowledge_base", "google_workspace"],
+                    "google_configured": bool(is_google_configured()),
+                }).encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self._cors()
                 self.end_headers()
                 self.wfile.write(body)
-            except Exception as e:
-                err = json.dumps({"status": "error", "message": str(e)}).encode("utf-8")
-                self.send_response(500)
-                self.send_header("Content-Type", "application/json")
-                self._cors()
+            elif self.path in ("/api/telemetry", "/api/telemetry/"):
+                try:
+                    data = get_telemetry_data(limit=100)
+                    body = json.dumps(data).encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self._cors()
+                    self.end_headers()
+                    self.wfile.write(body)
+                except Exception as e:
+                    err = json.dumps({"status": "error", "message": str(e)}).encode("utf-8")
+                    self.send_response(500)
+                    self.send_header("Content-Type", "application/json")
+                    self._cors()
+                    self.end_headers()
+                    self.wfile.write(err)
+            elif self.path in ("/", ""):
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
-                self.wfile.write(err)
-        elif self.path in ("/", ""):
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(STATUS_HTML.encode())
-        else:
-            self.send_response(404)
-            self.end_headers()
+                self.wfile.write(STATUS_HTML.encode())
+            else:
+                self.send_response(404)
+                self.end_headers()
+        except (BrokenPipeError, ConnectionResetError) as e:
+            print(f"[HTTP SERVER WARNING] Client disconnected during GET {self.path}: {e}", flush=True)
 
     def do_POST(self):
         if self.path == "/api/models/switch":
