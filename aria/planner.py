@@ -542,7 +542,10 @@ def plan_goal(
     p_tokens = None
 
     # Build the user prompt ------------------------------------------------
-    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    from datetime import timedelta
+    now_utc_dt = datetime.now(timezone.utc)
+    now_ist_dt = now_utc_dt + timedelta(hours=5, minutes=30)
+    now_utc = f"{now_utc_dt.strftime('%Y-%m-%d %H:%M:%S')} UTC / {now_ist_dt.strftime('%Y-%m-%d %H:%M:%S')} IST (Indian Standard Time)"
     history_snippet = (history_text[:500] + "…") if len(history_text) > 500 else history_text
 
     user_content_parts: List[str] = [

@@ -2451,7 +2451,7 @@ def research_dept(state: AriaState):
     def build_task_dto(name: str, role: str, extra_context: str = "") -> dict:
         context = {
             "query": query,
-            "datetime_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+            "datetime_utc": f"{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')} / {(datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).strftime('%Y-%m-%d %H:%M')} IST (Indian Standard Time)",
             "constraints": ["be concise", "cite facts from context"],
             "web_search": search_ctx or "",
             "knowledge_base": kb_ctx or "",
@@ -2628,8 +2628,10 @@ def pa_node(state: AriaState):
         style = "[WORKFLOW]\nStructured briefing: ## headers. Cover overview, findings, risks, outlook. End with one concrete recommendation. Dense and precise."
 
     # Inject live temporal awareness for PA synthesis
-    from datetime import datetime, timezone
-    now_str = datetime.now(timezone.utc).strftime("%A, %d %B %Y, %H:%M UTC")
+    from datetime import datetime, timezone, timedelta
+    now_utc_dt = datetime.now(timezone.utc)
+    now_ist_dt = now_utc_dt + timedelta(hours=5, minutes=30)
+    now_str = f"{now_utc_dt.strftime('%A, %d %B %Y, %H:%M UTC')} / {now_ist_dt.strftime('%A, %d %B %Y, %H:%M')} IST (Indian Standard Time)"
 
     # Tiered Prompt Architecture
     if is_conversational:
