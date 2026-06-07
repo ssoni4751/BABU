@@ -5818,6 +5818,41 @@ async def send_long_telegram_message(update: Update, text: str, reply_markup=Non
             await update.message.reply_text(text, reply_markup=reply_markup)
         else:
             await update.message.reply_text(text)
+
+# ------------------- Retire Template Command -------------------
+async def cmd_retire(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Command to retire a trusted template (set status to RETIRED)."""
+    args = context.args
+    if not args or len(args) < 1:
+        await update.message.reply_text(
+            "⚠️ **Syntax Error**\\nUse: `/retire <template_signature>`\\n"
+            "E.g., `/retire research:execution:pa:post_to_facebook`"
+        )
+        return
+    sig = args[0]
+    conn, is_pg = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        if is_pg:
+            cursor.execute(
+                "UPDATE trusted_templates SET status = %s WHERE template_signature = %s",
+                ("RETIRED", sig)
+            )
+        else:
+            cursor.execute(
+                "UPDATE trusted_templates SET status = ? WHERE template_signature = ?",
+                ("RETIRED", sig)
+            )
+        if cursor.rowcount == 0:
+            await update.message.reply_text(f"❌ No active template found with signature `{sig}`.")
+        else:
+            conn.commit()
+            await update.message.reply_text(f"✅ Template `{sig}` marked as **RETIRED**.")
+    except Exception as e:
+        print(f"[RETIRE CMD ERROR] {e}", flush=True)
+        await update.message.reply_text(f"❌ Failed to retire template: `{e}`")
+    finally:
+        conn.close()
         return
 
     paragraphs = text.split("\n\n")
@@ -6603,6 +6638,7 @@ if __name__ == "__main__":
     bot.add_handler(CommandHandler("model",  cmd_model))
     bot.add_handler(CommandHandler("postnow", cmd_postnow))
     bot.add_handler(CommandHandler("promote", cmd_promote))
+    bot.add_handler(CommandHandler("retire", cmd_retire))
     bot.add_handler(MessageHandler((filters.TEXT | filters.VOICE) & (~filters.COMMAND), on_message))
     bot.add_handler(CallbackQueryHandler(on_post_callback))
     bot.add_error_handler(telegram_error_handler)
