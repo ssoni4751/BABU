@@ -2246,7 +2246,7 @@ def task_executor_node(state: AriaState):
     
     # Goal lifecycle outcomes logging
     if engine.is_goal_complete():
-        is_graceful_recovery = (goal_graph.planner_status != "SUCCESS")
+        is_graceful_recovery = (goal_graph.planner_status not in ("SUCCESS", "TEMPLATE_MATCH", "FAST_TRACK", "WALK", None, ""))
         log_execution_ledger_event(
             session_id=session_id,
             goal_id=goal_graph.goal_id,
