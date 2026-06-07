@@ -89,6 +89,24 @@ def init_postgres_db():
                 data TEXT
             );
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS trusted_templates (
+                template_id TEXT PRIMARY KEY,
+                template_signature TEXT UNIQUE,
+                goal_graph_json TEXT,
+                version INTEGER DEFAULT 1,
+                execution_count INTEGER DEFAULT 0,
+                success_count INTEGER DEFAULT 0,
+                consecutive_failures INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'ACTIVE',
+                promoted_from_goal_id TEXT,
+                promotion_epoch INTEGER,
+                average_execution_time REAL DEFAULT 0.0,
+                average_token_cost REAL DEFAULT 0.0,
+                last_used TEXT,
+                created_at TEXT
+            );
+        """)
         conn.commit()
         cursor.close()
         conn.close()
@@ -135,6 +153,24 @@ def init_durable_checkpoint_db():
         CREATE TABLE IF NOT EXISTS system_memory (
             key TEXT PRIMARY KEY,
             data TEXT
+        );
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS trusted_templates (
+            template_id TEXT PRIMARY KEY,
+            template_signature TEXT UNIQUE,
+            goal_graph_json TEXT,
+            version INTEGER DEFAULT 1,
+            execution_count INTEGER DEFAULT 0,
+            success_count INTEGER DEFAULT 0,
+            consecutive_failures INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'ACTIVE',
+            promoted_from_goal_id TEXT,
+            promotion_epoch INTEGER,
+            average_execution_time REAL DEFAULT 0.0,
+            average_token_cost REAL DEFAULT 0.0,
+            last_used TEXT,
+            created_at TEXT
         );
     """)
     conn.commit()
@@ -1438,36 +1474,100 @@ def planner_node(state: AriaState):
         print(f"[PLANNER NODE] Fast-tracking simple lookup/websearch query (lookup={intent_packet.lookup}, websearch={intent_packet.websearch}) directly to PA response", flush=True)
         graph = build_walk_graph(query, goal_id=pre_goal_id)
     else:
-        # Check if this query is a correction referencing a recent workflow
-        is_correction = False
-        last_goal_text = None
-        last_graph = get_last_goal_graph(session_id)
-        if last_graph:
-            last_goal_text = last_graph.get("goal")
-            # If the escalation router classified this as a workflow escalation, AND it doesn't explicitly start with a command trigger keyword,
-            # it is a corrective query referencing the last goal.
-            t_clean = query.lower().strip()
-            has_command_trigger = (
-                t_clean.startswith("/") or 
-                t_clean.startswith("!") or 
-                t_clean.startswith("launch") or 
-                t_clean.startswith("sprint") or 
-                t_clean.startswith("postnow")
-            )
-            if should_escalate_to_workflow(query, history_text=history_text) and not has_command_trigger:
-                is_correction = True
-                print(f"[PLANNER NODE] Correction detected. Previous goal: '{last_goal_text}'", flush=True)
+        # Try template lookup
+        try:
+            from .governance import check_constraint_compatibility
+        except ImportError:
+            from governance import check_constraint_compatibility
+            
+        flow_order = ["research", "analysis", "writing", "execution", "pa"]
+        depts = [d for d in flow_order if d in intent_packet.allowed_departments]
+        sig = ":".join(depts)
+        if "execution" in depts and intent_packet.allowed_actions:
+            sorted_actions = sorted(intent_packet.allowed_actions)
+            sig += ":" + ":".join(sorted_actions)
 
-        graph = plan_goal(
-            query=query,
-            history_text=history_text,
-            profile_text=profile_text,
-            model_name=CURRENT_DEPT_MODEL,
-            goal_id=pre_goal_id,
-            is_correction=is_correction,
-            last_goal_text=last_goal_text,
-            intent_packet=intent_packet,
-        )
+        print(f"[PLANNER NODE] Template signature built for lookup: {sig}", flush=True)
+        
+        template = None
+        conn, is_pg = get_db_connection()
+        try:
+            cursor = conn.cursor()
+            if is_pg:
+                cursor.execute(
+                    "SELECT template_id, goal_graph_json, status FROM trusted_templates WHERE template_signature = %s AND status = 'ACTIVE'",
+                    (sig,)
+                )
+            else:
+                cursor.execute(
+                    "SELECT template_id, goal_graph_json, status FROM trusted_templates WHERE template_signature = ? AND status = 'ACTIVE'",
+                    (sig,)
+                )
+            row = cursor.fetchone()
+            if row:
+                template = {
+                    "template_id": row[0],
+                    "goal_graph_json": row[1],
+                    "status": row[2]
+                }
+            cursor.close()
+        except Exception as db_err:
+            print(f"[PLANNER DB ERROR] Failed to query trusted_templates: {db_err}", flush=True)
+        finally:
+            conn.close()
+
+        is_compatible = False
+        if template:
+            is_compatible = check_constraint_compatibility(query, template)
+            if is_compatible:
+                try:
+                    from .task_engine import GoalGraph
+                except ImportError:
+                    from task_engine import GoalGraph
+                
+                try:
+                    graph_dict = json.loads(template["goal_graph_json"])
+                    # Use template's graph but override ID and goal
+                    graph_dict["goal_id"] = pre_goal_id
+                    graph_dict["goal"] = query
+                    graph = GoalGraph.from_dict(graph_dict)
+                    graph.planner_status = "TEMPLATE_MATCH"
+                    print(f"[PLANNER NODE] E[Temp] Muscle Memory Hit! Using template {template['template_id']} for signature {sig}", flush=True)
+                except Exception as parse_err:
+                    print(f"[PLANNER NODE] Failed to load template goal graph: {parse_err}. Falling back to dynamic planner.", flush=True)
+                    template = None
+
+        if not template or not is_compatible:
+            # Check if this query is a correction referencing a recent workflow
+            is_correction = False
+            last_goal_text = None
+            last_graph = get_last_goal_graph(session_id)
+            if last_graph:
+                last_goal_text = last_graph.get("goal")
+                # If the escalation router classified this as a workflow escalation, AND it doesn't explicitly start with a command trigger keyword,
+                # it is a corrective query referencing the last goal.
+                t_clean = query.lower().strip()
+                has_command_trigger = (
+                    t_clean.startswith("/") or 
+                    t_clean.startswith("!") or 
+                    t_clean.startswith("launch") or 
+                    t_clean.startswith("sprint") or 
+                    t_clean.startswith("postnow")
+                )
+                if should_escalate_to_workflow(query, history_text=history_text) and not has_command_trigger:
+                    is_correction = True
+                    print(f"[PLANNER NODE] Correction detected. Previous goal: '{last_goal_text}'", flush=True)
+
+            graph = plan_goal(
+                query=query,
+                history_text=history_text,
+                profile_text=profile_text,
+                model_name=CURRENT_DEPT_MODEL,
+                goal_id=pre_goal_id,
+                is_correction=is_correction,
+                last_goal_text=last_goal_text,
+                intent_packet=intent_packet,
+            )
 
     plan_end_time = time.time()
     plan_end_iso = datetime.now(timezone.utc).isoformat()
@@ -1475,7 +1575,10 @@ def planner_node(state: AriaState):
     plan_latency_sec = round(plan_end_time - plan_start_time, 4)
     
     # Store in graph so we can access it during execution completion
-    graph.planning_tokens = getattr(graph, "planning_tokens", None) or {"prompt": 1800, "completion": 500, "total": 2300}
+    if getattr(graph, "planner_status", "") == "TEMPLATE_MATCH":
+        graph.planning_tokens = {"prompt": 0, "completion": 0, "total": 0}
+    else:
+        graph.planning_tokens = getattr(graph, "planning_tokens", None) or {"prompt": 1800, "completion": 500, "total": 2300}
     
     # Log GOAL_CREATED lifecycle event
     log_execution_ledger_event(
@@ -1493,10 +1596,15 @@ def planner_node(state: AriaState):
         }
     )
     
-    has_actual_tokens = bool(getattr(graph, "planning_tokens", None))
-    plan_tokens = getattr(graph, "planning_tokens", None) or {"prompt": 1800, "completion": 500, "total": 2300}
-    p_plan, c_plan = get_token_costs(CURRENT_DEPT_MODEL)
-    plan_cost = (plan_tokens.get("prompt", 0) * p_plan) + (plan_tokens.get("completion", 0) * c_plan)
+    if getattr(graph, "planner_status", "") == "TEMPLATE_MATCH":
+        plan_tokens = {"prompt": 0, "completion": 0, "total": 0}
+        plan_cost = 0.0
+        has_actual_tokens = True
+    else:
+        has_actual_tokens = bool(getattr(graph, "planning_tokens", None))
+        plan_tokens = getattr(graph, "planning_tokens", None) or {"prompt": 1800, "completion": 500, "total": 2300}
+        p_plan, c_plan = get_token_costs(CURRENT_DEPT_MODEL)
+        plan_cost = (plan_tokens.get("prompt", 0) * p_plan) + (plan_tokens.get("completion", 0) * c_plan)
     
     log_execution_ledger_event(
         session_id=session_id,
@@ -1563,6 +1671,18 @@ def task_executor_node(state: AriaState):
     engine = TaskEngine(goal_graph)
     auditor = BipartiteAuditor(llm=llm_dept)
     
+    is_template_match = (goal_graph.planner_status == "TEMPLATE_MATCH")
+    if is_template_match:
+        try:
+            from .governance import micro_audit_dag
+        except ImportError:
+            from governance import micro_audit_dag
+        passed_micro = micro_audit_dag(goal_graph.to_dict())
+        if not passed_micro:
+            print(f"[EXECUTOR] Micro-audit failed for template goal DAG: {goal_graph.goal_id}", flush=True)
+            for t in goal_graph.tasks:
+                engine.mark_failed(t.task_id, "Micro-audit failed")
+                
     print(f"[EXECUTOR] Executing goal DAG: {goal_graph.goal_id}", flush=True)
     
     # Log DEPENDENCY_WAIT for all downstream tasks initially
@@ -1652,7 +1772,11 @@ def task_executor_node(state: AriaState):
                 state_after="AUDITING_PRE",
                 metadata={"objective": task.objective}
             )
-            passed_pre, reason_pre = auditor.audit_pre(task)
+            if is_template_match:
+                passed_pre = True
+                reason_pre = "Bypassed via template match micro-audit"
+            else:
+                passed_pre, reason_pre = auditor.audit_pre(task)
             
             pre_end_time = time.time()
             pre_end_iso = datetime.now(timezone.utc).isoformat()
@@ -1869,15 +1993,20 @@ def task_executor_node(state: AriaState):
                 
                 post_start_time = time.time()
                 post_start_iso = datetime.now(timezone.utc).isoformat()
-                passed_post, audit_result = auditor.audit_post(task, result)
+                if is_template_match:
+                    passed_post = True
+                    audit_result = "Bypassed via template match micro-audit"
+                    audit_tokens = {"prompt": 0, "completion": 0, "total": 0}
+                else:
+                    passed_post, audit_result = auditor.audit_post(task, result)
+                    audit_tokens = getattr(auditor, "last_tokens", {"prompt": 0, "completion": 0, "total": 0})
+                    if type(audit_tokens).__name__ in ("MagicMock", "Mock") or not isinstance(audit_tokens, dict):
+                        audit_tokens = {"prompt": 0, "completion": 0, "total": 0}
+                
                 post_end_time = time.time()
                 post_end_iso = datetime.now(timezone.utc).isoformat()
                 post_latency_ms = round((post_end_time - post_start_time) * 1000, 2)
                 post_latency_sec = round(post_end_time - post_start_time, 4)
-                
-                audit_tokens = getattr(auditor, "last_tokens", {"prompt": 0, "completion": 0, "total": 0})
-                if type(audit_tokens).__name__ in ("MagicMock", "Mock") or not isinstance(audit_tokens, dict):
-                    audit_tokens = {"prompt": 0, "completion": 0, "total": 0}
                 
                 # Accumulate auditor tokens
                 total_audit_tokens["prompt"] += audit_tokens.get("prompt", 0)
@@ -2813,6 +2942,7 @@ else:
 # â”€â”€ Core invoke helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def invoke_aria(message: str, session_id: str = "default", goal_id: Optional[str] = None, gear: str = "LAUNCH") -> tuple[str, str, dict]:
+    t_start = time.time()
     if not goal_id:
         goal_id = f"G-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
     
@@ -2880,6 +3010,227 @@ def invoke_aria(message: str, session_id: str = "default", goal_id: Optional[str
                 }
             )
             compact_completed_session_history(session_id)
+            
+            # --- E[Temp] Promotion / Demotion Logic ---
+            try:
+                planner_status = goal_graph_dict.get("planner_status", "")
+                is_template = (planner_status == "TEMPLATE_MATCH")
+                
+                # Generate signature from GoalGraph dict
+                tasks = goal_graph_dict.get("tasks", [])
+                depts = []
+                sorted_tasks = sorted(tasks, key=lambda t: t.get("task_id", ""))
+                for t in sorted_tasks:
+                    d = t.get("department")
+                    if d and d not in depts:
+                        depts.append(d)
+                actions = []
+                for t in sorted_tasks:
+                    if t.get("department") == "execution":
+                        ctx = t.get("context") or {}
+                        act = ctx.get("action")
+                        if act and act not in actions:
+                            actions.append(act)
+                sig = ":".join(depts)
+                if actions:
+                    sig += ":" + ":".join(actions)
+                
+                # Retrieve actual cost and tokens from execution ledger
+                total_tokens = 0
+                total_cost = 0.0
+                conn, is_pg = get_db_connection()
+                try:
+                    cursor = conn.cursor()
+                    if is_pg:
+                        cursor.execute("SELECT metadata FROM execution_ledger WHERE goal_id = %s", (goal_id,))
+                    else:
+                        cursor.execute("SELECT metadata FROM execution_ledger WHERE goal_id = ?", (goal_id,))
+                    rows = cursor.fetchall()
+                    for r in rows:
+                        if r[0]:
+                            meta = json.loads(r[0]) if isinstance(r[0], str) else r[0]
+                            if meta and "cost" in meta:
+                                total_cost += meta.get("cost", 0.0)
+                            if meta and "tokens" in meta:
+                                total_tokens += meta.get("tokens", {}).get("total", 0)
+                    cursor.close()
+                except Exception as e:
+                    print(f"[SEALING METRICS ERROR] Failed to fetch ledger costs: {e}", flush=True)
+                finally:
+                    conn.close()
+
+                current_latency = time.time() - t_start
+                
+                if is_template:
+                    # Update template metrics in DB
+                    conn, is_pg = get_db_connection()
+                    try:
+                        cursor = conn.cursor()
+                        if is_pg:
+                            cursor.execute(
+                                "SELECT execution_count, success_count, consecutive_failures, average_execution_time, average_token_cost, status FROM trusted_templates WHERE template_signature = %s",
+                                (sig,)
+                            )
+                        else:
+                            cursor.execute(
+                                "SELECT execution_count, success_count, consecutive_failures, average_execution_time, average_token_cost, status FROM trusted_templates WHERE template_signature = ?",
+                                (sig,)
+                            )
+                        row = cursor.fetchone()
+                        if row:
+                            old_count, old_success, old_consecutive, old_avg_time, old_avg_cost, current_status = row
+                            new_count = old_count + 1
+                            new_success = old_success + (1 if status == "COMPLETED" else 0)
+                            new_consecutive = 0 if status == "COMPLETED" else (old_consecutive + 1)
+                            
+                            new_avg_time = ((old_avg_time * old_count) + current_latency) / new_count
+                            new_avg_cost = ((old_avg_cost * old_count) + total_cost) / new_count
+                            
+                            try:
+                                from .governance import get_policy
+                            except ImportError:
+                                from governance import get_policy
+                            demotion_max_failures = get_policy("demotion_max_failures", 2)
+                            demotion_min_success_rate = get_policy("demotion_min_success_rate", 0.90)
+                            
+                            success_rate = new_success / new_count if new_count > 0 else 1.0
+                            new_status = current_status
+                            
+                            if new_consecutive >= demotion_max_failures:
+                                if current_status == "DEMOTED":
+                                    new_status = "RETIRED"
+                                    print(f"[GOVERNANCE DEMOTION] Template {sig} RETIRED due to persistent failures.", flush=True)
+                                else:
+                                    new_status = "DEMOTED"
+                                    print(f"[GOVERNANCE DEMOTION] Template {sig} DEMOTED due to {new_consecutive} consecutive failures.", flush=True)
+                            elif new_count >= 5 and success_rate < demotion_min_success_rate:
+                                new_status = "DEMOTED"
+                                print(f"[GOVERNANCE DEMOTION] Template {sig} DEMOTED due to success rate {success_rate:.2f} < {demotion_min_success_rate}.", flush=True)
+                                
+                            last_used = datetime.now(timezone.utc).isoformat()
+                            if is_pg:
+                                cursor.execute(
+                                    """
+                                    UPDATE trusted_templates SET
+                                        execution_count = %s,
+                                        success_count = %s,
+                                        consecutive_failures = %s,
+                                        average_execution_time = %s,
+                                        average_token_cost = %s,
+                                        status = %s,
+                                        last_used = %s
+                                    WHERE template_signature = %s
+                                    """,
+                                    (new_count, new_success, new_consecutive, new_avg_time, new_avg_cost, new_status, last_used, sig)
+                                )
+                            else:
+                                cursor.execute(
+                                    """
+                                    UPDATE trusted_templates SET
+                                        execution_count = ?,
+                                        success_count = ?,
+                                        consecutive_failures = ?,
+                                        average_execution_time = ?,
+                                        average_token_cost = ?,
+                                        status = ?,
+                                        last_used = ?
+                                    WHERE template_signature = ?
+                                    """,
+                                    (new_count, new_success, new_consecutive, new_avg_time, new_avg_cost, new_status, last_used, sig)
+                                )
+                            conn.commit()
+                        cursor.close()
+                    except Exception as db_err:
+                        print(f"[SEALING METRICS ERROR] Failed to update template metrics: {db_err}", flush=True)
+                    finally:
+                        conn.close()
+                elif status == "COMPLETED":
+                    # Check Promotion eligibility
+                    conn, is_pg = get_db_connection()
+                    run_count = 0
+                    success_count = 0
+                    try:
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT goal_id, metadata FROM execution_ledger WHERE event_type = 'PLANNING' ORDER BY event_id DESC LIMIT 50")
+                        rows = cursor.fetchall()
+                        goal_ids = []
+                        for r in rows:
+                            goal_id_val, meta_str = r
+                            meta = json.loads(meta_str) if isinstance(meta_str, str) else meta_str
+                            if meta:
+                                graph_dict = meta.get("graph")
+                                if graph_dict:
+                                    g_tasks = graph_dict.get("tasks", [])
+                                    g_depts = []
+                                    g_sorted_tasks = sorted(g_tasks, key=lambda t: t.get("task_id", ""))
+                                    for gt in g_sorted_tasks:
+                                        gd = gt.get("department")
+                                        if gd and gd not in g_depts:
+                                            g_depts.append(gd)
+                                    g_actions = []
+                                    for gt in g_sorted_tasks:
+                                        if gt.get("department") == "execution":
+                                            g_ctx = gt.get("context") or {}
+                                            g_act = g_ctx.get("action")
+                                            if g_act and g_act not in g_actions:
+                                                g_actions.append(g_act)
+                                    g_sig = ":".join(g_depts)
+                                    if g_actions:
+                                        g_sig += ":" + ":".join(g_actions)
+                                        
+                                    if g_sig == sig:
+                                        goal_ids.append(goal_id_val)
+                        
+                        goal_ids = list(set(goal_ids))
+                        if goal_ids:
+                            placeholders = ",".join(["%s" if is_pg else "?" for _ in goal_ids])
+                            query_str = f"SELECT goal_id, event_type FROM execution_ledger WHERE goal_id IN ({placeholders}) AND event_type IN ('EPOCH_SEAL', 'GOAL_COMPLETED')"
+                            cursor.execute(query_str, tuple(goal_ids))
+                            completed_goals = {row[0] for row in cursor.fetchall()}
+                            
+                            run_count = len(goal_ids)
+                            success_count = len(completed_goals)
+                        cursor.close()
+                    except Exception as prom_err:
+                        print(f"[SEALING PROMOTION ERROR] Failed to check promotion eligibility: {prom_err}", flush=True)
+                    finally:
+                        conn.close()
+                        
+                    try:
+                        from .governance import get_policy
+                    except ImportError:
+                        from governance import get_policy
+                    promotion_min_runs = get_policy("promotion_min_runs", 5)
+                    promotion_success_rate = get_policy("promotion_success_rate", 0.95)
+                    
+                    success_rate = success_count / run_count if run_count > 0 else 0.0
+                    
+                    already_exists = False
+                    conn, is_pg = get_db_connection()
+                    try:
+                        cursor = conn.cursor()
+                        if is_pg:
+                            cursor.execute("SELECT 1 FROM trusted_templates WHERE template_signature = %s AND status = 'ACTIVE'", (sig,))
+                        else:
+                            cursor.execute("SELECT 1 FROM trusted_templates WHERE template_signature = ? AND status = 'ACTIVE'", (sig,))
+                        if cursor.fetchone():
+                            already_exists = True
+                        cursor.close()
+                    except Exception as db_err:
+                        pass
+                    finally:
+                        conn.close()
+                        
+                    if run_count >= promotion_min_runs and success_rate >= promotion_success_rate and not already_exists:
+                        promotion_note = (
+                            f"\n\n💡 *System Suggestion: Promote Workflow*\n"
+                            f"The workflow signature `{sig}` has successfully run {success_count}/{run_count} times.\n"
+                            f"To compile this workflow into ARIA's muscle memory (E[Temp]), approve by sending:\n"
+                            f"`/promote {sig} {goal_id}`"
+                        )
+                        reply += promotion_note
+            except Exception as outer_err:
+                print(f"[SEALING METRICS ERROR] General error in promotion/demotion checks: {outer_err}", flush=True)
             
     return reply, "DYNAMIC", tokens
 
@@ -5312,6 +5663,107 @@ async def cmd_postnow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await generate_and_send_preview(chat_id, context.bot, custom_topic=custom_topic, reply_to_message_id=update.message.message_id)
 
 
+async def cmd_promote(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Command to promote a workflow pattern to a trusted template (E[Temp])."""
+    args = context.args
+    if not args or len(args) < 2:
+        await update.message.reply_text(
+            "⚠️ **Syntax Error**\nUse: `/promote <template_signature> <goal_id>`\n"
+            "E.g., `/promote research:execution:pa:post_to_facebook G-20260607-123456`"
+        )
+        return
+        
+    sig = args[0]
+    goal_id = args[1]
+    
+    conn, is_pg = get_db_connection()
+    goal_graph_json = None
+    try:
+        cursor = conn.cursor()
+        if is_pg:
+            cursor.execute(
+                "SELECT metadata FROM execution_ledger WHERE goal_id = %s AND event_type = 'PLANNING' ORDER BY event_id DESC LIMIT 1",
+                (goal_id,)
+            )
+        else:
+            cursor.execute(
+                "SELECT metadata FROM execution_ledger WHERE goal_id = ? AND event_type = 'PLANNING' ORDER BY event_id DESC LIMIT 1",
+                (goal_id,)
+            )
+        row = cursor.fetchone()
+        if row:
+            metadata_dict = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+            graph_dict = metadata_dict.get("graph")
+            if graph_dict:
+                goal_graph_json = json.dumps(graph_dict)
+        cursor.close()
+    except Exception as e:
+        print(f"[PROMOTE CMD ERROR] Failed to fetch goal graph from ledger: {e}", flush=True)
+    finally:
+        conn.close()
+        
+    if not goal_graph_json:
+        await update.message.reply_text(
+            f"❌ **Error**: Could not find a compiled GoalGraph for Goal ID `{goal_id}` in the ledger."
+        )
+        return
+
+    import uuid
+    from datetime import datetime, timezone
+    template_id = f"T-{uuid.uuid4().hex[:6].upper()}"
+    created_at = datetime.now(timezone.utc).isoformat()
+    
+    conn, is_pg = get_db_connection()
+    success = False
+    try:
+        cursor = conn.cursor()
+        if is_pg:
+            cursor.execute(
+                """
+                INSERT INTO trusted_templates (
+                    template_id, template_signature, goal_graph_json, status, promoted_from_goal_id, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (template_signature) DO UPDATE SET
+                    goal_graph_json = EXCLUDED.goal_graph_json,
+                    version = trusted_templates.version + 1,
+                    status = 'ACTIVE',
+                    promoted_from_goal_id = EXCLUDED.promoted_from_goal_id,
+                    created_at = EXCLUDED.created_at
+                """,
+                (template_id, sig, goal_graph_json, "ACTIVE", goal_id, created_at)
+            )
+        else:
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO trusted_templates (
+                    template_id, template_signature, goal_graph_json, version, execution_count, success_count, consecutive_failures, status, promoted_from_goal_id, created_at
+                ) VALUES (
+                    ?, ?, ?,
+                    COALESCE((SELECT version + 1 FROM trusted_templates WHERE template_signature = ?), 1),
+                    0, 0, 0, 'ACTIVE', ?, ?
+                )
+                """,
+                (template_id, sig, goal_graph_json, sig, goal_id, created_at)
+            )
+        conn.commit()
+        cursor.close()
+        success = True
+    except Exception as e:
+        print(f"[PROMOTE CMD ERROR] Failed to save trusted template: {e}", flush=True)
+        await update.message.reply_text(f"❌ **Promotion Failed**: Database error: {e}")
+    finally:
+        conn.close()
+        
+    if success:
+        await update.message.reply_text(
+            f"✅ **E[Temp] Promotion Successful!**\n"
+            f"• **Template ID**: `{template_id}`\n"
+            f"• **Signature**: `{sig}`\n"
+            f"• **Source Goal ID**: `{goal_id}`\n\n"
+            f"ARIA has now compiled this workflow into muscle memory. Subsequent runs matching this signature will bypass dynamic planning and heavy auditing."
+        )
+
+
 # â”€â”€ Telegram handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async def send_long_telegram_message(update: Update, text: str, reply_markup=None):
@@ -6106,6 +6558,7 @@ if __name__ == "__main__":
     bot.add_handler(CommandHandler("stats",  cmd_stats))
     bot.add_handler(CommandHandler("model",  cmd_model))
     bot.add_handler(CommandHandler("postnow", cmd_postnow))
+    bot.add_handler(CommandHandler("promote", cmd_promote))
     bot.add_handler(MessageHandler((filters.TEXT | filters.VOICE) & (~filters.COMMAND), on_message))
     bot.add_handler(CallbackQueryHandler(on_post_callback))
     bot.add_error_handler(telegram_error_handler)
