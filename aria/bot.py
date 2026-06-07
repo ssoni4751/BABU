@@ -423,20 +423,20 @@ llm_dept = build_llm(CURRENT_DEPT_MODEL, 0.7)
 # Provider-level auto-failover for rate limits
 # ---------------------------------------------------------------------------
 
-# Map Groq models to their OpenRouter equivalents
+# Map Groq models to their OpenRouter equivalents and alternate Groq models
 _FALLBACK_CHAIN = {
-    "llama-3.1-8b-instant":    ["meta-llama/llama-3.1-8b-instruct", "google/gemini-2.0-flash-001"],
-    "llama-3.3-70b-versatile": ["meta-llama/llama-3.3-70b-instruct", "google/gemini-2.0-flash-001"],
+    "llama-3.1-8b-instant":    ["gemma2-9b-it", "meta-llama/llama-3.1-8b-instruct", "google/gemini-2.5-flash"],
+    "llama-3.3-70b-versatile": ["llama-3.1-8b-instant", "gemma2-9b-it", "meta-llama/llama-3.3-70b-instruct", "google/gemini-2.5-flash"],
 }
 _RATE_LIMIT_SIGNALS = ("429", "rate limit", "rate_limit_exceeded", "too many requests", "tpd", "tpm")
 
 
 def invoke_with_fallback(messages, model_name: str, temp: float):
-    """Invoke an LLM with automatic provider failover on rate limits.
+    """Invoke an LLM with automatic provider failover on rate limits and general failures.
 
     Tries the primary model first. If it hits a 429/rate-limit error,
-    automatically retries through alternative providers (OpenRouter → Gemini)
-    before giving up. Non-rate-limit errors propagate immediately.
+    it retries up to 3 times with backoff. If it still fails, or if it encounters
+    any other error, it automatically falls back to alternative models in the chain.
 
     Parameters
     ----------
@@ -451,29 +451,39 @@ def invoke_with_fallback(messages, model_name: str, temp: float):
     -------
     LLM response object with .content and .response_metadata.
     """
+    import time
     fallbacks = _FALLBACK_CHAIN.get(model_name, ["google/gemini-2.0-flash-001"])
     models_to_try = [model_name] + fallbacks
 
     last_exc = None
     for i, model in enumerate(models_to_try):
-        try:
-            llm = build_llm(model, temp)
-            response = llm.invoke(messages)
-            if i > 0:
-                print(f"[LLM FAILOVER SUCCESS] '{model}' responded after primary '{model_name}' was rate-limited.", flush=True)
-            return response
-        except Exception as exc:
-            exc_str = str(exc).lower()
-            is_rate_limit = any(sig in exc_str for sig in _RATE_LIMIT_SIGNALS)
-            if is_rate_limit and i < len(models_to_try) - 1:
-                next_model = models_to_try[i + 1]
-                print(f"[LLM FAILOVER] '{model}' rate-limited → switching to '{next_model}'", flush=True)
+        max_attempts = 3 if i == 0 else 1
+        for attempt in range(max_attempts):
+            try:
+                llm = build_llm(model, temp)
+                response = llm.invoke(messages)
+                if i > 0:
+                    print(f"[LLM FAILOVER SUCCESS] '{model}' responded after primary '{model_name}' failed.", flush=True)
+                return response
+            except Exception as exc:
                 last_exc = exc
-                continue
-            # Non-rate-limit error or last model in chain — propagate
-            raise
+                exc_str = str(exc).lower()
+                is_rate_limit = any(sig in exc_str for sig in _RATE_LIMIT_SIGNALS)
+                
+                if is_rate_limit and attempt < max_attempts - 1:
+                    sleep_time = (attempt + 1) * 2
+                    print(f"[LLM RATE LIMIT] '{model}' rate-limited. Retrying in {sleep_time}s (attempt {attempt + 1}/{max_attempts})...", flush=True)
+                    time.sleep(sleep_time)
+                    continue
+                break
 
-    # Should not reach here, but safety net
+        # If we exhausted attempts or got any error, transition to next fallback model
+        if i < len(models_to_try) - 1:
+            next_model = models_to_try[i + 1]
+            print(f"[LLM FAILOVER] '{model}' failed ({last_exc}) → switching to '{next_model}'", flush=True)
+            continue
+
+    # Last model in chain — propagate the last exception
     raise last_exc
 
 USER_PROFILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "user_profile.json")
@@ -1540,6 +1550,7 @@ def planner_node(state: AriaState):
         elif (intent_packet.lookup or intent_packet.websearch) and not (intent_packet.research or intent_packet.generate or intent_packet.execute or requires_workspace_access(query)):
             print(f"[PLANNER NODE] Fast-tracking simple lookup/websearch query (lookup={intent_packet.lookup}, websearch={intent_packet.websearch}) directly to PA response", flush=True)
             graph = build_walk_graph(query, goal_id=pre_goal_id)
+            graph.planner_status = "WALK"
         else:
             # Check if this query is a correction referencing a recent workflow
             is_correction = False
@@ -1578,7 +1589,7 @@ def planner_node(state: AriaState):
     plan_latency_sec = round(plan_end_time - plan_start_time, 4)
     
     # Store in graph so we can access it during execution completion
-    if getattr(graph, "planner_status", "") == "TEMPLATE_MATCH":
+    if getattr(graph, "planner_status", "") in ("TEMPLATE_MATCH", "WALK", "FAST_TRACK"):
         graph.planning_tokens = {"prompt": 0, "completion": 0, "total": 0}
     else:
         graph.planning_tokens = getattr(graph, "planning_tokens", None) or {"prompt": 1800, "completion": 500, "total": 2300}
@@ -1599,7 +1610,7 @@ def planner_node(state: AriaState):
         }
     )
     
-    if getattr(graph, "planner_status", "") == "TEMPLATE_MATCH":
+    if getattr(graph, "planner_status", "") in ("TEMPLATE_MATCH", "WALK", "FAST_TRACK"):
         plan_tokens = {"prompt": 0, "completion": 0, "total": 0}
         plan_cost = 0.0
         has_actual_tokens = True
