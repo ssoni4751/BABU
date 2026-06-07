@@ -1634,8 +1634,14 @@ def planner_node(state: AriaState):
     
     tracker = state.get("execution_tracker") or {}
     tracker["planner_duration"] = plan_latency_sec
+    
+    total_planner_tokens = {
+        "prompt": ic_tokens.get("prompt", 0) + plan_tokens.get("prompt", 0),
+        "completion": ic_tokens.get("completion", 0) + plan_tokens.get("completion", 0),
+        "total": ic_tokens.get("total", 0) + plan_tokens.get("total", 0)
+    }
         
-    return {"goal_graph": graph.to_dict(), "execution_tracker": tracker}
+    return {"goal_graph": graph.to_dict(), "execution_tracker": tracker, "tokens": total_planner_tokens}
 
 
 def task_executor_node(state: AriaState):
@@ -1923,13 +1929,21 @@ def task_executor_node(state: AriaState):
                         metadata={"action": action, "params": resolved_params}
                     )
                     
+                    node_tokens = {"prompt": 0, "completion": 0, "total": 0}
+                    for entry in execution_log:
+                        t = entry.get("tokens") or {"prompt": 0, "completion": 0, "total": 0}
+                        node_tokens["prompt"] += t.get("prompt", 0)
+                        node_tokens["completion"] += t.get("completion", 0)
+                        node_tokens["total"] += t.get("total", 0)
+                        
                     return {
                         "goal_graph": engine.goal.to_dict(),
                         "execution_log": execution_log,
                         "final_brief": pending_action_notice,
                         "action_result": "",
                         "execution_tracker": tracker,
-                        "pending_action_notice": pending_action_notice
+                        "pending_action_notice": pending_action_notice,
+                        "tokens": node_tokens
                     }
             
             exec_latency_ms = 0.0
@@ -2707,6 +2721,22 @@ def pa_node(state: AriaState):
     }
     is_fresh_greeting = lowered_query in greetings or any(lowered_query.startswith(g + " ") for g in greetings)
     
+    if is_fresh_greeting and not action_result:
+        profile = get_current_profile()
+        details = profile.get("personal_details", {}) if profile else {}
+        nickname = details.get("primary_nickname", "") or details.get("full_name", "Anshu")
+        import random
+        greeting_responses = [
+            f"Hello {nickname}! How can I help you today?",
+            f"Hi {nickname}! What can I do for you?",
+            f"Hey {nickname}! How's it going?",
+            f"Hello {nickname}! Hope you're having a great day. How can I assist you?",
+        ]
+        chosen_response = random.choice(greeting_responses)
+        print(f"[PA NODE] Deterministic chitchat short-circuit for greeting: '{user_query}'", flush=True)
+        response = AIMessage(content=chosen_response)
+        return {"messages": state["messages"] + [response], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
+
     if is_fresh_greeting or not is_conversational:
         history = ""
 

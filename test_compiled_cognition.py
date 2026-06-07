@@ -4,9 +4,24 @@ import sqlite3
 import pytest
 from unittest.mock import MagicMock
 
-# Set mock API keys for testing
+# Save original env vars to prevent test pollution
+_orig_groq = os.environ.get("GROQ_API_KEY")
+_orig_tg = os.environ.get("TELEGRAM_BOT_TOKEN")
+
 os.environ["TELEGRAM_BOT_TOKEN"] = "mock_token"
 os.environ["GROQ_API_KEY"] = "mock_groq_key"
+
+@pytest.fixture(scope="module", autouse=True)
+def restore_env():
+    yield
+    if _orig_groq is not None:
+        os.environ["GROQ_API_KEY"] = _orig_groq
+    else:
+        os.environ.pop("GROQ_API_KEY", None)
+    if _orig_tg is not None:
+        os.environ["TELEGRAM_BOT_TOKEN"] = _orig_tg
+    else:
+        os.environ.pop("TELEGRAM_BOT_TOKEN", None)
 
 from aria import bot
 from aria.governance import check_constraint_compatibility, micro_audit_dag, E0_B_Rules
