@@ -1459,85 +1459,88 @@ def planner_node(state: AriaState):
     plan_start_time = time.time()
     plan_start_iso = datetime.now(timezone.utc).isoformat()
 
-    # 2. Bounded Governance Gate: Clarification fallback on low confidence
-    if intent_packet.confidence < 0.65:
-        print(f"[INTENT GOVERNANCE] Low confidence ({intent_packet.confidence} < 0.65) -> bypassing planner and returning AMBIGUOUS_QUERY fallback.", flush=True)
-        graph = _build_fallback_graph(
-            query,
-            goal_id=pre_goal_id,
-            goal_type="NEW",
-            planner_status="AMBIGUOUS_QUERY",
-            intent_packet=intent_packet.to_dict()
-        )
-    # 3. Simple Lookup or Websearch (No other complex intents like execute, research or generate are active, and doesn't require workspace access)
-    elif (intent_packet.lookup or intent_packet.websearch) and not (intent_packet.research or intent_packet.generate or intent_packet.execute or requires_workspace_access(query)):
-        print(f"[PLANNER NODE] Fast-tracking simple lookup/websearch query (lookup={intent_packet.lookup}, websearch={intent_packet.websearch}) directly to PA response", flush=True)
-        graph = build_walk_graph(query, goal_id=pre_goal_id)
-    else:
-        # Try template lookup
-        try:
-            from .governance import check_constraint_compatibility
-        except ImportError:
-            from governance import check_constraint_compatibility
-            
-        flow_order = ["research", "analysis", "writing", "execution", "pa"]
-        depts = [d for d in flow_order if d in intent_packet.allowed_departments]
-        sig = ":".join(depts)
-        if "execution" in depts and intent_packet.allowed_actions:
-            sorted_actions = sorted(intent_packet.allowed_actions)
-            sig += ":" + ":".join(sorted_actions)
-
-        print(f"[PLANNER NODE] Template signature built for lookup: {sig}", flush=True)
+    # --- Step 1: E[Temp] Template Lookup (Priority over fast-track) ---
+    template = None
+    is_compatible = False
+    sig = ""
+    try:
+        from .governance import check_constraint_compatibility
+    except ImportError:
+        from governance import check_constraint_compatibility
         
-        template = None
-        conn, is_pg = get_db_connection()
-        try:
-            cursor = conn.cursor()
-            if is_pg:
-                cursor.execute(
-                    "SELECT template_id, goal_graph_json, status FROM trusted_templates WHERE template_signature = %s AND status = 'ACTIVE'",
-                    (sig,)
-                )
-            else:
-                cursor.execute(
-                    "SELECT template_id, goal_graph_json, status FROM trusted_templates WHERE template_signature = ? AND status = 'ACTIVE'",
-                    (sig,)
-                )
-            row = cursor.fetchone()
-            if row:
-                template = {
-                    "template_id": row[0],
-                    "goal_graph_json": row[1],
-                    "status": row[2]
-                }
-            cursor.close()
-        except Exception as db_err:
-            print(f"[PLANNER DB ERROR] Failed to query trusted_templates: {db_err}", flush=True)
-        finally:
-            conn.close()
+    flow_order = ["research", "analysis", "writing", "execution", "pa"]
+    depts = [d for d in flow_order if d in intent_packet.allowed_departments]
+    sig = ":".join(depts)
+    if "execution" in depts and intent_packet.allowed_actions:
+        sorted_actions = sorted(intent_packet.allowed_actions)
+        sig += ":" + ":".join(sorted_actions)
 
-        is_compatible = False
-        if template:
-            is_compatible = check_constraint_compatibility(query, template)
-            if is_compatible:
-                try:
-                    from .task_engine import GoalGraph
-                except ImportError:
-                    from task_engine import GoalGraph
-                
-                try:
-                    graph_dict = json.loads(template["goal_graph_json"])
-                    # Use template's graph but override ID and goal
-                    graph_dict["goal_id"] = pre_goal_id
-                    graph_dict["goal"] = query
-                    graph = GoalGraph.from_dict(graph_dict)
-                    graph.planner_status = "TEMPLATE_MATCH"
-                    print(f"[PLANNER NODE] E[Temp] Muscle Memory Hit! Using template {template['template_id']} for signature {sig}", flush=True)
-                except Exception as parse_err:
-                    print(f"[PLANNER NODE] Failed to load template goal graph: {parse_err}. Falling back to dynamic planner.", flush=True)
-                    template = None
+    print(f"[PLANNER NODE] Template signature built for lookup: {sig}", flush=True)
+    
+    conn, is_pg = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        if is_pg:
+            cursor.execute(
+                "SELECT template_id, goal_graph_json, status FROM trusted_templates WHERE template_signature = %s AND status = 'ACTIVE'",
+                (sig,)
+            )
+        else:
+            cursor.execute(
+                "SELECT template_id, goal_graph_json, status FROM trusted_templates WHERE template_signature = ? AND status = 'ACTIVE'",
+                (sig,)
+            )
+        row = cursor.fetchone()
+        if row:
+            template = {
+                "template_id": row[0],
+                "goal_graph_json": row[1],
+                "status": row[2]
+            }
+        cursor.close()
+    except Exception as db_err:
+        print(f"[PLANNER DB ERROR] Failed to query trusted_templates: {db_err}", flush=True)
+    finally:
+        conn.close()
 
-        if not template or not is_compatible:
+    if template:
+        is_compatible = check_constraint_compatibility(query, template)
+        if is_compatible:
+            try:
+                from .task_engine import GoalGraph
+            except ImportError:
+                from task_engine import GoalGraph
+            
+            try:
+                graph_dict = json.loads(template["goal_graph_json"])
+                # Use template's graph but override ID and goal
+                graph_dict["goal_id"] = pre_goal_id
+                graph_dict["goal"] = query
+                graph = GoalGraph.from_dict(graph_dict)
+                graph.planner_status = "TEMPLATE_MATCH"
+                print(f"[PLANNER NODE] E[Temp] Muscle Memory Hit! Using template {template['template_id']} for signature {sig}", flush=True)
+            except Exception as parse_err:
+                print(f"[PLANNER NODE] Failed to load template goal graph: {parse_err}. Falling back to dynamic planner.", flush=True)
+                template = None
+                is_compatible = False
+
+    # --- Step 2: Fallback gates if no active/compatible template is matched ---
+    if not template or not is_compatible:
+        # 2a. Bounded Governance Gate: Clarification fallback on low confidence
+        if intent_packet.confidence < 0.65:
+            print(f"[INTENT GOVERNANCE] Low confidence ({intent_packet.confidence} < 0.65) -> bypassing planner and returning AMBIGUOUS_QUERY fallback.", flush=True)
+            graph = _build_fallback_graph(
+                query,
+                goal_id=pre_goal_id,
+                goal_type="NEW",
+                planner_status="AMBIGUOUS_QUERY",
+                intent_packet=intent_packet.to_dict()
+            )
+        # 2b. Simple Lookup or Websearch (No other complex intents like execute, research or generate are active, and doesn't require workspace access)
+        elif (intent_packet.lookup or intent_packet.websearch) and not (intent_packet.research or intent_packet.generate or intent_packet.execute or requires_workspace_access(query)):
+            print(f"[PLANNER NODE] Fast-tracking simple lookup/websearch query (lookup={intent_packet.lookup}, websearch={intent_packet.websearch}) directly to PA response", flush=True)
+            graph = build_walk_graph(query, goal_id=pre_goal_id)
+        else:
             # Check if this query is a correction referencing a recent workflow
             is_correction = False
             last_goal_text = None
