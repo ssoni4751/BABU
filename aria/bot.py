@@ -1387,10 +1387,31 @@ def intent_router(state: AriaState):
     }
 
 
+def is_pure_greeting(text: str) -> bool:
+    t = (text or "").lower().strip()
+    t = t.removeprefix("/").removeprefix("!")
+    for char in "?!.,":
+        t = t.replace(char, "")
+    t = t.strip()
+    
+    greetings = {
+        "hi", "hello", "hey", "how are you", "how's it going", "how you doing", 
+        "how doing", "yo", "hi buddy", "hey buddy", "hello buddy", "good morning", 
+        "good afternoon", "good evening"
+    }
+    return t in greetings
+
+
 def route_after_router(state: AriaState) -> str:
     notice = state.get("pending_action_notice", "")
     if notice:
         return "pending"
+    
+    query = state.get("user_query", "")
+    if is_pure_greeting(query):
+        print(f"[ROUTE AFTER ROUTER] Pure greeting detected for query: '{query}'. Short-circuiting directly to PA node.", flush=True)
+        return "pa"
+        
     return "plan"
 
 
@@ -1434,7 +1455,7 @@ def planner_node(state: AriaState):
     # 1. Intent Governance stage
     ic_start_time = time.time()
     ic_start_iso = datetime.now(timezone.utc).isoformat()
-    intent_packet = classify_intent(query, history_text, model_name=CURRENT_DEPT_MODEL)
+    intent_packet = classify_intent(query, history_text, model_name=CURRENT_PA_MODEL)
     ic_end_time = time.time()
     ic_end_iso = datetime.now(timezone.utc).isoformat()
     ic_latency_ms = round((ic_end_time - ic_start_time) * 1000, 2)
@@ -2865,7 +2886,7 @@ def pa_node(state: AriaState):
     pa_latency_sec = round(pa_end_time - pa_start_time, 4)
     
     # Check for planner degradation and append warning card if active
-    if graph_dict and graph_dict.get("planner_status", "SUCCESS") != "SUCCESS":
+    if graph_dict and graph_dict.get("planner_status", "SUCCESS") not in ("SUCCESS", "WALK", "TEMPLATE_MATCH"):
         p_status = graph_dict.get("planner_status")
         reason_map = {
             "RATE_LIMIT": "Planner rate-limited by Groq API limits (429)",
@@ -2973,6 +2994,7 @@ workflow.set_entry_point("router")
 workflow.add_conditional_edges("router", route_after_router, {
     "plan": "planner",
     "pending": "pa",
+    "pa": "pa",
 })
 workflow.add_edge("planner", "executor")
 workflow.add_edge("executor", "pa")
@@ -5818,41 +5840,6 @@ async def send_long_telegram_message(update: Update, text: str, reply_markup=Non
             await update.message.reply_text(text, reply_markup=reply_markup)
         else:
             await update.message.reply_text(text)
-
-# ------------------- Retire Template Command -------------------
-async def cmd_retire(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Command to retire a trusted template (set status to RETIRED)."""
-    args = context.args
-    if not args or len(args) < 1:
-        await update.message.reply_text(
-            "⚠️ **Syntax Error**\\nUse: `/retire <template_signature>`\\n"
-            "E.g., `/retire research:execution:pa:post_to_facebook`"
-        )
-        return
-    sig = args[0]
-    conn, is_pg = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        if is_pg:
-            cursor.execute(
-                "UPDATE trusted_templates SET status = %s WHERE template_signature = %s",
-                ("RETIRED", sig)
-            )
-        else:
-            cursor.execute(
-                "UPDATE trusted_templates SET status = ? WHERE template_signature = ?",
-                ("RETIRED", sig)
-            )
-        if cursor.rowcount == 0:
-            await update.message.reply_text(f"❌ No active template found with signature `{sig}`.")
-        else:
-            conn.commit()
-            await update.message.reply_text(f"✅ Template `{sig}` marked as **RETIRED**.")
-    except Exception as e:
-        print(f"[RETIRE CMD ERROR] {e}", flush=True)
-        await update.message.reply_text(f"❌ Failed to retire template: `{e}`")
-    finally:
-        conn.close()
         return
 
     paragraphs = text.split("\n\n")
@@ -5881,6 +5868,43 @@ async def cmd_retire(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(current_chunk.strip(), reply_markup=reply_markup)
         else:
             await update.message.reply_text(current_chunk.strip())
+
+
+# ------------------- Retire Template Command -------------------
+async def cmd_retire(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Command to retire a trusted template (set status to RETIRED)."""
+    args = context.args
+    if not args or len(args) < 1:
+        await update.message.reply_text(
+            "⚠️ **Syntax Error**\nUse: `/retire <template_signature>`\n"
+            "E.g., `/retire research:execution:pa:post_to_facebook`"
+        )
+        return
+    sig = args[0]
+    conn, is_pg = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        if is_pg:
+            cursor.execute(
+                "UPDATE trusted_templates SET status = %s WHERE template_signature = %s",
+                ("RETIRED", sig)
+            )
+        else:
+            cursor.execute(
+                "UPDATE trusted_templates SET status = ? WHERE template_signature = ?",
+                ("RETIRED", sig)
+            )
+        if cursor.rowcount == 0:
+            await update.message.reply_text(f"❌ No active template found with signature `{sig}`.")
+        else:
+            conn.commit()
+            await update.message.reply_text(f"✅ Template `{sig}` marked as **RETIRED**.")
+    except Exception as e:
+        print(f"[RETIRE CMD ERROR] {e}", flush=True)
+        await update.message.reply_text(f"❌ Failed to retire template: `{e}`")
+    finally:
+        conn.close()
+        return
 
 
 async def run_aria(update: Update, msg: str, session_id: str):
