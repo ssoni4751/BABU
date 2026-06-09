@@ -359,8 +359,8 @@ def log_execution_failure(
             f"Provide a structured root cause analysis. You must output a raw JSON object ONLY "
             f"(do not wrap in markdown ```json blocks) containing exactly these three keys:\n"
             f"{{\n"
-            f"  \"observed_consequence\": \"A brief summary of the planning/intent root cause of this failure (e.g., 'The intent classifier misclassified the query as LOOKUP instead of RESEARCH, leading to missing analysis tasks').\",\n"
-            f"  \"active_anti_pattern_rule\": \"A strict, clear negative constraint instructing the strategic planner or intent classifier what to NEVER attempt in the future to avoid this error (e.g., 'NEVER classify queries containing search comparisons as LOOKUP; always route to RESEARCH' or 'NEVER create writing or analysis tasks under a LOOKUP template').\",\n"
+            f"  \"observed_consequence\": \"A brief summary of the planning/intent root cause of this failure (e.g., 'The intent classifier misclassified the query as EXECUTION instead of LOOKUP, leading to incorrect email dispatches').\",\n"
+            f"  \"active_anti_pattern_rule\": \"A strict, clear negative constraint instructing the strategic planner or intent classifier what to NEVER attempt in the future to avoid this error (e.g., 'NEVER classify simple informational queries as EXECUTION' or 'NEVER create writing or analysis tasks under a simple LOOKUP template'). Do NOT generate rules that force routing queries to the RESEARCH department (as research should only run when explicitly requested).\",\n"
             f"  \"target_domain\": \"governance.classification\" if the error was caused by classifier misclassification, or \"governance.planning\" if caused by planner/template decomposition errors, or standard \"{domain}\" if it is a task-level execution error.\n"
             f"}}"
         )
@@ -506,40 +506,76 @@ def register_successful_execution(domain: str) -> None:
 
 
 def get_anti_pattern_rules(domain: str) -> str:
-    """Retrieve all logged anti-pattern rules for a specific domain to inject as negative constraints."""
+    """Retrieve all logged anti-pattern rules for a specific domain to inject as negative constraints.
+    Includes a self-healing pruning pass that automatically wipes out rules trying to force research mode.
+    """
     try:
         failures = _read_json_list(FAILURES_PATH)
         if not failures:
             return ""
             
+        cleaned_failures = []
         rules = []
+        has_changes = False
+        
         for entry in failures:
-            if entry.get("domain") == domain and entry.get("confidence", 1.0) >= 0.25:
-                rules.append(f"• Previously Failed Method: {entry.get('attempted_methodology')}\n  Observed Issue: {entry.get('observed_consequence')}\n  CRITICAL DIRECTION: {entry.get('active_anti_pattern_rule')}")
+            rule_text = entry.get('active_anti_pattern_rule', '')
+            ent_domain = entry.get("domain")
+            
+            # Programmatic self-healing: wipe invalid classification rules that force research
+            if ent_domain == "governance.classification" and any(k in rule_text.lower() for k in ("route to research", "always route to research", "use research", "classify as research", "always route to 'research'", "route to 'research'")):
+                print(f"[IMMUNE SYSTEM] Self-healing: deleting invalid classification rule from memory: \"{rule_text}\"", flush=True)
+                has_changes = True
+                continue
                 
+            cleaned_failures.append(entry)
+            if ent_domain == domain and entry.get("confidence", 1.0) >= 0.25:
+                rules.append(f"• Previously Failed Method: {entry.get('attempted_methodology')}\n  Observed Issue: {entry.get('observed_consequence')}\n  CRITICAL DIRECTION: {rule_text}")
+                
+        if has_changes:
+            _write_json_list(FAILURES_PATH, cleaned_failures)
+            
         if rules:
             return "[CRITICAL EXECUTION CONSTRAINTS - HISTORICAL FAILURES DETECTED]\n" + "\n\n".join(rules)
     except Exception as e:
-        print(f"[IMMUNE SYSTEM] Failed to read failures: {e}", flush=True)
+        print(f"[IMMUNE SYSTEM] Failed to read/heal failures: {e}", flush=True)
     return ""
 
 
 def get_anti_pattern_rules_for_domains(domains: list) -> str:
-    """Retrieve all logged anti-pattern rules for a list of domains to inject as negative constraints."""
+    """Retrieve all logged anti-pattern rules for a list of domains to inject as negative constraints.
+    Includes a self-healing pruning pass that automatically wipes out rules trying to force research mode.
+    """
     try:
         failures = _read_json_list(FAILURES_PATH)
         if not failures:
             return ""
             
+        cleaned_failures = []
         rules = []
+        has_changes = False
+        
         for entry in failures:
-            if entry.get("domain") in domains and entry.get("confidence", 1.0) >= 0.25:
-                rules.append(f"• Domain: {entry.get('domain')}\n  Previously Failed Method: {entry.get('attempted_methodology')}\n  Observed Issue: {entry.get('observed_consequence')}\n  CRITICAL DIRECTION: {entry.get('active_anti_pattern_rule')}")
+            rule_text = entry.get('active_anti_pattern_rule', '')
+            ent_domain = entry.get("domain")
+            
+            # Programmatic self-healing: wipe invalid classification rules that force research
+            if ent_domain == "governance.classification" and any(k in rule_text.lower() for k in ("route to research", "always route to research", "use research", "classify as research", "always route to 'research'", "route to 'research'")):
+                print(f"[IMMUNE SYSTEM] Self-healing: deleting invalid classification rule from memory: \"{rule_text}\"", flush=True)
+                has_changes = True
+                continue
                 
+            cleaned_failures.append(entry)
+            if ent_domain in domains and entry.get("confidence", 1.0) >= 0.25:
+                rules.append(f"• Domain: {ent_domain}\n  Previously Failed Method: {entry.get('attempted_methodology')}\n  Observed Issue: {entry.get('observed_consequence')}\n  CRITICAL DIRECTION: {rule_text}")
+                
+        if has_changes:
+            _write_json_list(FAILURES_PATH, cleaned_failures)
+            
         if rules:
             return "[CRITICAL EXECUTION CONSTRAINTS - HISTORICAL FAILURES DETECTED]\n" + "\n\n".join(rules)
     except Exception as e:
-        print(f"[IMMUNE SYSTEM] Failed to read failures: {e}", flush=True)
+        print(f"[IMMUNE SYSTEM] Failed to read/heal failures: {e}", flush=True)
     return ""
 
 
