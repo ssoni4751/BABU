@@ -422,31 +422,105 @@ def generate_pillow_graphic(title: str, tips: list, background_path: str = None,
 
 
 def generate_flux_graphic(prompt: str) -> str:
-    """Generate a FLUX image using Pollinations.ai and save it locally."""
-    # Encode the prompt for URL usage
-    encoded_prompt = urllib.parse.quote_plus(prompt)
-    url = f"https://image.pollinations.ai/prompt/{encoded_prompt}"
-    # Retry logic (max 3 attempts)
-    for attempt in range(1, 4):
-        try:
-            resp = requests.get(url, timeout=60)
-            resp.raise_for_status()
-            break
-        except Exception as e:
-            if attempt == 3:
-                raise RuntimeError(f"Failed to fetch FLUX image from Pollinations after {attempt} attempts: {e}")
-            time.sleep(attempt * 2)
-            
-    # Save backdrop with unique filename to prevent conflicts
+    """Generate or retrieve a high-quality campaign poster background.
+    
+    Tries:
+    1. Google Gemini API (Imagen 3) if GEMINI_API_KEY is configured. (Free, custom AI generation)
+    2. DuckDuckGo Images search as a keyless high-quality stock illustration fallback.
+    3. Pollinations.ai (Flux) as a keyless AI fallback.
+    """
     import uuid
+    
     current_dir = os.path.dirname(os.path.abspath(__file__))
     temp_dir = os.path.join(current_dir, "temp")
     os.makedirs(temp_dir, exist_ok=True)
     unique_id = uuid.uuid4().hex[:8]
     image_path = os.path.join(temp_dir, f"flux_backdrop_{unique_id}.jpg")
-    with open(image_path, "wb") as f:
-        f.write(resp.content)
-    return image_path
+    
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    if not gemini_key:
+        gemini_key = os.environ.get("GOOGLE_API_KEY")
+        
+    # Attempt 1: Google Gemini API (Imagen 3)
+    if gemini_key:
+        print("[IMAGE ENGINE] Attempting image generation via Google Imagen 3...", flush=True)
+        try:
+            from google import genai
+            from google.genai import types
+            
+            client = genai.Client(api_key=gemini_key)
+            response = client.models.generate_images(
+                model='imagen-3.0-generate-002',
+                prompt=prompt,
+                config=types.GenerateImagesConfig(
+                    number_of_images=1,
+                    output_mime_type='image/jpeg',
+                    aspect_ratio='1:1'
+                )
+            )
+            if response.generated_images:
+                img_bytes = response.generated_images[0].image.image_bytes
+                with open(image_path, "wb") as f:
+                    f.write(img_bytes)
+                print(f"[IMAGE ENGINE SUCCESS] Generated image via Gemini Imagen 3 saved to {image_path}", flush=True)
+                return image_path
+            else:
+                print("[IMAGE ENGINE WARNING] Gemini response returned no images.", flush=True)
+        except Exception as e:
+            print(f"[IMAGE ENGINE WARNING] Gemini Imagen 3 generation failed: {e}", flush=True)
+            
+    # Attempt 2: DuckDuckGo Images stock photo fallback (Zero-key, reliable and fast!)
+    print("[IMAGE ENGINE] Attempting to retrieve stock background illustration via DuckDuckGo Images...", flush=True)
+    try:
+        from ddgs import DDGS
+        
+        # Clean prompt slightly to make it suitable for search query
+        clean_query = prompt
+        if "background featuring" in prompt:
+            clean_query = prompt.split("background featuring")[-1]
+        elif "representing" in prompt:
+            clean_query = prompt.split("representing")[-1]
+            
+        search_term = f"minimalist 3d illustration {clean_query}"
+        search_term = search_term[:150]
+        
+        print(f"[IMAGE ENGINE] Searching DuckDuckGo for: '{search_term}'", flush=True)
+        with DDGS() as ddgs:
+            results = list(ddgs.images(search_term, max_results=3))
+            
+        if results:
+            img_url = results[0].get("image")
+            print(f"[IMAGE ENGINE] Downloading stock photo: {img_url}", flush=True)
+            resp = requests.get(img_url, timeout=15, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+            resp.raise_for_status()
+            with open(image_path, "wb") as f:
+                f.write(resp.content)
+            print(f"[IMAGE ENGINE SUCCESS] Retrieved stock background saved to {image_path}", flush=True)
+            return image_path
+        else:
+            print("[IMAGE ENGINE WARNING] DuckDuckGo Images returned no results.", flush=True)
+    except Exception as e:
+        print(f"[IMAGE ENGINE WARNING] DuckDuckGo Images fallback failed: {e}", flush=True)
+        
+    # Attempt 3: Pollinations.ai (Flux) keyless AI fallback
+    print("[IMAGE ENGINE] Attempting keyless generation via Pollinations.ai...", flush=True)
+    encoded_prompt = urllib.parse.quote_plus(prompt)
+    url = f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+    for attempt in range(1, 4):
+        try:
+            resp = requests.get(url, timeout=25)
+            resp.raise_for_status()
+            with open(image_path, "wb") as f:
+                f.write(resp.content)
+            print(f"[IMAGE ENGINE SUCCESS] Generated image via Pollinations saved to {image_path}", flush=True)
+            return image_path
+        except Exception as e:
+            if attempt == 3:
+                print(f"[IMAGE ENGINE WARNING] Pollinations failed: {e}", flush=True)
+            else:
+                time.sleep(attempt * 2)
+                
+    raise RuntimeError("All image generation/retrieval engines failed.")
 
 
 def publish_to_facebook_page(image_path: str, caption: str) -> tuple[bool, str]:
