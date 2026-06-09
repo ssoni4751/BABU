@@ -1433,6 +1433,29 @@ def requires_workspace_access(query: str) -> bool:
     return bool(re.search(pattern, t))
 
 
+def requires_web_search(query: str) -> bool:
+    t = query.lower().strip()
+    greetings = {"hi", "hello", "hey", "good morning", "good afternoon", "good evening", "how are you", "help", "clear", "stats", "model"}
+    if t in greetings or len(t) < 10:
+        return False
+        
+    # If it is a local profile fact lookup, we don't need web search (unless they explicitly ask to search the web)
+    if is_profile_relevant_query(query):
+        # Only require web search if they explicitly use web search keywords
+        if not any(kw in t for kw in ("search the web", "search google", "web search", "google search", "wikipedia", "search online")):
+            return False
+
+    web_patterns = [
+        r'\b(search|web|google|wikipedia|wiki|ddg|duckduckgo)\b',
+        r'\b(weather|temperature|forecast|climate)\b',
+        r'\b(news|headlines|current affairs|stock|price|market)\b',
+        r'\b(match|matches|score|scores|cricket|football|sports|game|games)\b',
+        r'\b(current|latest|recent|upcoming|newest|today|now)\b',
+        r'\b(who is|who was|what is|what are|where is|when is|how to|why did)\b'
+    ]
+    return any(re.search(pat, t) for pat in web_patterns)
+
+
 def planner_node(state: AriaState):
     """Decompose user goal into a structured GoalGraph."""
     import time
@@ -1567,8 +1590,8 @@ def planner_node(state: AriaState):
                 planner_status="AMBIGUOUS_QUERY",
                 intent_packet=intent_packet.to_dict()
             )
-        # 2b. Simple Lookup or Websearch (No other complex intents like execute, research or generate are active, and doesn't require workspace access)
-        elif (intent_packet.lookup or intent_packet.websearch) and not (intent_packet.research or intent_packet.generate or intent_packet.execute or requires_workspace_access(query)):
+        # 2b. Simple Local Lookup (No web search or other complex intents are active)
+        elif intent_packet.lookup and not (intent_packet.research or intent_packet.generate or intent_packet.execute or requires_workspace_access(query) or requires_web_search(query)):
             print(f"[PLANNER NODE] Fast-tracking simple lookup/websearch query (lookup={intent_packet.lookup}, websearch={intent_packet.websearch}) directly to PA response", flush=True)
             graph = build_walk_graph(query, goal_id=pre_goal_id)
             graph.planner_status = "WALK"
