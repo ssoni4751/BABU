@@ -1007,27 +1007,57 @@ def web_search(query: str, max_results: int = 4) -> str:
         print(f"[SEARCH CACHE HIT] Reusing cached search results for: '{cleaned[:40]}'", flush=True)
         return cached["results"]
     
-    # 1. Fetch DuckDuckGo results
-    try:
-        from ddgs import DDGS
-        with DDGS() as ddgs:
-            results = list(ddgs.text(cleaned, max_results=max_results))
-        ddg_lines = []
-        if results:
-            for r in results:
-                href = r.get("href", "").lower()
-                # Dynamic Source Confidence Weighting
-                confidence = 0.50
-                if any(ext in href for ext in (".edu", ".gov", ".org")):
-                    confidence = 0.98 if any(ext in href for ext in (".edu", ".gov")) else 0.85
-                elif any(news in href for news in ("reuters.com", "apnews.com", "bbc.co.uk", "nytimes.com", "cnn.com", "bloomberg.com")):
-                    confidence = 0.85
-                elif any(low in href for low in ("reddit.com", "medium.com", "blogspot.com", "twitter.com", "facebook.com", "x.com")):
-                    confidence = 0.25
-                ddg_lines.append(f"• {r['title']} [Confidence: {confidence}]\n  {r['body']}\n  Source: {r['href']}")
-        ddg_text = "\n\n".join(ddg_lines)
-    except Exception as e:
-        ddg_text = f"[DuckDuckGo search unavailable: {e}]"
+    ddg_text = ""
+    tavily_key = os.environ.get("TAVILY_API_KEY")
+    if tavily_key:
+        print(f"[SEARCH] Querying Tavily Search API for: '{cleaned[:40]}'", flush=True)
+        try:
+            import requests
+            resp = requests.post(
+                "https://api.tavily.com/search",
+                json={
+                    "api_key": tavily_key,
+                    "query": cleaned,
+                    "search_depth": "basic",
+                    "max_results": max_results
+                },
+                timeout=15
+            )
+            if resp.status_code == 200:
+                tavily_results = resp.json().get("results", [])
+                tavily_lines = []
+                for r in tavily_results:
+                    score = r.get("score", 0.8)
+                    tavily_lines.append(f"• {r['title']} [Confidence: {score}]\n  {r['content']}\n  Source: {r['url']}")
+                ddg_text = "\n\n".join(tavily_lines)
+                print(f"[SEARCH SUCCESS] Tavily returned {len(tavily_results)} results.", flush=True)
+            else:
+                print(f"[SEARCH WARNING] Tavily API returned status {resp.status_code}: {resp.text}", flush=True)
+        except Exception as e:
+            print(f"[SEARCH WARNING] Tavily query failed: {e}. Falling back to DuckDuckGo.", flush=True)
+            
+    # Fallback to DuckDuckGo if Tavily is not set or yielded no results
+    if not ddg_text:
+        try:
+            from ddgs import DDGS
+            with DDGS() as ddgs:
+                results = list(ddgs.text(cleaned, max_results=max_results))
+            ddg_lines = []
+            if results:
+                for r in results:
+                    href = r.get("href", "").lower()
+                    # Dynamic Source Confidence Weighting
+                    confidence = 0.50
+                    if any(ext in href for ext in (".edu", ".gov", ".org")):
+                        confidence = 0.98 if any(ext in href for ext in (".edu", ".gov")) else 0.85
+                    elif any(news in href for news in ("reuters.com", "apnews.com", "bbc.co.uk", "nytimes.com", "cnn.com", "bloomberg.com")):
+                        confidence = 0.85
+                    elif any(low in href for low in ("reddit.com", "medium.com", "blogspot.com", "twitter.com", "facebook.com", "x.com")):
+                        confidence = 0.25
+                    ddg_lines.append(f"• {r['title']} [Confidence: {confidence}]\n  {r['body']}\n  Source: {r['href']}")
+            ddg_text = "\n\n".join(ddg_lines)
+        except Exception as e:
+            ddg_text = f"[DuckDuckGo search unavailable: {e}]"
 
     # 2. Fetch Wikipedia results (max 2 for optimal token management)
     wiki_text = wikipedia_search(cleaned, max_results=2)
