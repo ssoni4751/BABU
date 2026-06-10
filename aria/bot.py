@@ -5957,7 +5957,6 @@ async def cmd_retire(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Failed to retire template: `{e}`")
     finally:
         conn.close()
-        return
 
 
 async def run_aria(update: Update, msg: str, session_id: str):
