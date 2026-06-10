@@ -321,6 +321,22 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
                 execution_mode=packet.execution_mode,
                 confidence=packet.confidence,
             )
+        
+        # Programmatic cleanup: if execution_mode is READ_ONLY and the query does not ask to search workspace (sheets/gmail/doc),
+        # remove 'execution' from allowed_departments and clear allowed_actions to prevent planner hallucination of actions.
+        workspace_keywords = ["sheet", "spreadsheet", "gmail", "mail", "email", "doc", "document", "drive", "google"]
+        has_workspace_ref = any(kw in query.lower() for kw in workspace_keywords)
+        
+        if packet.execution_mode == "READ_ONLY" and not has_workspace_ref:
+            allowed_depts = [d for d in packet.allowed_departments if d != "execution"]
+            if not allowed_depts:
+                allowed_depts = ["information", "pa"]
+            packet = IntentPacket(
+                allowed_departments=allowed_depts,
+                allowed_actions=[],
+                execution_mode="READ_ONLY",
+                confidence=packet.confidence,
+            )
         try:
             from aria.bot import extract_tokens
         except ImportError:
