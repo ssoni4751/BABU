@@ -1552,7 +1552,7 @@ def planner_node(state: AriaState):
     except ImportError:
         from governance import check_constraint_compatibility
         
-    flow_order = ["research", "analysis", "writing", "execution", "pa"]
+    flow_order = ["research", "information", "analysis", "writing", "execution", "pa"]
     depts = [d for d in flow_order if d in intent_packet.allowed_departments]
     sig = ":".join(depts)
     if "execution" in depts and intent_packet.allowed_actions:
