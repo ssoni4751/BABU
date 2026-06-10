@@ -441,16 +441,16 @@ def generate_flux_graphic(prompt: str) -> str:
     if not gemini_key:
         gemini_key = os.environ.get("GOOGLE_API_KEY")
         
-    # Attempt 1: Google Gemini API (Imagen 3)
+    # Attempt 1: Google Gemini API (Imagen 4)
     if gemini_key:
-        print("[IMAGE ENGINE] Attempting image generation via Google Imagen 3...", flush=True)
+        print("[IMAGE ENGINE] Attempting image generation via Google Imagen 4...", flush=True)
         try:
             from google import genai
             from google.genai import types
             
             client = genai.Client(api_key=gemini_key)
             response = client.models.generate_images(
-                model='imagen-3.0-generate-002',
+                model='imagen-4.0-generate-001',
                 prompt=prompt,
                 config=types.GenerateImagesConfig(
                     number_of_images=1,
@@ -462,12 +462,12 @@ def generate_flux_graphic(prompt: str) -> str:
                 img_bytes = response.generated_images[0].image.image_bytes
                 with open(image_path, "wb") as f:
                     f.write(img_bytes)
-                print(f"[IMAGE ENGINE SUCCESS] Generated image via Gemini Imagen 3 saved to {image_path}", flush=True)
+                print(f"[IMAGE ENGINE SUCCESS] Generated image via Gemini Imagen 4 saved to {image_path}", flush=True)
                 return image_path
             else:
                 print("[IMAGE ENGINE WARNING] Gemini response returned no images.", flush=True)
         except Exception as e:
-            print(f"[IMAGE ENGINE WARNING] Gemini Imagen 3 generation failed: {e}", flush=True)
+            print(f"[IMAGE ENGINE WARNING] Gemini Imagen 4 generation failed: {e}", flush=True)
             
     # Attempt 2: DuckDuckGo Images stock photo fallback (Zero-key, reliable and fast!)
     print("[IMAGE ENGINE] Attempting to retrieve stock background illustration via DuckDuckGo Images...", flush=True)
@@ -489,14 +489,25 @@ def generate_flux_graphic(prompt: str) -> str:
             results = list(ddgs.images(search_term, max_results=3))
             
         if results:
-            img_url = results[0].get("image")
-            print(f"[IMAGE ENGINE] Downloading stock photo: {img_url}", flush=True)
-            resp = requests.get(img_url, timeout=15, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-            resp.raise_for_status()
-            with open(image_path, "wb") as f:
-                f.write(resp.content)
-            print(f"[IMAGE ENGINE SUCCESS] Retrieved stock background saved to {image_path}", flush=True)
-            return image_path
+            for idx, result in enumerate(results):
+                img_url = result.get("image")
+                if not img_url:
+                    continue
+                try:
+                    print(f"[IMAGE ENGINE] Downloading stock photo (option {idx+1}): {img_url}", flush=True)
+                    resp = requests.get(
+                        img_url, 
+                        timeout=15, 
+                        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+                    )
+                    resp.raise_for_status()
+                    with open(image_path, "wb") as f:
+                        f.write(resp.content)
+                    print(f"[IMAGE ENGINE SUCCESS] Retrieved stock background saved to {image_path}", flush=True)
+                    return image_path
+                except Exception as ex:
+                    print(f"[IMAGE ENGINE WARNING] Failed to download from {img_url}: {ex}", flush=True)
+            print("[IMAGE ENGINE WARNING] All retrieved DuckDuckGo Image options failed to download.", flush=True)
         else:
             print("[IMAGE ENGINE WARNING] DuckDuckGo Images returned no results.", flush=True)
     except Exception as e:
@@ -508,7 +519,11 @@ def generate_flux_graphic(prompt: str) -> str:
     url = f"https://image.pollinations.ai/prompt/{encoded_prompt}"
     for attempt in range(1, 4):
         try:
-            resp = requests.get(url, timeout=25)
+            resp = requests.get(
+                url, 
+                timeout=25, 
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+            )
             resp.raise_for_status()
             with open(image_path, "wb") as f:
                 f.write(resp.content)
