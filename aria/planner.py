@@ -390,7 +390,7 @@ PLANNER_SYSTEM_PROMPT: str = (
     "- CRITICAL: If the user's query asks to check, retrieve, search, or find information inside their Google Sheets or Gmail, you MUST create an 'execution' department task using 'search_sheet' or 'search_gmail' action. Do NOT use a general 'research' department task for Sheets or Gmail retrieval, because general research cannot access Workspace data.\n"
     "- CRITICAL: If department is 'execution', you MUST specify 'action' and 'params' in that task's JSON object! You must dynamically select the most appropriate action from the list of valid actions based on the user's intent. Do not blindly default to 'send_email'.\n"
     "  Valid actions & parameters:\n"
-    "    * send_email(to, subject, body, image_path) -- Use ONLY if user explicitly asked to send/mail an email. In 'params', specify 'to', 'subject', and optionally 'image_path'.\n"
+    "    * send_email(to, subject, body, image_path) -- Use ONLY if user explicitly asked to send/mail an email. In 'params', specify 'to', 'subject', and optionally 'image_path'. If the user's query contains a bracketed document path (e.g. '[Document Attached: <path>]'), you MUST extract this exact path and set it as the 'image_path' parameter.\n"
     "    * create_event(title, date, time, duration, description) -- Use ONLY if user explicitly asked to schedule/create a calendar event.\n"
     "    * log_to_sheet(sheet_name, data) -- Use ONLY if user explicitly asked to log or add data to a spreadsheet/sheet.\n"
     "    * create_doc(title, content) -- Use ONLY if user explicitly asked to write/create/draft a separate document file.\n"

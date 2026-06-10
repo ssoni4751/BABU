@@ -170,7 +170,7 @@ def validate_google_token_health(bot_token: str = None, chat_id: int = None) -> 
 # ── Action Helper functions ──────────────────────────────────────────────────
 
 def send_gmail(to: str, subject: str, body: str, image_path: str = None) -> tuple[bool, str]:
-    """Send an email on behalf of the user using the Gmail API, optionally attaching an image."""
+    """Send an email on behalf of the user using the Gmail API, optionally attaching a file (e.g. image, PDF)."""
     creds = get_google_creds()
     if not creds:
         return False, "Google Workspace authentication not configured."
@@ -181,7 +181,8 @@ def send_gmail(to: str, subject: str, body: str, image_path: str = None) -> tupl
 
         if image_path and os.path.exists(image_path):
             from email.mime.multipart import MIMEMultipart
-            from email.mime.image import MIMEImage
+            from email.mime.base import MIMEBase
+            from email import encoders
             import mimetypes
 
             message = MIMEMultipart()
@@ -191,18 +192,24 @@ def send_gmail(to: str, subject: str, body: str, image_path: str = None) -> tupl
             # Attach text body
             message.attach(MIMEText(body))
 
-            # Identify MIME type and attach image
+            # Identify MIME type and attach file
             content_type, encoding = mimetypes.guess_type(image_path)
-            if content_type is None or not content_type.startswith("image/"):
-                content_type = "image/jpeg"
+            if content_type is None:
+                content_type = "application/octet-stream"
 
-            main_type, sub_type = content_type.split("/", 1)
+            try:
+                main_type, sub_type = content_type.split("/", 1)
+            except ValueError:
+                main_type, sub_type = "application", "octet-stream"
+
             with open(image_path, "rb") as f:
-                img_data = f.read()
+                file_data = f.read()
 
-            image_attachment = MIMEImage(img_data, name=os.path.basename(image_path), _subtype=sub_type)
-            image_attachment.add_header('Content-Disposition', 'attachment', filename=os.path.basename(image_path))
-            message.attach(image_attachment)
+            attachment = MIMEBase(main_type, sub_type)
+            attachment.set_payload(file_data)
+            encoders.encode_base64(attachment)
+            attachment.add_header('Content-Disposition', 'attachment', filename=os.path.basename(image_path))
+            message.attach(attachment)
         else:
             message = MIMEText(body)
             message["to"] = to

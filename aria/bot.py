@@ -2490,6 +2490,12 @@ def resolve_action_params(params: dict, research_text: str = "") -> dict:
             return None
         import re
         import os
+        # Check for bracketed document attachment pattern first
+        m = re.search(r'\[Document Attached:\s*([^\]]+)\]', text)
+        if m:
+            path_candidate = m.group(1).strip()
+            if os.path.exists(path_candidate) and os.path.isfile(path_candidate):
+                return path_candidate
         path_candidate = text.strip()
         if os.path.exists(path_candidate) and os.path.isfile(path_candidate):
             return path_candidate
@@ -6102,6 +6108,45 @@ def classify_review_intent(text: str) -> Optional[str]:
     return None
 
 
+def extract_text_from_document(file_path: str, max_chars: int = 15000) -> str:
+    """Extract text content from a PDF or plain text document."""
+    if not os.path.exists(file_path):
+        return ""
+    
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext == ".pdf":
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(file_path)
+            text = ""
+            for page in reader.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+                if len(text) > max_chars:
+                    text = text[:max_chars] + "\n... [Content Truncated to Save Tokens] ..."
+                    break
+            return text.strip()
+        except Exception as e:
+            print(f"[PDF EXTRACTION ERROR] {e}", flush=True)
+            return f"[Error extracting text from PDF: {e}]"
+    
+    # Text-like extensions
+    text_extensions = {".txt", ".csv", ".md", ".json", ".py", ".html", ".xml", ".css", ".js", ".ini", ".yaml", ".yml", ".log"}
+    if ext in text_extensions:
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read(max_chars)
+                if len(content) >= max_chars:
+                    content += "\n... [Content Truncated to Save Tokens] ..."
+                return content.strip()
+        except Exception as e:
+            print(f"[TEXT EXTRACTION ERROR] {e}", flush=True)
+            return f"[Error reading text document: {e}]"
+            
+    return "[Non-text document format. No content extracted to save tokens.]"
+
+
 async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     if WAITING_FOR_TOPIC.get(chat_id):
@@ -6120,7 +6165,46 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await generate_and_send_preview(chat_id, context.bot, custom_topic=topic, reply_to_message_id=update.message.message_id)
         return
 
-    # 1. Check if the message is a voice note
+    # 1. Check if the message is a document/file attachment
+    if update.message.document:
+        print(f"[TG DOCUMENT] Received document from {update.message.from_user.id}", flush=True)
+        try:
+            doc = update.message.document
+            tg_file = await context.bot.get_file(doc.file_id)
+            
+            temp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "temp")
+            os.makedirs(temp_dir, exist_ok=True)
+            
+            file_name = doc.file_name or f"doc_{doc.file_id}"
+            file_name = os.path.basename(file_name)
+            temp_path = os.path.join(temp_dir, file_name)
+            
+            print(f"[TG DOCUMENT] Downloading {file_name} to {temp_path}", flush=True)
+            await tg_file.download_to_drive(temp_path)
+            
+            caption = update.message.caption or ""
+            
+            # Check if user explicitly asked to analyze, summarize, or read the document to save tokens
+            analysis_keywords = {"analyse", "analyze", "summarize", "read", "content", "extract", "whats in", "what is in", "explain", "describe", "find in"}
+            caption_lower = caption.lower()
+            needs_analysis = any(kw in caption_lower for kw in analysis_keywords)
+            
+            if needs_analysis:
+                print(f"[TG DOCUMENT] Analysis requested. Extracting text from {file_name}...", flush=True)
+                extracted_text = extract_text_from_document(temp_path)
+                rewritten_text = f"{caption} [Document Attached: {temp_path}] [Document Content:\n{extracted_text}\n]"
+            else:
+                print(f"[TG DOCUMENT] No analysis requested. Passing only path artifact to save tokens.", flush=True)
+                rewritten_text = f"{caption} [Document Attached: {temp_path}]"
+                
+            print(f"[TG DOCUMENT OK] Rewritten query: '{rewritten_text}'", flush=True)
+            await run_aria(update, rewritten_text, tg_session(update))
+        except Exception as e:
+            traceback.print_exc(file=sys.stdout)
+            await update.message.reply_text(f"Document processing error: {e}")
+        return
+
+    # 2. Check if the message is a voice note
     if update.message.voice:
         print(f"[TG VOICE] Received voice note from {update.message.from_user.id}", flush=True)
         await update.message.chat.send_action("record_voice")
@@ -6715,7 +6799,7 @@ if __name__ == "__main__":
     bot.add_handler(CommandHandler("postnow", cmd_postnow))
     bot.add_handler(CommandHandler("promote", cmd_promote))
     bot.add_handler(CommandHandler("retire", cmd_retire))
-    bot.add_handler(MessageHandler((filters.TEXT | filters.VOICE) & (~filters.COMMAND), on_message))
+    bot.add_handler(MessageHandler((filters.TEXT | filters.VOICE | filters.Document.ALL) & (~filters.COMMAND), on_message))
     bot.add_handler(CallbackQueryHandler(on_post_callback))
     bot.add_error_handler(telegram_error_handler)
     bot.run_polling(drop_pending_updates=True)

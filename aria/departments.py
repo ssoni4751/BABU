@@ -482,6 +482,12 @@ class ExecutionHead(DepartmentHead):
         def _extract_existing_file_path(text: str) -> Optional[str]:
             if not text:
                 return None
+            # Check for bracketed document attachment pattern first
+            m = re.search(r'\[Document Attached:\s*([^\]]+)\]', text)
+            if m:
+                path_candidate = m.group(1).strip()
+                if os.path.exists(path_candidate) and os.path.isfile(path_candidate):
+                    return path_candidate
             path_candidate = text.strip()
             if os.path.exists(path_candidate) and os.path.isfile(path_candidate):
                 return path_candidate
