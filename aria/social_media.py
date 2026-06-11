@@ -136,12 +136,12 @@ def generate_daily_post(custom_topic: str = None) -> tuple[str, str, str, list, 
 
 
 def ensure_poppins_fonts():
-    """Ensure Poppins-Regular and Poppins-Bold are downloaded and available in aria/temp/fonts."""
+    """Ensure Poppins-Regular and Poppins-Bold are downloaded and available in aria/fonts."""
     import os
     import requests
     
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    font_dir = os.path.join(base_dir, "temp", "fonts")
+    font_dir = os.path.join(base_dir, "fonts")
     os.makedirs(font_dir, exist_ok=True)
     
     urls = {
@@ -170,7 +170,7 @@ def get_font(font_name: str, size: int):
     ensure_poppins_fonts()
     
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    font_dir = os.path.join(base_dir, "temp", "fonts")
+    font_dir = os.path.join(base_dir, "fonts")
     
     poppins_regular = os.path.join(font_dir, "Poppins-Regular.ttf")
     poppins_bold = os.path.join(font_dir, "Poppins-Bold.ttf")
@@ -425,11 +425,17 @@ def generate_flux_graphic(prompt: str) -> str:
     """Generate or retrieve a high-quality campaign poster background.
     
     Tries:
-    1. Google Gemini API (Imagen 3) if GEMINI_API_KEY is configured. (Free, custom AI generation)
-    2. DuckDuckGo Images search as a keyless high-quality stock illustration fallback.
-    3. Pollinations.ai (Flux) as a keyless AI fallback.
+    1. Google Gemini API (Imagen 4) if GEMINI_API_KEY is configured. (Free, custom AI generation)
+    2. Hugging Face Inference API if HF_TOKEN or HUGGINGFACE_API_KEY is configured. (Free, custom AI generation)
+    3. DuckDuckGo Images search as a keyless high-quality stock illustration fallback (optimized keywords).
+    4. Pollinations.ai (Flux) as a keyless AI fallback.
+    5. Hercai v3 as a secondary keyless AI fallback.
     """
     import uuid
+    import time
+    import requests
+    import urllib.parse
+    import re
     
     current_dir = os.path.dirname(os.path.abspath(__file__))
     temp_dir = os.path.join(current_dir, "temp")
@@ -469,20 +475,38 @@ def generate_flux_graphic(prompt: str) -> str:
         except Exception as e:
             print(f"[IMAGE ENGINE WARNING] Gemini Imagen 4 generation failed: {e}", flush=True)
             
-    # Attempt 2: DuckDuckGo Images stock photo fallback (Zero-key, reliable and fast!)
+    # Attempt 2: Hugging Face Inference API (Flux Schnell)
+    hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_API_KEY")
+    if hf_token:
+        print("[IMAGE ENGINE] Attempting image generation via Hugging Face Inference API...", flush=True)
+        model_id = "black-forest-labs/FLUX.1-schnell"
+        api_url = f"https://api-inference.huggingface.co/models/{model_id}"
+        headers = {"Authorization": f"Bearer {hf_token}"}
+        try:
+            resp = requests.post(api_url, headers=headers, json={"inputs": prompt}, timeout=40)
+            if resp.status_code == 200:
+                with open(image_path, "wb") as f:
+                    f.write(resp.content)
+                print(f"[IMAGE ENGINE SUCCESS] Generated image via Hugging Face {model_id} saved to {image_path}", flush=True)
+                return image_path
+            else:
+                print(f"[IMAGE ENGINE WARNING] Hugging Face returned status code {resp.status_code}: {resp.text}", flush=True)
+        except Exception as e:
+            print(f"[IMAGE ENGINE WARNING] Hugging Face generation failed: {e}", flush=True)
+
+    # Attempt 3: DuckDuckGo Images stock photo fallback (Zero-key, reliable and fast!)
     print("[IMAGE ENGINE] Attempting to retrieve stock background illustration via DuckDuckGo Images...", flush=True)
     try:
         from ddgs import DDGS
         
-        # Clean prompt slightly to make it suitable for search query
-        clean_query = prompt
-        if "background featuring" in prompt:
-            clean_query = prompt.split("background featuring")[-1]
-        elif "representing" in prompt:
-            clean_query = prompt.split("representing")[-1]
-            
-        search_term = f"minimalist 3d illustration {clean_query}"
-        search_term = search_term[:150]
+        # Clean prompt and extract core keywords to make a concise search term
+        words = [w for w in re.split(r'[\s,.:;!?()"\']', prompt) if w.strip()]
+        stop_words = {"a", "an", "the", "and", "or", "but", "with", "featuring", "representing", "minimalist", "minimalism", "3d", "illustration", "premium", "style", "features", "sleek", "abstract", "elements", "vibrant", "corporate", "colors", "clean"}
+        keywords = [w for w in words if w.lower() not in stop_words]
+        
+        # Build search query (max 4 keywords)
+        search_term = "minimalist 3d " + " ".join(keywords[:4])
+        search_term = search_term[:100]
         
         print(f"[IMAGE ENGINE] Searching DuckDuckGo for: '{search_term}'", flush=True)
         with DDGS() as ddgs:
@@ -513,10 +537,10 @@ def generate_flux_graphic(prompt: str) -> str:
     except Exception as e:
         print(f"[IMAGE ENGINE WARNING] DuckDuckGo Images fallback failed: {e}", flush=True)
         
-    # Attempt 3: Pollinations.ai (Flux) keyless AI fallback
+    # Attempt 4: Pollinations.ai (Flux) keyless AI fallback
     print("[IMAGE ENGINE] Attempting keyless generation via Pollinations.ai...", flush=True)
     encoded_prompt = urllib.parse.quote_plus(prompt)
-    url = f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+    url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&nologo=true&private=true"
     for attempt in range(1, 4):
         try:
             resp = requests.get(
@@ -530,12 +554,38 @@ def generate_flux_graphic(prompt: str) -> str:
             print(f"[IMAGE ENGINE SUCCESS] Generated image via Pollinations saved to {image_path}", flush=True)
             return image_path
         except Exception as e:
-            if attempt == 3:
-                print(f"[IMAGE ENGINE WARNING] Pollinations failed: {e}", flush=True)
+            print(f"[IMAGE ENGINE WARNING] Pollinations attempt {attempt} failed: {e}", flush=True)
+            time.sleep(2)
+            
+    # Attempt 5: Hercai v3 keyless AI fallback
+    print("[IMAGE ENGINE] Attempting keyless generation via Hercai API...", flush=True)
+    try:
+        encoded_prompt = urllib.parse.quote_plus(prompt)
+        hercai_url = f"https://hercai.onrender.com/v3/text2image?prompt={encoded_prompt}"
+        resp = requests.get(hercai_url, timeout=25)
+        if resp.status_code == 200:
+            data = resp.json()
+            img_url = data.get("url")
+            if img_url:
+                print(f"[IMAGE ENGINE] Downloading image from Hercai URL: {img_url}", flush=True)
+                img_resp = requests.get(
+                    img_url, 
+                    timeout=20,
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+                )
+                img_resp.raise_for_status()
+                with open(image_path, "wb") as f:
+                    f.write(img_resp.content)
+                print(f"[IMAGE ENGINE SUCCESS] Generated image via Hercai saved to {image_path}", flush=True)
+                return image_path
             else:
-                time.sleep(attempt * 2)
-                
-    raise RuntimeError("All image generation/retrieval engines failed.")
+                print("[IMAGE ENGINE WARNING] Hercai API did not return an image URL.", flush=True)
+        else:
+            print(f"[IMAGE ENGINE WARNING] Hercai API returned status: {resp.status_code}", flush=True)
+    except Exception as e:
+        print(f"[IMAGE ENGINE WARNING] Hercai fallback failed: {e}", flush=True)
+        
+    raise RuntimeError("All background image generation/retrieval engines failed.")
 
 
 def publish_to_facebook_page(image_path: str, caption: str) -> tuple[bool, str]:
