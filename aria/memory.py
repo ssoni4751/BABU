@@ -29,6 +29,7 @@ if is_testing:
     FAILURES_PATH = os.path.join(CURRENT_DIR, "memory", "failures_test.json")
 else:
     FAILURES_PATH = os.path.join(CURRENT_DIR, "memory", "failures.json")
+FAILURES_TEST_PATH = os.path.join(CURRENT_DIR, "memory", "failures_test.json")
 LAYERED_MEMORY_DIR = os.path.join(CURRENT_DIR, "memory")
 ROUTING_STATS_PATH = os.path.join(LAYERED_MEMORY_DIR, "routing", "routing_stats.json")
 WORKFLOW_LOGS_PATH = os.path.join(LAYERED_MEMORY_DIR, "orchestration", "workflows.json")
