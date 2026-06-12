@@ -960,32 +960,46 @@ def wikipedia_search(query: str, max_results: int = 3) -> str:
         if not titles:
             return "No Wikipedia articles matched."
             
+        # Batch-fetch extracts for titles with missing or short descriptions to avoid sequential HTTP requests in a loop
+        titles_needing_extracts = []
+        for i in range(len(titles)):
+            desc = descriptions[i] if i < len(descriptions) else ""
+            if not desc or len(desc) < 30:
+                titles_needing_extracts.append(titles[i])
+                
+        extracts = {}
+        if titles_needing_extracts:
+            extract_params = {
+                "action": "query",
+                "prop": "extracts",
+                "exintro": True,
+                "explaintext": True,
+                "redirects": 1,
+                "titles": "|".join(titles_needing_extracts),
+                "format": "json"
+            }
+            try:
+                ext_resp = requests.get(url, params=extract_params, headers=headers, timeout=4)
+                if ext_resp.status_code == 200:
+                    ext_data = ext_resp.json()
+                    pages = ext_data.get("query", {}).get("pages", {})
+                    for page_id, page_val in pages.items():
+                        title_val = page_val.get("title")
+                        extract_val = page_val.get("extract")
+                        if title_val and extract_val:
+                            extracts[title_val] = extract_val
+            except Exception as e:
+                print(f"[WIKIPEDIA WARNING] Failed to batch fetch extracts: {e}", flush=True)
+
         lines = []
         for i in range(len(titles)):
             title = titles[i]
             desc = descriptions[i] if i < len(descriptions) else ""
             link = urls[i] if i < len(urls) else ""
             
-            # If description is empty or short, fetch high-quality plain-text introduction extract
             if not desc or len(desc) < 30:
-                extract_params = {
-                    "action": "query",
-                    "prop": "extracts",
-                    "exintro": True,
-                    "explaintext": True,
-                    "redirects": 1,
-                    "titles": title,
-                    "format": "json"
-                }
-                ext_resp = requests.get(url, params=extract_params, headers=headers, timeout=3)
-                if ext_resp.status_code == 200:
-                    ext_data = ext_resp.json()
-                    pages = ext_data.get("query", {}).get("pages", {})
-                    for page_id, page_val in pages.items():
-                        if "extract" in page_val and page_val["extract"]:
-                            desc = page_val["extract"]
-                            break
-                            
+                desc = extracts.get(title, desc)
+                
             if not desc:
                 desc = "No summary available."
                 
