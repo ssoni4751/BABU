@@ -6380,7 +6380,29 @@ async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _histories[session_id].clear()
     with _pending_actions_lock:
         _pending_actions.pop(session_id, None)
-    await update.message.reply_text("Memory cleared. Fresh start.")
+        
+    try:
+        from .memory import FAILURES_PATH, FAILURES_TEST_PATH, _write_json_list
+    except ImportError:
+        from memory import FAILURES_PATH, FAILURES_TEST_PATH, _write_json_list
+        
+    try:
+        _write_json_list(FAILURES_PATH, [])
+        _write_json_list(FAILURES_TEST_PATH, [])
+        
+        conn, is_pg = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM system_memory WHERE key IN ('failures', 'failures_test')")
+        conn.commit()
+        cursor.close()
+        conn.close()
+        rules_status = "and historical immune rules cleared "
+    except Exception as db_err:
+        print(f"[CLEAR ERROR] Database failures clear failed: {db_err}", flush=True)
+        rules_status = "and rules clear attempted (with error) "
+        
+    await update.message.reply_text(f"Memory cleared {rules_status}for a fresh start.")
+
 
 
 async def cmd_goals(update: Update, context: ContextTypes.DEFAULT_TYPE):
