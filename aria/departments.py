@@ -85,10 +85,28 @@ class DepartmentHead:
             if stripped.startswith("[Worker error:"):
                 raise ValueError(stripped)
             if stripped.startswith("{") or stripped.startswith("["):
-                try:
-                    json.loads(raw_result)
-                except Exception as e:
-                    raise ValueError(f"Worker returned malformed JSON output: {e}")
+                # Differentiate JSON list/object from plain text starting with placeholders like [Sender Name]
+                is_json_candidate = False
+                if stripped.startswith("{"):
+                    is_json_candidate = True
+                elif stripped.startswith("["):
+                    content_after = stripped[1:].lstrip()
+                    if content_after:
+                        first_char = content_after[0]
+                        # JSON list elements must start with ", [, {, a digit, -, ., or be true/false/null
+                        if first_char in ('"', '[', '{', '-', '.') or first_char.isdigit():
+                            is_json_candidate = True
+                        else:
+                            for word in ('true', 'false', 'null'):
+                                if content_after.startswith(word):
+                                    is_json_candidate = True
+                                    break
+                
+                if is_json_candidate:
+                    try:
+                        json.loads(raw_result)
+                    except Exception as e:
+                        raise ValueError(f"Worker returned malformed JSON output: {e}")
 
     def dispatch(self, task: TaskDTO, shared_resources: dict, llm: Any) -> tuple[str, dict]:
         """Validate → scope → run worker → compress.  Returns (result, tokens) tuple."""
