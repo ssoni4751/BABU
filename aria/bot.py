@@ -1561,6 +1561,16 @@ def planner_node(state: AriaState):
     template = None
     is_compatible = False
     sig = ""
+    
+    # E[Temp] Telemetry variables initialization
+    template_lookup_attempted = True
+    template_candidates_found = 0
+    template_selected = None
+    template_confidence = None
+    template_rejected_reason = None
+    template_execution_used = False
+    template_tokens_saved = 0
+
     try:
         from .governance import check_constraint_compatibility
     except ImportError:
@@ -1578,28 +1588,47 @@ def planner_node(state: AriaState):
     conn, is_pg = get_db_connection()
     try:
         cursor = conn.cursor()
+        
+        # Query total candidates for telemetry
         if is_pg:
             cursor.execute(
-                "SELECT template_id, goal_graph_json, status FROM trusted_templates WHERE template_signature = %s AND status = 'ACTIVE'",
+                "SELECT COUNT(*) FROM trusted_templates WHERE template_signature = %s AND status = 'ACTIVE'",
                 (sig,)
             )
         else:
             cursor.execute(
-                "SELECT template_id, goal_graph_json, status FROM trusted_templates WHERE template_signature = ? AND status = 'ACTIVE'",
+                "SELECT COUNT(*) FROM trusted_templates WHERE template_signature = ? AND status = 'ACTIVE'",
                 (sig,)
             )
-        row = cursor.fetchone()
-        if row:
-            template = {
-                "template_id": row[0],
-                "goal_graph_json": row[1],
-                "status": row[2]
-            }
+        template_candidates_found = cursor.fetchone()[0]
+        
+        if template_candidates_found > 0:
+            if is_pg:
+                cursor.execute(
+                    "SELECT template_id, goal_graph_json, status FROM trusted_templates WHERE template_signature = %s AND status = 'ACTIVE'",
+                    (sig,)
+                )
+            else:
+                cursor.execute(
+                    "SELECT template_id, goal_graph_json, status FROM trusted_templates WHERE template_signature = ? AND status = 'ACTIVE'",
+                    (sig,)
+                )
+            row = cursor.fetchone()
+            if row:
+                template = {
+                    "template_id": row[0],
+                    "goal_graph_json": row[1],
+                    "status": row[2]
+                }
         cursor.close()
     except Exception as db_err:
         print(f"[PLANNER DB ERROR] Failed to query trusted_templates: {db_err}", flush=True)
+        template_rejected_reason = f"Database query error: {db_err}"
     finally:
         conn.close()
+
+    if not template and not template_rejected_reason:
+        template_rejected_reason = "No ACTIVE template found for signature in database"
 
     if template:
         is_compatible = check_constraint_compatibility(query, template)
@@ -1617,10 +1646,19 @@ def planner_node(state: AriaState):
                 graph = GoalGraph.from_dict(graph_dict)
                 graph.planner_status = "TEMPLATE_MATCH"
                 print(f"[PLANNER NODE] E[Temp] Muscle Memory Hit! Using template {template['template_id']} for signature {sig}", flush=True)
+                
+                # Update telemetry for successful hit
+                template_selected = template["template_id"]
+                template_confidence = 1.0
+                template_execution_used = True
+                template_tokens_saved = 2300
             except Exception as parse_err:
                 print(f"[PLANNER NODE] Failed to load template goal graph: {parse_err}. Falling back to dynamic planner.", flush=True)
                 template = None
                 is_compatible = False
+                template_rejected_reason = f"Parsing error: {parse_err}"
+        else:
+            template_rejected_reason = "Constraint compatibility checks failed (modifiers, negations, or slots mismatch)"
 
     # --- Step 2: Fallback gates if no active/compatible template is matched ---
     if not template or not is_compatible:
@@ -1740,6 +1778,25 @@ def planner_node(state: AriaState):
         "completion": ic_tokens.get("completion", 0) + plan_tokens.get("completion", 0),
         "total": ic_tokens.get("total", 0) + plan_tokens.get("total", 0)
     }
+        
+    # Log TEMPLATE_LOOKUP_TELEMETRY event
+    log_execution_ledger_event(
+        session_id=session_id,
+        goal_id=graph.goal_id,
+        task_id=None,
+        department=None,
+        event_type="TEMPLATE_LOOKUP_TELEMETRY",
+        metadata={
+            "template_lookup_attempted": template_lookup_attempted,
+            "template_candidates_found": template_candidates_found,
+            "template_selected": template_selected,
+            "template_confidence": template_confidence,
+            "template_rejected_reason": template_rejected_reason,
+            "template_execution_used": template_execution_used,
+            "planner_tokens": plan_tokens,
+            "template_tokens_saved": template_tokens_saved
+        }
+    )
         
     return {"goal_graph": graph.to_dict(), "execution_tracker": tracker, "tokens": total_planner_tokens}
 

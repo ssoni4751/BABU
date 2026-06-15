@@ -125,3 +125,79 @@ def test_context_compression_methods():
     compressed_write = writing_head.compress_result_for_downstream(writing_output)
     assert len(compressed_write) <= 2050
     assert "truncated" in compressed_write
+
+def test_auditor_json_parsing_with_control_characters():
+    """Verify that PostExecutionValidator successfully parses JSON responses containing unescaped control characters."""
+    from aria.auditor import PostExecutionValidator
+    class MockLLM:
+        def __init__(self, content):
+            self.content = content
+        def invoke(self, messages):
+            class MockResponse:
+                def __init__(self, content):
+                    self.content = content
+                    self.usage_metadata = {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}
+            return MockResponse(self.content)
+            
+    # JSON content containing raw newline inside string value (invalid JSON under strict parsing)
+    raw_response_content = '{\n  "passed": false,\n  "reason": "The output contains\nraw control newlines."\n}'
+    
+    mock_llm = MockLLM(raw_response_content)
+    validator = PostExecutionValidator(llm=mock_llm)
+    
+    task = TaskDTO(
+        task_id="T1",
+        objective="Write a summary",
+        department="writing",
+        depends_on=[],
+        priority=1
+    )
+    
+    passed, reason = validator.audit(task, "Raw worker output text.")
+    assert passed is False
+    assert "The output contains" in reason
+
+def test_etemp_telemetry_logging():
+    """Verify that TEMPLATE_LOOKUP_TELEMETRY events are logged to the database with the correct keys."""
+    # Insert mock telemetry event manually to simulate database logging
+    session_id = f"test_etemp_session_{int(datetime.now(timezone.utc).timestamp())}"
+    goal_id = f"G-TEST-ETEMP-{int(datetime.now(timezone.utc).timestamp())}"
+    
+    log_execution_ledger_event(
+        session_id=session_id,
+        goal_id=goal_id,
+        task_id=None,
+        department=None,
+        event_type="TEMPLATE_LOOKUP_TELEMETRY",
+        metadata={
+            "template_lookup_attempted": True,
+            "template_candidates_found": 1,
+            "template_selected": "T-123",
+            "template_confidence": 1.0,
+            "template_rejected_reason": None,
+            "template_execution_used": True,
+            "planner_tokens": {"prompt": 0, "completion": 0, "total": 0},
+            "template_tokens_saved": 2300
+        }
+    )
+    
+    # Check that we can fetch and parse this log
+    conn, is_pg = get_db_connection()
+    cursor = conn.cursor()
+    if is_pg:
+        cursor.execute("SELECT metadata FROM execution_ledger WHERE session_id = %s AND event_type = 'TEMPLATE_LOOKUP_TELEMETRY'", (session_id,))
+    else:
+        cursor.execute("SELECT metadata FROM execution_ledger WHERE session_id = ? AND event_type = 'TEMPLATE_LOOKUP_TELEMETRY'", (session_id,))
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    
+    assert row is not None
+    metadata = json.loads(row[0])
+    assert metadata["template_lookup_attempted"] is True
+    assert metadata["template_candidates_found"] == 1
+    assert metadata["template_selected"] == "T-123"
+    assert metadata["template_confidence"] == 1.0
+    assert metadata["template_rejected_reason"] is None
+    assert metadata["template_execution_used"] is True
+    assert metadata["template_tokens_saved"] == 2300

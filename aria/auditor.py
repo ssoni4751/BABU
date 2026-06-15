@@ -244,7 +244,7 @@ class PostExecutionValidator:
                 cleaned = res.content.strip()
                 match = re.search(r'\{.*\}', cleaned, re.DOTALL)
                 if match:
-                    data = json.loads(match.group())
+                    data = json.loads(match.group(), strict=False)
                     passed = bool(data.get("passed", False))
                     reason = str(data.get("reason", "Unknown audit verdict"))
                     
