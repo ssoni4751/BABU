@@ -162,6 +162,15 @@ class DepartmentHead:
             result = result[:max_chars].rsplit(" ", 1)[0] + " ..."
         return result
 
+    def compress_result_for_downstream(self, result: str) -> str:
+        """Compress/summarize the result of a completed task before passing it downstream.
+
+        Subclasses override this to pass compact state representations or structured
+        summaries instead of natural language, preventing token bloat in downstream prompts.
+        """
+        # Default behavior: use standard compression with a tight 1200 char limit
+        return self.compress_result(result, max_chars=1200)
+
 
 # ── ResearchHead ─────────────────────────────────────────────────────────────
 
@@ -209,6 +218,28 @@ class ResearchHead(DepartmentHead):
 
         return scoped
 
+    def compress_result_for_downstream(self, result: str) -> str:
+        """Extract URLs, bullet points, and key sentences to keep research context tight."""
+        if not result:
+            return ""
+        lines = result.split("\n")
+        compressed_lines = []
+        for line in lines:
+            line_str = line.strip()
+            if not line_str:
+                continue
+            # Keep URLs, lists/bullet points, headings, or explicitly marked findings
+            if any(marker in line_str for marker in ("http://", "https://", "-", "*", "[", "key fact:")) or ":" in line_str:
+                compressed_lines.append(line_str)
+            elif len(line_str) < 150:
+                compressed_lines.append(line_str)
+            else:
+                compressed_lines.append(line_str[:120] + "...")
+        compressed = "\n".join(compressed_lines)
+        if len(compressed) > 1000:
+            compressed = compressed[:1000] + "\n... (truncated research summary)"
+        return compressed
+
 
 # ── InformationHead ──────────────────────────────────────────────────────────
 
@@ -252,6 +283,14 @@ class InformationHead(DepartmentHead):
 
         return scoped
 
+    def compress_result_for_downstream(self, result: str) -> str:
+        """Lightweight compression for quick general info results."""
+        if not result:
+            return ""
+        if len(result) > 800:
+            return result[:800] + " ... (truncated info summary)"
+        return result
+
 
 # ── AnalysisHead ─────────────────────────────────────────────────────────────
 
@@ -272,6 +311,24 @@ class AnalysisHead(DepartmentHead):
             "constraints": task.context.get("constraints", []),
             "upstream_results": task.context.get("upstream_results", []),
         }
+
+    def compress_result_for_downstream(self, result: str) -> str:
+        """Minify JSON or extract bullet points/conclusions from analysis output."""
+        if not result:
+            return ""
+        stripped = result.strip()
+        if stripped.startswith("{") or stripped.startswith("["):
+            try:
+                import json
+                data = json.loads(stripped)
+                return json.dumps(data, separators=(',', ':'))[:1200]
+            except Exception:
+                pass
+        lines = result.split("\n")
+        conclusions = [l.strip() for l in lines if l.strip().startswith("-") or "conclusion" in l.lower() or "summary" in l.lower()]
+        if conclusions:
+            return "\n".join(conclusions)[:1000]
+        return result[:1000] + " ... (truncated analysis)"
 
 
 # ── WritingHead ──────────────────────────────────────────────────────────────
@@ -392,6 +449,16 @@ class WritingHead(DepartmentHead):
         ])
         tokens = extract_tokens(res)
         return res.content.strip(), tokens
+
+    def compress_result_for_downstream(self, result: str) -> str:
+        """Limit draft/report content passed downstream to prevent token bloat."""
+        if not result:
+            return ""
+        # Cap written documents/deliverables at 2000 chars to avoid prompt overflow,
+        # but keep enough detail for subsequent PA response synthesis or execution checks.
+        if len(result) > 2000:
+            return result[:2000] + "\n... (truncated report/draft summary)"
+        return result
 
 
 

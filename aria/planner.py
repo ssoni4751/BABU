@@ -212,7 +212,7 @@ INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
     "(such as user name, business info, contacts, or personal details like 'my official mail').\n"
     "- research: Set if query requires deep academic or comprehensive multi-source web research requiring verifications and source listing.\n"
     "- analysis: Set if query requires data analysis, reasoning, or comparing data.\n"
-    "- writing: Set if query requires report drafting, email generation, text summarization, or formatting.\n"
+    "- writing: Set if query requires report drafting, email generation, text summarization, formatting, or any synthesis/summarization of retrieved search results (always include 'writing' when 'research' or 'information' queries require compiling a summary/draft response).\n"
     "- execution: Set if query requires a physical action (sending email, creating docs/events, logging to sheets, publishing to facebook) or read-only Workspace retrieval (search_sheet, search_gmail).\n"
     "- pa: Direct user response synthesis (always include 'pa' in allowed_departments).\n"
     "\n"
@@ -228,6 +228,7 @@ INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
     "\n"
     "CRITICAL CLASSIFICATION RULES:\n"
     "- Do not research unless explicitly told to do so. ONLY include 'research' in allowed_departments if the user explicitly uses the word 'research' in their query (e.g. 'research X'). For all standard web searches, lookups, and fact checks (e.g. 'search the web for X', 'look up Y', 'who is Z', 'upcoming matches'), you MUST use 'information' instead of 'research'.\n"
+    "- Any research or information query that expects a compiled summary, report, or draft response naturally requires the 'writing' department. You MUST include 'writing' in 'allowed_departments' for all search, lookup, or research queries that require text synthesis/summarization.\n"
     "- ONLY include 'execution' in allowed_departments and list execution actions (such as 'send_email', 'create_event', 'log_to_sheet', 'post_to_facebook', 'create_doc') in allowed_actions if the user explicitly requests that physical action/mutation in their query. Do NOT default to allowed_actions = ['send_email'] or execution_mode = 'APPROVAL_REQUIRED' for simple web search/informational queries; for these, the execution_mode MUST be 'READ_ONLY' and allowed_actions must not contain mutation actions.\n"
     "\n"
     "CONFIDENCE RATING:\n"
@@ -373,6 +374,7 @@ PLANNER_SYSTEM_PROMPT: str = (
     "  * allowed_departments: You are ONLY allowed to create tasks for the departments listed in 'allowed_departments'. Any other department is strictly prohibited.\n"
     "  * allowed_actions: For 'execution' department tasks, you are ONLY allowed to plan the actions listed in 'allowed_actions'. Planning any other execution action is strictly prohibited.\n"
     "  * execution_mode: Read this setting carefully. If it is 'READ_ONLY', you must only plan read-only informational/research tasks and end with a 'pa' task; no draft or mutation actions are allowed. If it is 'APPROVAL_REQUIRED', you can create 'execution' tasks but they will go through an approval check. If it is 'AUTO_EXECUTE', you are allowed to plan automated background execution dispatches.\n"
+    "  * CRITICAL: If you cannot satisfy the user's goal under these constraints (e.g., they requested sending an email but 'execution' is not in allowed_departments, or 'send_email' is not in allowed_actions), you MUST NOT plan any tasks. Instead, you MUST return a single JSON object indicating a conflict, using the conflict format described below.\n"
     "- CORRECT TASK SEQUENCING: If the goal requires multiple sequential steps or multiple execution actions (e.g. first research X, then write a report, then create a Google Doc, and finally send an email), you must establish strict dependency links (depends_on) between these tasks to ensure they execute in the correct chronological order (e.g. writing depends on research, Doc creation depends on writing, and email sending depends on Doc creation). If there are multiple execution department tasks, chain them sequentially (T_execution_N depends on T_execution_N-1) to ensure the user audits and approves them in the correct sequence.\n"
     "- Each task must have: task_id (T1, T2, ...), objective, department, depends_on (list of task_ids), priority (1=highest), compliance_checklist (list of strings), grant_profile_access (boolean), and optionally protocol (string) or action (string) with params (object).\n"
     "- protocol: For 'writing' department tasks, you MUST specify the writing protocol based on the task purpose. Valid protocols: 'research' (default, for detailed research analysis), 'email' (for concise email drafts), 'letter' (for formal letters), 'publishing' (for public blog/social posts), 'complaint' (for formal escalations), 'report' (for structured internal docs). This guides the writing style.\n"
@@ -406,7 +408,7 @@ PLANNER_SYSTEM_PROMPT: str = (
     "  * For writing/research citation or structure failures: You MUST explicitly include citation verifier tasks or add specific sub-tasks/dependencies (such as citation formatting and source verification tasks in case of research).\n"
     "  * You MUST explicitly address these constraints in the task objectives and the compliance checklists of the planned tasks to satisfy the quality verifications.\n"
     "\n"
-    "Output format:\n"
+    "Output format (Normal Plan):\n"
     "{\n"
     '  "goal": "brief goal description",\n'
     '  "tasks": [\n'
@@ -417,6 +419,13 @@ PLANNER_SYSTEM_PROMPT: str = (
     '    {"task_id": "T3", "objective": "...", "department": "pa", '
     '"depends_on": ["T2"], "priority": 3, "compliance_checklist": ["Verify findings are synthesized factually"], "grant_profile_access": false}\n'
     '  ]\n'
+    "}\n"
+    "\n"
+    "Output format (Constraint Conflict):\n"
+    "{\n"
+    '  "conflict": {\n'
+    '    "reason": "Clear explanation of why the user\'s goal cannot be achieved within the allowed departments or actions."\n'
+    '  }\n'
     "}"
 )
 
@@ -450,7 +459,8 @@ def _build_fallback_graph(
 ) -> GoalGraph:
     """Return a single-task fail-closed graph refusing execution due to planning ambiguity."""
     if not goal_id:
-        goal_id = f"G-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+        now = datetime.now(timezone.utc)
+        goal_id = f"G-{now.strftime('%Y%m%d-%H%M%S')}"
     now_iso = datetime.now(timezone.utc).isoformat()
 
     objective = "Inform the user that the request could not be planned securely because the query is too ambiguous, lacks required context, or violates system safety boundaries. Refuse autonomous execution and request clarity."
@@ -459,6 +469,12 @@ def _build_fallback_graph(
     if planner_status == "AMBIGUOUS_QUERY":
         objective = "Politely explain to the user that their query is too vague, ambiguous, or lacks necessary details to plan safely. Ask the user to clarify exactly what objective they want ARIA to achieve."
         checklist = ["Politely explain ambiguity", "Ask for specific clarification"]
+    elif planner_status == "CONSTRAINT_CONFLICT":
+        bounds_desc = "restricted permissions"
+        if intent_packet:
+            bounds_desc = f"allowed_departments={intent_packet.get('allowed_departments')}, allowed_actions={intent_packet.get('allowed_actions')}, mode={intent_packet.get('execution_mode')}"
+        objective = f"Politely explain to the user that their query requires actions or departments that are not permitted under the current intent constraints (Current Boundaries: {bounds_desc}). Ask the user to clarify or request permission changes."
+        checklist = ["Explain constraint conflict", "Ask for clarification or permission changes"]
 
     tasks = [
         TaskDTO(
@@ -532,6 +548,7 @@ def plan_goal(
     is_correction: bool = False,
     last_goal_text: Optional[str] = None,
     intent_packet: Optional[IntentPacket] = None,
+    session_id: Optional[str] = None,
 ) -> GoalGraph:
     """Decompose *query* into a structured GoalGraph using a single LLM call.
 
@@ -660,6 +677,33 @@ def plan_goal(
         print(f"[PLANNER] Raw LLM output: {raw_text[:300]}")
         return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status="JSON_ERROR", intent_packet=intent_packet.to_dict() if intent_packet else None)
 
+    # Check for planner-reported constraint conflict
+    if "conflict" in data and isinstance(data["conflict"], dict):
+        reason = data["conflict"].get("reason", "Constraint conflict reported by planner.")
+        print(f"[PLANNER] Strategic Planner returned constraint conflict: {reason}")
+        try:
+            from .bot import log_execution_ledger_event
+        except ImportError:
+            from bot import log_execution_ledger_event
+        try:
+            log_execution_ledger_event(
+                session_id=session_id or "default",
+                goal_id=goal_id or "G-PLAN",
+                task_id=None,
+                department=None,
+                event_type="PLANNER_CONSTRAINT_VIOLATION",
+                metadata={"reason": reason, "query": query, "source": "planner_reported"}
+            )
+        except Exception as log_err:
+            pass
+        return _build_fallback_graph(
+            query,
+            goal_id=goal_id,
+            goal_type=goal_type,
+            planner_status="CONSTRAINT_CONFLICT",
+            intent_packet=intent_packet.to_dict() if intent_packet else None
+        )
+
     # Validate & build TaskDTOs -------------------------------------------
     goal_text: str = data.get("goal", query[:200])
     raw_tasks: List[dict] = data.get("tasks", [])
@@ -742,14 +786,44 @@ def plan_goal(
             # 1. Verify permitted department
             if t.department not in allowed_depts:
                 print(f"[PLANNER] Programmatic Intent Restriction: Task '{t.task_id}' uses unauthorized department '{t.department}' for intent boundaries. Triggering fallback.", flush=True)
-                return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status="TEMPLATE_VIOLATION", intent_packet=intent_dict)
+                try:
+                    from .bot import log_execution_ledger_event
+                except ImportError:
+                    from bot import log_execution_ledger_event
+                try:
+                    log_execution_ledger_event(
+                        session_id=session_id or "default",
+                        goal_id=goal_id or "G-PLAN",
+                        task_id=None,
+                        department=None,
+                        event_type="PLANNER_CONSTRAINT_VIOLATION",
+                        metadata={"reason": f"unauthorized department '{t.department}' in task '{t.task_id}'", "query": query, "source": "post_validation"}
+                    )
+                except Exception as log_err:
+                    pass
+                return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status="CONSTRAINT_CONFLICT", intent_packet=intent_dict)
             
             # 2. Verify permitted actions for execution tasks
             if t.department == "execution":
                 action = t.context.get("action")
                 if action not in allowed_actions:
                     print(f"[PLANNER] Programmatic Intent Restriction: Task '{t.task_id}' uses unauthorized execution action '{action}' for intent boundaries. Triggering fallback.", flush=True)
-                    return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status="TEMPLATE_VIOLATION", intent_packet=intent_dict)
+                    try:
+                        from .bot import log_execution_ledger_event
+                    except ImportError:
+                        from bot import log_execution_ledger_event
+                    try:
+                        log_execution_ledger_event(
+                            session_id=session_id or "default",
+                            goal_id=goal_id or "G-PLAN",
+                            task_id=None,
+                            department=None,
+                            event_type="PLANNER_CONSTRAINT_VIOLATION",
+                            metadata={"reason": f"unauthorized action '{action}' in task '{t.task_id}'", "query": query, "source": "post_validation"}
+                        )
+                    except Exception as log_err:
+                        pass
+                    return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status="CONSTRAINT_CONFLICT", intent_packet=intent_dict)
 
     # ── Post-processing: Enforce content dependencies for execution tasks ──
     content_task_ids = [t.task_id for t in tasks if t.department in ("writing", "analysis", "research")]

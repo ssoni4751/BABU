@@ -1669,6 +1669,7 @@ def planner_node(state: AriaState):
                 is_correction=is_correction,
                 last_goal_text=last_goal_text,
                 intent_packet=intent_packet,
+                session_id=session_id,
             )
 
     plan_end_time = time.time()
@@ -1961,7 +1962,7 @@ def task_executor_node(state: AriaState):
             task.context["upstream_results"] = [
                 {
                     "task_id": tid,
-                    "result": res,
+                    "result": get_department_head(engine._task_map[tid].department).compress_result_for_downstream(res),
                     "department": engine._task_map[tid].department,
                     "objective": engine._task_map[tid].objective
                 }
@@ -4164,6 +4165,20 @@ STATUS_HTML = """<!DOCTYPE html>
         </div>
         <div class="progress-bg"><div class="progress-fill" id="exec-progress" style="background:#06b6d4"></div></div>
       </div>
+      <div style="margin-top: 24px; border-top: 1px solid var(--border-color); padding-top: 16px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; text-align: center;">
+         <div>
+            <div class="text-muted" style="font-size: 0.68rem; text-transform: uppercase; margin-bottom: 4px;">Violations</div>
+            <strong id="val-planner-violations" style="color: #f87171; font-size: 1.15rem; font-weight: 700;">-</strong>
+         </div>
+         <div>
+            <div class="text-muted" style="font-size: 0.68rem; text-transform: uppercase; margin-bottom: 4px;">Rejections</div>
+            <strong id="val-gov-rejections" style="color: #fbbf24; font-size: 1.15rem; font-weight: 700;">-</strong>
+         </div>
+         <div>
+            <div class="text-muted" style="font-size: 0.68rem; text-transform: uppercase; margin-bottom: 4px;">Recoveries</div>
+            <strong id="val-recovery-invocations" style="color: #60a5fa; font-size: 1.15rem; font-weight: 700;">-</strong>
+         </div>
+      </div>
     </div>
     
     <div class="dashboard-panel latency-panel" style="grid-column: span 2; margin-bottom: 32px;">
@@ -4726,6 +4741,17 @@ STATUS_HTML = """<!DOCTYPE html>
     document.getElementById('exec-percent').textContent = `${workerTokens.toLocaleString()} tokens (${workerPercent}%)`;
     document.getElementById('exec-progress').style.width = `${workerPercent}%`;
     
+    // Update newly aggregated telemetry counters
+    if (telemetryData.planner_constraint_violations !== undefined) {
+      document.getElementById('val-planner-violations').textContent = telemetryData.planner_constraint_violations;
+    }
+    if (telemetryData.governance_rejections !== undefined) {
+      document.getElementById('val-gov-rejections').textContent = telemetryData.governance_rejections;
+    }
+    if (telemetryData.recovery_invocations !== undefined) {
+      document.getElementById('val-recovery-invocations').textContent = telemetryData.recovery_invocations;
+    }
+    
     // Update Reasoning Efficiency Table
     const reasoningBody = document.getElementById('reasoning-body');
     reasoningBody.innerHTML = '';
@@ -4920,6 +4946,9 @@ def get_telemetry_data(limit=100) -> dict:
     
     ledger_rows = []
     goals_map = {}
+    planner_constraint_violations = 0
+    governance_rejections = 0
+    recovery_invocations = 0
     
     try:
         conn, is_pg = get_db_connection()
@@ -4935,6 +4964,14 @@ def get_telemetry_data(limit=100) -> dict:
         
         for row in all_rows:
             ev_id, sess_id, g_id, t_id, dept, ev_type, meta_str, ts = row
+            
+            if ev_type == "PLANNER_CONSTRAINT_VIOLATION":
+                planner_constraint_violations += 1
+            elif ev_type in ("AUDIT_PRE_FAIL", "AUDIT_POST_FAIL"):
+                governance_rejections += 1
+            elif ev_type == "RECOVERY_REGISTERED":
+                recovery_invocations += 1
+
             # Ensure timestamp is string formatted (converts datetime objects from postgres)
             if hasattr(ts, "isoformat"):
                 ts = ts.isoformat()
@@ -5251,7 +5288,10 @@ def get_telemetry_data(limit=100) -> dict:
         "auditor_average_latency": auditor_average_latency,
         "execution_average_latency": execution_average_latency,
         "top_10_slowest_workflows": top_10_slowest_workflows,
-        "top_10_slowest_models": top_10_slowest_models
+        "top_10_slowest_models": top_10_slowest_models,
+        "planner_constraint_violations": planner_constraint_violations,
+        "governance_rejections": governance_rejections,
+        "recovery_invocations": recovery_invocations
     }
 
     # Compile Model Matrix
@@ -5290,7 +5330,10 @@ def get_telemetry_data(limit=100) -> dict:
         "current_dept_model": CURRENT_DEPT_MODEL,
         "current_pa_model": CURRENT_PA_MODEL,
         "model_matrix": model_matrix,
-        "latency_metrics": latency_metrics
+        "latency_metrics": latency_metrics,
+        "planner_constraint_violations": planner_constraint_violations,
+        "governance_rejections": governance_rejections,
+        "recovery_invocations": recovery_invocations
     }
 
 
