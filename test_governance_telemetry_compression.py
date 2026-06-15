@@ -201,3 +201,17 @@ def test_etemp_telemetry_logging():
     assert metadata["template_rejected_reason"] is None
     assert metadata["template_execution_used"] is True
     assert metadata["template_tokens_saved"] == 2300
+
+def test_personal_query_spelling_variations():
+    """Verify that is_profile_relevant_query and requires_web_search correctly identify misspelled variant queries."""
+    from aria.bot import is_profile_relevant_query, requires_web_search
+    
+    # Standard personal query spelling variations
+    assert is_profile_relevant_query("What is my bussiness") is True
+    assert is_profile_relevant_query("Tell me about my busines") is True
+    assert is_profile_relevant_query("What is my business") is True
+    
+    # Verify requires_web_search returns False for these local profile lookup queries
+    assert requires_web_search("What is my bussiness") is False
+    assert requires_web_search("Tell me about my busines") is False
+    assert requires_web_search("What is my business") is False

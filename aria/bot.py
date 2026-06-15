@@ -516,6 +516,7 @@ def is_profile_relevant_query(query: str) -> bool:
         "anshu", "shubham", "swarnkar", "ash", "ssoni", "computer", "consultancy", 
         "tax", "consultant", "consultants", "compliance", "e-governance", "csc",
         "who am i", "who i am", "my name", "my nickname", "my business", "my company", 
+        "my bussiness", "my busines", "bussiness", "busines", "bussines",
         "my work", "my job", "my shop", "my family", "my father", "my mother", 
         "my brother", "my sibling", "my parents", "my cousin", "my background", 
         "my journey", "my education", "my career", "my email", "my phone", 
