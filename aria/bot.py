@@ -1478,6 +1478,19 @@ def requires_workspace_access(query: str) -> bool:
     return bool(re.search(pattern, t))
 
 
+def is_system_aware_query(query: str) -> bool:
+    """Determine if a query is related to ARIA's codebase, architecture, templates, or governance."""
+    q = query.lower()
+    keywords = {
+        "etemp", "governance", "auditor", "anti-pattern", "failures", "telemetry",
+        "self-awareness", "self-rag", "architecture", "codebase", "immune lesson",
+        "why did this task fail", "why did my task fail", "why did task fail",
+        "how does aria work", "how do you work", "bipartite auditor", "what governance rule",
+        "what recurring problems", "what fixes were previously applied"
+    }
+    return any(kw in q for kw in keywords)
+
+
 def requires_web_search(query: str) -> bool:
     t = query.lower().strip()
     greetings = {"hi", "hello", "hey", "good morning", "good afternoon", "good evening", "how are you", "help", "clear", "stats", "model"}
@@ -1487,6 +1500,11 @@ def requires_web_search(query: str) -> bool:
     # If it is a local profile fact lookup, we don't need web search (unless they explicitly ask to search the web)
     if is_profile_relevant_query(query):
         # Only require web search if they explicitly use web search keywords
+        if not any(kw in t for kw in ("search the web", "search google", "web search", "google search", "wikipedia", "search online")):
+            return False
+
+    # Do not require web search for ARIA internal / self-awareness questions
+    if is_system_aware_query(query):
         if not any(kw in t for kw in ("search the web", "search google", "web search", "google search", "wikipedia", "search online")):
             return False
 
@@ -1512,12 +1530,58 @@ def planner_node(state: AriaState):
         
     query = state["user_query"]
     history_text = state.get("history_text", "")
-    profile_text = get_user_profile_text() if is_profile_relevant_query(query) else ""
     session_id = state.get("session_id", "default")
     
     active_goal = state.get("active_goal") or {}
     pre_goal_id = active_goal.get("goal_id")
     
+    is_profile = is_profile_relevant_query(query)
+    is_system = is_system_aware_query(query)
+    profile_text = get_user_profile_text() if is_profile else ""
+    
+    # Retrieve RAG context if system/self-aware query
+    retrieved = []
+    if is_system:
+        try:
+            from .rag_storage import retrieve_knowledge
+        except ImportError:
+            from rag_storage import retrieve_knowledge
+            
+        rag_start = time.time()
+        retrieved = retrieve_knowledge(query)
+        rag_end = time.time()
+        rag_latency = round((rag_end - rag_start) * 1000, 2)
+        
+        hit = len(retrieved) > 0
+        retrieved_tokens = sum(len(x["chunk_text"]) // 4 for x in retrieved) if hit else 0
+        
+        # Log RAG_RETRIEVAL event
+        log_execution_ledger_event(
+            session_id=session_id,
+            goal_id=pre_goal_id or "G-PLAN",
+            task_id=None,
+            department=None,
+            event_type="RAG_RETRIEVAL",
+            state_before=None,
+            state_after=None,
+            metadata={
+                "query": query,
+                "retrieval_requests": 1,
+                "retrieval_hits": 1 if hit else 0,
+                "retrieval_misses": 0 if hit else 1,
+                "retrieval_latency_ms": rag_latency,
+                "retrieved_tokens": retrieved_tokens,
+                "collections_accessed": list(set(x["collection"] for x in retrieved)) if hit else []
+            }
+        )
+        
+        if hit:
+            context_str = "\n\n=== SELF_AWARENESS_CONTEXT ===\n"
+            for item in retrieved:
+                context_str += f"[{item['collection']} - {item['title']}]:\n{item['chunk_text']}\n\n"
+            context_str += "=== END OF SELF_AWARENESS_CONTEXT ===\n"
+            profile_text = (profile_text + "\n" + context_str).strip()
+            
     print(f"[PLANNER NODE] Planning goal for query: '{query[:50]}' (goal_id: {pre_goal_id})", flush=True)
     
     # 1. Intent Governance stage
@@ -4269,6 +4333,22 @@ STATUS_HTML = """<!DOCTYPE html>
                      <span class="text-muted">Execution Avg Latency:</span>
                      <strong id="val-exec-avg-lat" style="color: #34d399;">-</strong>
                   </div>
+                  <div style="display: flex; justify-content: space-between; font-size: 0.8rem; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px; margin-top: 4px;">
+                     <span class="text-muted">Self-RAG Requests:</span>
+                     <strong id="val-rag-requests" style="color: #a855f7;">-</strong>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; font-size: 0.8rem;">
+                     <span class="text-muted">Self-RAG Hits/Misses:</span>
+                     <strong id="val-rag-hits" style="color: #e879f9;">- / -</strong>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; font-size: 0.8rem;">
+                     <span class="text-muted">Self-RAG Avg Latency:</span>
+                     <strong id="val-rag-avg-lat" style="color: #f472b6;">-</strong>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; font-size: 0.8rem;">
+                     <span class="text-muted">Self-RAG Tokens:</span>
+                     <strong id="val-rag-tokens" style="color: #fb7185;">-</strong>
+                  </div>
                </div>
             </div>
             
@@ -4810,6 +4890,14 @@ STATUS_HTML = """<!DOCTYPE html>
       document.getElementById('val-recovery-invocations').textContent = telemetryData.recovery_invocations;
     }
     
+    // Update RAG Telemetry
+    if (telemetryData.retrieval_requests !== undefined) {
+      document.getElementById('val-rag-requests').textContent = telemetryData.retrieval_requests;
+      document.getElementById('val-rag-hits').textContent = `${telemetryData.retrieval_hits} / ${telemetryData.retrieval_misses}`;
+      document.getElementById('val-rag-avg-lat').textContent = formatDuration(telemetryData.retrieval_latency_ms);
+      document.getElementById('val-rag-tokens').textContent = `${telemetryData.retrieved_tokens.toLocaleString()} tokens`;
+    }
+    
     // Update Reasoning Efficiency Table
     const reasoningBody = document.getElementById('reasoning-body');
     reasoningBody.innerHTML = '';
@@ -5007,6 +5095,11 @@ def get_telemetry_data(limit=100) -> dict:
     planner_constraint_violations = 0
     governance_rejections = 0
     recovery_invocations = 0
+    retrieval_requests = 0
+    retrieval_hits = 0
+    retrieval_misses = 0
+    retrieval_latencies = []
+    retrieved_tokens = 0
     
     try:
         conn, is_pg = get_db_connection()
@@ -5029,6 +5122,16 @@ def get_telemetry_data(limit=100) -> dict:
                 governance_rejections += 1
             elif ev_type == "RECOVERY_REGISTERED":
                 recovery_invocations += 1
+            elif ev_type == "RAG_RETRIEVAL" and meta_str:
+                try:
+                    meta = json.loads(meta_str)
+                    retrieval_requests += meta.get("retrieval_requests", 0) or 0
+                    retrieval_hits += meta.get("retrieval_hits", 0) or 0
+                    retrieval_misses += meta.get("retrieval_misses", 0) or 0
+                    retrieval_latencies.append(meta.get("retrieval_latency_ms", 0.0) or 0.0)
+                    retrieved_tokens += meta.get("retrieved_tokens", 0) or 0
+                except Exception:
+                    pass
 
             # Ensure timestamp is string formatted (converts datetime objects from postgres)
             if hasattr(ts, "isoformat"):
@@ -5336,6 +5439,8 @@ def get_telemetry_data(limit=100) -> dict:
     
     execution_average_latency = avg_latency_by_event.get("EXECUTION", 0.0)
     
+    avg_retrieval_latency_ms = round(sum(retrieval_latencies) / len(retrieval_latencies), 2) if retrieval_latencies else 0.0
+
     latency_metrics = {
         "avg_latency_by_event": avg_latency_by_event,
         "avg_latency_by_model": avg_latency_by_model,
@@ -5349,7 +5454,12 @@ def get_telemetry_data(limit=100) -> dict:
         "top_10_slowest_models": top_10_slowest_models,
         "planner_constraint_violations": planner_constraint_violations,
         "governance_rejections": governance_rejections,
-        "recovery_invocations": recovery_invocations
+        "recovery_invocations": recovery_invocations,
+        "retrieval_requests": retrieval_requests,
+        "retrieval_hits": retrieval_hits,
+        "retrieval_misses": retrieval_misses,
+        "retrieval_latency_ms": avg_retrieval_latency_ms,
+        "retrieved_tokens": retrieved_tokens
     }
 
     # Compile Model Matrix
@@ -5391,7 +5501,12 @@ def get_telemetry_data(limit=100) -> dict:
         "latency_metrics": latency_metrics,
         "planner_constraint_violations": planner_constraint_violations,
         "governance_rejections": governance_rejections,
-        "recovery_invocations": recovery_invocations
+        "recovery_invocations": recovery_invocations,
+        "retrieval_requests": retrieval_requests,
+        "retrieval_hits": retrieval_hits,
+        "retrieval_misses": retrieval_misses,
+        "retrieval_latency_ms": avg_retrieval_latency_ms,
+        "retrieved_tokens": retrieved_tokens
     }
 
 
