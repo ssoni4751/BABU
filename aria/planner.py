@@ -204,7 +204,7 @@ class IntentPacket:
         )
 
 INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
-    "You are ARIA's Intent Classifier. Your ONLY job is to classify the user's "
+    "You are BABU's Intent Classifier. Your ONLY job is to classify the user's "
     "conversational intent into a structured IntentPacket JSON containing capability routing templates.\n"
     "\n"
     "DEPARTMENT DEFINITIONS:\n"
@@ -364,7 +364,7 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
 # ---------------------------------------------------------------------------
 
 PLANNER_SYSTEM_PROMPT: str = (
-    "You are ARIA's Strategic Planner. Your ONLY job is to decompose user "
+    "You are BABU's Strategic Planner. Your ONLY job is to decompose user "
     "goals into structured task graphs.\n"
     "\n"
     "RULES:\n"

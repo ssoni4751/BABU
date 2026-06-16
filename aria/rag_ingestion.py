@@ -1,10 +1,10 @@
 """
-rag_ingestion.py — Ingestion Pipeline for ARIA Self-Awareness Knowledge Layer
+rag_ingestion.py — Ingestion Pipeline for BABU Self-Awareness Knowledge Layer
 
 This script:
 1. Locates markdown artifacts, codebase scripts, E0 config JSONs, and active database templates.
 2. Chunks files using domain-specific section/rule splitting.
-3. Computes embeddings and stores knowledge chunks inside the aria_knowledge table.
+3. Computes embeddings and stores knowledge chunks inside the babu_knowledge table.
 """
 
 import os

@@ -1,5 +1,5 @@
 """
-rag_storage.py — ARIA Self-Awareness Knowledge Layer Vector Database Storage Engine
+rag_storage.py — BABU Self-Awareness Knowledge Layer Vector Database Storage Engine
 
 This module implements:
 1. Resilient embedding generation factory (Gemini -> OpenAI -> Mock/Fake fallback).
@@ -98,7 +98,7 @@ def init_rag_db():
             cursor.execute("CREATE EXTENSION IF NOT EXISTS vector;")
             # Fetch default vector dimension from model (text-embedding-004 yields 768)
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS aria_knowledge (
+                CREATE TABLE IF NOT EXISTS babu_knowledge (
                     id SERIAL PRIMARY KEY,
                     collection VARCHAR(50) NOT NULL,
                     source TEXT NOT NULL,
@@ -109,11 +109,11 @@ def init_rag_db():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_aria_knowledge_collection ON aria_knowledge (collection);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_babu_knowledge_collection ON babu_knowledge (collection);")
         else:
             # SQLite fallback
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS aria_knowledge (
+                CREATE TABLE IF NOT EXISTS babu_knowledge (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     collection TEXT NOT NULL,
                     source TEXT NOT NULL,
@@ -124,7 +124,7 @@ def init_rag_db():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_aria_knowledge_collection ON aria_knowledge (collection);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_babu_knowledge_collection ON babu_knowledge (collection);")
         conn.commit()
         cursor.close()
         conn.close()
@@ -153,13 +153,13 @@ def store_knowledge_chunk(collection: str, source: str, title: str, chunk_text: 
         if is_pg:
             # Postgres pgvector insert
             cursor.execute("""
-                INSERT INTO aria_knowledge (collection, source, title, chunk_text, embedding, metadata)
+                INSERT INTO babu_knowledge (collection, source, title, chunk_text, embedding, metadata)
                 VALUES (%s, %s, %s, %s, %s, %s)
             """, (collection, source, title, chunk_text, vector, json.dumps(meta_dict)))
         else:
             # SQLite insert
             cursor.execute("""
-                INSERT INTO aria_knowledge (collection, source, title, chunk_text, embedding, metadata)
+                INSERT INTO babu_knowledge (collection, source, title, chunk_text, embedding, metadata)
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (collection, source, title, chunk_text, json.dumps(vector), json.dumps(meta_dict)))
         conn.commit()
@@ -207,7 +207,7 @@ def retrieve_knowledge(query: str, collections: Optional[list[str]] = None, top_
             if collections:
                 cursor.execute("""
                     SELECT id, collection, source, title, chunk_text, metadata, (1 - (embedding <=> %s::vector)) AS similarity
-                    FROM aria_knowledge
+                    FROM babu_knowledge
                     WHERE collection = ANY(%s) AND (1 - (embedding <=> %s::vector)) >= %s
                     ORDER BY similarity DESC
                     LIMIT %s
@@ -215,7 +215,7 @@ def retrieve_knowledge(query: str, collections: Optional[list[str]] = None, top_
             else:
                 cursor.execute("""
                     SELECT id, collection, source, title, chunk_text, metadata, (1 - (embedding <=> %s::vector)) AS similarity
-                    FROM aria_knowledge
+                    FROM babu_knowledge
                     WHERE (1 - (embedding <=> %s::vector)) >= %s
                     ORDER BY similarity DESC
                     LIMIT %s
@@ -238,13 +238,13 @@ def retrieve_knowledge(query: str, collections: Optional[list[str]] = None, top_
                 placeholders = ",".join("?" for _ in collections)
                 cursor.execute(f"""
                     SELECT id, collection, source, title, chunk_text, embedding, metadata
-                    FROM aria_knowledge
+                    FROM babu_knowledge
                     WHERE collection IN ({placeholders})
                 """, collections)
             else:
                 cursor.execute("""
                     SELECT id, collection, source, title, chunk_text, embedding, metadata
-                    FROM aria_knowledge
+                    FROM babu_knowledge
                 """)
             
             rows = cursor.fetchall()
@@ -291,14 +291,14 @@ def retrieve_knowledge(query: str, collections: Optional[list[str]] = None, top_
                     if collections:
                         cursor.execute(f"""
                             SELECT id, collection, source, title, chunk_text, metadata, 0.49 AS similarity
-                            FROM aria_knowledge
+                            FROM babu_knowledge
                             WHERE collection = ANY(%s) AND ({like_clauses})
                             LIMIT %s
                         """, (collections, *[f"%{kw}%" for kw in keywords], top_k * 2))
                     else:
                         cursor.execute(f"""
                             SELECT id, collection, source, title, chunk_text, metadata, 0.49 AS similarity
-                            FROM aria_knowledge
+                            FROM babu_knowledge
                             WHERE {like_clauses}
                             LIMIT %s
                         """, (*[f"%{kw}%" for kw in keywords], top_k * 2))
@@ -319,14 +319,14 @@ def retrieve_knowledge(query: str, collections: Optional[list[str]] = None, top_
                         placeholders = ",".join("?" for _ in collections)
                         cursor.execute(f"""
                             SELECT id, collection, source, title, chunk_text, metadata, 0.49 AS similarity
-                            FROM aria_knowledge
+                            FROM babu_knowledge
                             WHERE collection IN ({placeholders}) AND ({like_clauses})
                             LIMIT ?
                         """, (*collections, *[f"%{kw}%" for kw in keywords], top_k * 2))
                     else:
                         cursor.execute(f"""
                             SELECT id, collection, source, title, chunk_text, metadata, 0.49 AS similarity
-                            FROM aria_knowledge
+                            FROM babu_knowledge
                             WHERE {like_clauses}
                             LIMIT ?
                         """, (*[f"%{kw}%" for kw in keywords], top_k * 2))

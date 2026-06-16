@@ -1,5 +1,5 @@
 """
-auditor.py — ARIA Bipartite Auditor Protocol (Layer 5)
+auditor.py — BABU Bipartite Auditor Protocol (Layer 5)
 
 This module implements the bipartite auditing protocol, bifurcated into:
 1. Pre-Execution Gatekeeper: Deterministic, rules-based capability, credential,
@@ -190,7 +190,7 @@ class PostExecutionValidator:
                 checklist_str = "- [ ] Verify that the worker actually answered/accomplished the objective.\n- [ ] Check for factual truthfulness and style alignment."
 
             system_prompt = (
-                "You are ARIA's Post-Execution Auditor and Risk Assessor. Your job is to audit a worker's output "
+                "You are BABU's Post-Execution Auditor and Risk Assessor. Your job is to audit a worker's output "
                 "for structural validity, factual truthfulness, compliance with the checklist, and overall operational risk.\n"
                 "You must verify each checklist item individually. Rather than simply blocking, assess the risk.\n"
                 "Do NOT fail entire workflows because a research or information retrieval task has low confidence or lacks detailed academic citations, as long as it has retrieved some correct and relevant details.\n"

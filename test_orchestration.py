@@ -390,11 +390,11 @@ class TestBipartiteAuditor(unittest.TestCase):
         self.assertIsNone(entry_after, "Failed rule was not healed and pruned from failures.json")
 
     def test_intent_router_overrides(self):
-        from aria.bot import intent_router, AriaState
+        from aria.bot import intent_router, BabuState
         from langchain_core.messages import HumanMessage
         
         # Test 1: explicit /launch command should strip prefix
-        state_launch = AriaState(
+        state_launch = BabuState(
             messages=[HumanMessage(content="/launch Research the latest space tech advancements")],
             research_data=[],
             user_query="",
@@ -417,7 +417,7 @@ class TestBipartiteAuditor(unittest.TestCase):
         self.assertEqual(res["user_query"], "Research the latest space tech advancements")
         
         # Test 2: explicit launch command (plain text) should strip prefix
-        state_plain = AriaState(
+        state_plain = BabuState(
             messages=[HumanMessage(content="launch research quantum computing")],
             research_data=[],
             user_query="",
@@ -504,7 +504,7 @@ class TestExecutionLedger(unittest.TestCase):
     def test_executor_node_logging(self, mock_auditor_cls, mock_get_dept_head):
         import sqlite3
         import uuid
-        from aria.bot import task_executor_node, AriaState, DB_PATH
+        from aria.bot import task_executor_node, BabuState, DB_PATH
         from aria.task_engine import TaskDTO, GoalGraph, TaskState
         from langchain_core.messages import HumanMessage
         
@@ -535,7 +535,7 @@ class TestExecutionLedger(unittest.TestCase):
             tasks=[t1]
         )
         
-        state = AriaState(
+        state = BabuState(
             messages=[HumanMessage(content="Space facts")],
             gear="LAUNCH",
             research_data=[],
@@ -581,7 +581,7 @@ class TestExecutionLedger(unittest.TestCase):
     def test_planner_node_logging(self, mock_plan_goal, mock_is_simple):
         import sqlite3
         import uuid
-        from aria.bot import planner_node, AriaState, DB_PATH
+        from aria.bot import planner_node, BabuState, DB_PATH
         from aria.task_engine import TaskDTO, GoalGraph, TaskState
         from langchain_core.messages import HumanMessage
         
@@ -603,7 +603,7 @@ class TestExecutionLedger(unittest.TestCase):
         mock_plan_goal.return_value = goal
         
         session_id = f"test_session_{uuid.uuid4().hex[:6]}"
-        state = AriaState(
+        state = BabuState(
             messages=[HumanMessage(content="Space facts")],
             gear="LAUNCH",
             research_data=[],

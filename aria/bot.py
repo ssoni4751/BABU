@@ -29,7 +29,7 @@ except ImportError:
 import sqlite3
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory", "aria_checkpoint.db")
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory", "babu_checkpoint.db")
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -993,8 +993,8 @@ def search_profile(query: str, bypass_filter: bool = False) -> str:
 # â”€â”€ Knowledge base â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 KNOWLEDGE_BASE = {
-    "aria": (
-        "ARIA (Adaptive Research Intelligence Assistant) is a multi-agent AI system "
+    "babu": (
+        "BABU (Behavioral Autonomous Bureaucratic Utility) is a multi-agent AI system "
         "built on LangGraph + Groq/Llama. It dynamically classifies user intent "
         "and plans a custom task graph executed by independent departments. "
         "Available on Telegram and the web."
@@ -1005,8 +1005,8 @@ KNOWLEDGE_BASE = {
         "while research executes as a branch only when deep research is explicitly required."
     ),
     "tools": (
-        "Every ARIA agent has access to: live web search (DuckDuckGo), "
-        "conversation memory (per-session history), the ARIA knowledge base, "
+        "Every BABU agent has access to: live web search (DuckDuckGo), "
+        "conversation memory (per-session history), the BABU knowledge base, "
         "and Direct Google Workspace automation (email via Gmail, Calendar events, Sheets logging, and more)."
     ),
     "models": (
@@ -1069,7 +1069,7 @@ def wikipedia_search(query: str, max_results: int = 3) -> str:
         "format": "json"
     }
     headers = {
-        "User-Agent": "ARIA-Assistant/1.0 (ssoni4751@gmail.com) Python-Requests/2.0"
+        "User-Agent": "BABU-Assistant/1.0 (ssoni4751@gmail.com) Python-Requests/2.0"
     }
     try:
         response = requests.get(url, params=params, headers=headers, timeout=5)
@@ -1342,10 +1342,10 @@ def get_history_text(session_id: str) -> str:
     return "\n".join(f"{role.upper()}: {content}" for role, content in h)
 
 
-def add_to_history(session_id: str, user_msg: str, aria_msg: str) -> None:
+def add_to_history(session_id: str, user_msg: str, babu_msg: str) -> None:
     with _memory_lock:
         _histories[session_id].append(("user", user_msg))
-        _histories[session_id].append(("aria", aria_msg))
+        _histories[session_id].append(("babu", babu_msg))
 
 
 def compact_completed_session_history(session_id: str) -> None:
@@ -1409,7 +1409,7 @@ def add_tokens(existing: dict, new: dict) -> dict:
 
 # â”€â”€ LangGraph state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-class AriaState(TypedDict):
+class BabuState(TypedDict):
     messages:       Annotated[list[BaseMessage], "Conversation"]
     research_data:  List[str]
     user_query:     str
@@ -1481,7 +1481,7 @@ def should_escalate_to_workflow(text: str, history_text: str = "") -> bool:
     return False
 
 
-def intent_router(state: AriaState):
+def intent_router(state: BabuState):
     import time
     _router_t0 = time.time()
     
@@ -1573,7 +1573,7 @@ def is_pure_greeting(text: str) -> bool:
     return t in greetings
 
 
-def route_after_router(state: AriaState) -> str:
+def route_after_router(state: BabuState) -> str:
     notice = state.get("pending_action_notice", "")
     if notice:
         return "pending"
@@ -1774,7 +1774,7 @@ def retrieve_system_memory_via_sql(query: str) -> str:
     return "\n\n".join(context_parts)
 
 
-def planner_node(state: AriaState):
+def planner_node(state: BabuState):
     """Decompose user goal into a structured GoalGraph."""
     import time
     from datetime import datetime, timezone
@@ -2155,7 +2155,7 @@ def planner_node(state: AriaState):
     return {"goal_graph": graph.to_dict(), "execution_tracker": tracker, "tokens": total_planner_tokens}
 
 
-def task_executor_node(state: AriaState):
+def task_executor_node(state: BabuState):
     """Executes the task DAG using TaskEngine and Department Heads."""
     import time
     from datetime import datetime, timezone
@@ -2922,7 +2922,7 @@ LAUNCH_ROUND_2 = [
 ]
 
 
-def action_node(state: AriaState):
+def action_node(state: BabuState):
     """Execute Google Workspace API actions after research runs, resolving research placeholders programmatically."""
     import time
     action_start = time.time()
@@ -3044,7 +3044,7 @@ def resolve_action_params(params: dict, research_text: str = "") -> dict:
     return resolved_params
 
 
-def task_manager_node(state: AriaState):
+def task_manager_node(state: BabuState):
     """Verify research reports and state legitimacy before authorizing tool execution."""
     import time
     tm_start = time.time()
@@ -3144,7 +3144,7 @@ def task_manager_node(state: AriaState):
     return {"active_goal": active_goal, "execution_tracker": tracker}
 
 
-def research_dept(state: AriaState):
+def research_dept(state: BabuState):
     import time
     research_start = time.time()
     gear = state["gear"]
@@ -3252,11 +3252,11 @@ def deterministic_compress_reports(reports: List[str], max_chars: int = 2600) ->
     return merged
 
 
-def department_synthesizer(state: AriaState):
+def department_synthesizer(state: BabuState):
     reports = state.get("research_data", [])
     return {"compressed_research": deterministic_compress_reports(reports)}
 
-def pa_node(state: AriaState):
+def pa_node(state: BabuState):
     import time
     final_brief = state.get("final_brief")
     if final_brief and "Respond directly to user query" in final_brief:
@@ -3519,7 +3519,7 @@ def pa_node(state: AriaState):
 
 # â”€â”€ Graph â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-workflow = StateGraph(AriaState)
+workflow = StateGraph(BabuState)
 workflow.add_node("router",       intent_router)
 workflow.add_node("planner",      planner_node)
 workflow.add_node("executor",     task_executor_node)

@@ -25,7 +25,7 @@ class TestSelfRAG(unittest.TestCase):
         conn, is_pg = get_db_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("DELETE FROM aria_knowledge;")
+            cursor.execute("DELETE FROM babu_knowledge;")
             cursor.execute("DELETE FROM execution_ledger;")
             cursor.execute("DELETE FROM babu_temporal_timeline;")
             cursor.execute("DELETE FROM system_memory;")
@@ -42,7 +42,7 @@ class TestSelfRAG(unittest.TestCase):
         conn, is_pg = get_db_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("DELETE FROM aria_knowledge;")
+            cursor.execute("DELETE FROM babu_knowledge;")
             cursor.execute("DELETE FROM execution_ledger;")
             cursor.execute("DELETE FROM babu_temporal_timeline;")
             cursor.execute("DELETE FROM system_memory;")
@@ -87,11 +87,11 @@ class TestSelfRAG(unittest.TestCase):
         vec_governance = embed.embed_query("tell me about bipartite auditor governance")
         
         cursor.execute(
-            "INSERT INTO aria_knowledge (collection, source, title, chunk_text, embedding, metadata) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO babu_knowledge (collection, source, title, chunk_text, embedding, metadata) VALUES (?, ?, ?, ?, ?, ?)",
             ("templates", "test_source", "etemp", "aria uses etemp templates to define agent parameters.", json.dumps(vec_template), "{}")
         )
         cursor.execute(
-            "INSERT INTO aria_knowledge (collection, source, title, chunk_text, embedding, metadata) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO babu_knowledge (collection, source, title, chunk_text, embedding, metadata) VALUES (?, ?, ?, ?, ?, ?)",
             ("governance", "test_source", "bipartite auditor", "the bipartite auditor enforces PreExecutionGatekeeper and post-execution audit.", json.dumps(vec_governance), "{}")
         )
         conn.commit()
@@ -264,7 +264,7 @@ class TestSelfRAG(unittest.TestCase):
         cursor = conn.cursor()
         try:
             cursor.execute(
-                "INSERT INTO aria_knowledge (collection, source, title, chunk_text, embedding, metadata) VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO babu_knowledge (collection, source, title, chunk_text, embedding, metadata) VALUES (?, ?, ?, ?, ?, ?)",
                 ("aria_docs", "test_source", "codebase doc", "this document explains the backend architecture of the aria scheduler.", "[]", "{}")
             )
             conn.commit()

@@ -4,7 +4,7 @@ class PDF(FPDF):
     def header(self):
         self.set_font("Helvetica", "B", 22)
         self.set_text_color(15, 15, 15)
-        self.cell(0, 14, "ARIA", align="L")
+        self.cell(0, 14, "BABU", align="L")
         self.set_font("Helvetica", "", 11)
         self.set_text_color(80, 80, 80)
         self.cell(0, 14, "Multi-Agent Telegram AI Assistant", align="R", new_x="LMARGIN", new_y="NEXT")
@@ -16,7 +16,7 @@ class PDF(FPDF):
         self.set_y(-14)
         self.set_font("Helvetica", "I", 8)
         self.set_text_color(150, 150, 150)
-        self.cell(0, 10, "ARIA Project Schema  -  Page " + str(self.page_no()), align="C")
+        self.cell(0, 10, "BABU Project Schema  -  Page " + str(self.page_no()), align="C")
 
     def section_title(self, title):
         self.ln(4)
@@ -64,7 +64,7 @@ pdf.set_auto_page_break(auto=True, margin=15)
 # --- Overview ---
 pdf.section_title("Overview")
 pdf.body(
-    "ARIA is a Telegram bot powered by a LangGraph multi-agent pipeline. It automatically "
+    "BABU is a Telegram bot powered by a LangGraph multi-agent pipeline. It automatically "
     "routes incoming messages into two gears - WALK for casual chat and SPRINT for deep "
     "research - and uses a 3-agent swarm (Analyst, Skeptic, Strategist) to synthesize "
     "thorough, well-rounded responses via a Llama 3 Personal Assistant."
@@ -139,7 +139,7 @@ pdf.table(
 pdf.section_title("File Structure")
 pdf.mono(
     "  aria/\n"
-    "    bot.py           <- All ARIA logic: router, research dept, PA, Telegram handler\n"
+    "    bot.py           <- All BABU logic: router, research dept, PA, Telegram handler\n"
     "    generate_pdf.py  <- This PDF generator\n"
     "  replit.md          <- Project documentation & architecture\n"
     "  artifacts/\n"
@@ -167,5 +167,5 @@ pdf.body(
     "4. LangGraph retry logic may delay error responses by ~30s when rate-limited."
 )
 
-pdf.output("ARIA_Project_Schema.pdf")
-print("PDF saved: ARIA_Project_Schema.pdf")
+pdf.output("BABU_Project_Schema.pdf")
+print("PDF saved: BABU_Project_Schema.pdf")

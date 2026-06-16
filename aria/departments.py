@@ -1,7 +1,7 @@
 """
-departments.py — ARIA Department Head Layer
+departments.py — BABU Department Head Layer
 
-Department Heads are the middle-management tier of ARIA's multi-agent
+Department Heads are the middle-management tier of BABU's multi-agent
 architecture.  Each head owns one domain and enforces strict context
 scoping so that downstream workers receive *only* the data they need.
 
@@ -50,7 +50,7 @@ def _load_profile() -> dict:
 
 class DepartmentHead:
     """
-    Abstract base for every ARIA department.
+    Abstract base for every BABU department.
 
     Subclasses override ``scope_context`` (and optionally ``_run_worker`` /
     ``dispatch``) to customise behaviour per domain.
@@ -430,7 +430,7 @@ class WritingHead(DepartmentHead):
             )
 
         system = (
-            f"ARIA Worker [WRITING]: You are ARIA's professional corporate copywriter and editor.\n"
+            f"BABU Worker [WRITING]: You are BABU's professional corporate copywriter and editor.\n"
             f"Your task is to write a well-structured and clear deliverable based on the provided upstream context.\n\n"
             f"{protocol_instruction}\n\n"
             f"Be extremely factual and professional. Do not assume or invent facts outside of the provided context."

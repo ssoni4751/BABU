@@ -25,7 +25,7 @@ class PDF(FPDF):
     def header(self):
         self.set_font("Helvetica", "B", 18)
         self.set_text_color(30, 41, 59)  # Slate-800
-        self.cell(0, 14, "ARIA Cognitive OS", align="L")
+        self.cell(0, 14, "BABU Cognitive OS", align="L")
         
         self.set_font("Helvetica", "", 10)
         self.set_text_color(100, 116, 139)  # Slate-500
@@ -90,7 +90,7 @@ def generate_report():
     # --- Title Page Details ---
     pdf.set_font("Helvetica", "B", 15)
     pdf.set_text_color(15, 23, 42)
-    pdf.cell(0, 10, "ARIA Strategic Upgrades & Telemetry Audit Report", new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.cell(0, 10, "BABU Strategic Upgrades & Telemetry Audit Report", new_x="LMARGIN", new_y="NEXT", align="C")
     pdf.set_font("Helvetica", "", 10)
     pdf.set_text_color(100, 116, 139)
     pdf.cell(0, 8, "Owner: Shubham Swarnkar (Anshu) | Kaushal Market, Orai, Jalaun (U.P.)", new_x="LMARGIN", new_y="NEXT", align="C")
@@ -99,18 +99,18 @@ def generate_report():
     # --- Section: Executive Summary ---
     pdf.section_title("1. Executive Summary")
     pdf.body(
-        "This strategic audit report details the successful modernization of Project ARIA "
+        "This strategic audit report details the successful modernization of Project BABU "
         "into a resilient, self-correcting Cognitive Operating System. The upgrades encompass "
         "three developmental phases: Stability & Swarm Jitter (Phase 1), Hierarchical Swarm "
         "& Distillation Gateways (Phase 2), and Real-time Telemetry & Ingestion (Phase 3). "
         "Through dynamic local imports, proactive garbage collection, and robust LangGraph "
-        "failsafes, ARIA's memory has been fully insulated to fit Render's 512MB RAM free tier."
+        "failsafes, BABU's memory has been fully insulated to fit Render's 512MB RAM free tier."
     )
 
     # --- Section: Memory Fixes ---
     pdf.section_title("2. Render 512MB RAM Optimization Architecture")
     pdf.body(
-        "To stabilize ARIA on Render's Free Tier (512MB RAM cap) and eliminate Out-Of-Memory (OOM) "
+        "To stabilize BABU on Render's Free Tier (512MB RAM cap) and eliminate Out-Of-Memory (OOM) "
         "crashes, we implemented two strategic runtime performance improvements:\n\n"
         "1. DYNAMIC API BACKEND IMPORTS: Moved 'googleapiclient.discovery.build' from global "
         "module headers to dynamic method-local loading. This saved over 100MB+ of baseline RAM "
@@ -158,7 +158,7 @@ def generate_report():
     # --- Section: File Tree ---
     pdf.section_title("5. Production Codebase Footprint")
     pdf.mono(
-        "  aria/                             <-- Core ARIA Monorepo Application\n"
+        "  aria/                             <-- Core BABU Monorepo Application\n"
         "    +-- memory/\n"
         "    |     +-- failures.json         <-- Failure Retention Immune Ledger\n"
         "    |     +-- aria_checkpoint.db    <-- Durable SQLite Session DB\n"
@@ -169,7 +169,7 @@ def generate_report():
     )
 
     # Save PDF
-    pdf_path = os.path.join(CURRENT_DIR, "ARIA_Upgrade_and_Telemetry_Report.pdf")
+    pdf_path = os.path.join(CURRENT_DIR, "BABU_Upgrade_and_Telemetry_Report.pdf")
     pdf.output(pdf_path)
     print(f"[PDF] Locally compiled PDF report saved at: {pdf_path}", flush=True)
     return pdf_path
@@ -182,7 +182,7 @@ def main():
         # 2. Upload directly to Google Drive
         print("\n[UPLOAD] Authenticating and uploading to Google Drive...", flush=True)
         from google_service import upload_file_to_drive
-        success, message = upload_file_to_drive(pdf_path, "ARIA Reports")
+        success, message = upload_file_to_drive(pdf_path, "BABU Reports")
         
         print("\n" + "="*60)
         if success:

@@ -9,7 +9,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 
-# Unified scopes for ARIA Google Workspace actions
+# Unified scopes for BABU Google Workspace actions
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.send",
     "https://www.googleapis.com/auth/gmail.readonly",
@@ -117,7 +117,7 @@ def get_google_creds() -> Credentials:
             print("[GOOGLE AUTH] Initiating OAuth2 flow. Please authorize via the browser tab...", flush=True)
             flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_PATH, SCOPES)
             # Starts local server to receive auth code, automatically opens browser
-            creds = flow.run_local_server(port=0, authorization_prompt_message="Open this link to authorize ARIA:")
+            creds = flow.run_local_server(port=0, authorization_prompt_message="Open this link to authorize BABU:")
             # Save token for next run
             with open(TOKEN_PATH, "w") as token_file:
                 token_file.write(creds.to_json())
@@ -150,7 +150,7 @@ def validate_google_token_health(bot_token: str = None, chat_id: int = None) -> 
             import urllib.request
             import urllib.parse
             message = (
-                "⚠️ *ARIA Google Workspace Alert!*\n\n"
+                "⚠️ *BABU Google Workspace Alert!*\n\n"
                 "Your Google Workspace OAuth Token has expired or is invalid, and could not be auto-refreshed.\n\n"
                 "💡 *Action Required*:\n"
                 "Please run `.venv\\Scripts\\python authenticate.py` on your host machine to re-authorize Google Workspace services!"
@@ -302,7 +302,7 @@ def create_calendar_event(title: str, date: str, time: str, duration: str = "1 h
         # 3. Build Google Calendar Event resource
         event = {
             "summary": title,
-            "description": description or "Created by ARIA Multi-Agent AI Assistant",
+            "description": description or "Created by BABU Multi-Agent AI Assistant",
             "start": {
                 "dateTime": start_dt.isoformat(),
                 "timeZone": "Asia/Kolkata", # Local User timezone defaults
@@ -399,7 +399,7 @@ def log_to_sheet(sheet_name: str, data: dict) -> tuple[bool, str]:
 
 
 def log_telemetry(session_id: str, gear: str, tokens: dict, success: bool, query: str = "") -> tuple[bool, str]:
-    """Logs execution, token metrics, and status to a master 'ARIA_Telemetry' Google Sheet."""
+    """Logs execution, token metrics, and status to a master 'BABU_Telemetry' Google Sheet."""
     telemetry_data = {
         "Session ID": session_id,
         "Gear": gear,
@@ -410,7 +410,7 @@ def log_telemetry(session_id: str, gear: str, tokens: dict, success: bool, query
         "Query Preview": query[:120] if query else ""
     }
     print(f"[TELEMETRY] Logging execution data to sheet: {telemetry_data}", flush=True)
-    return log_to_sheet("ARIA_Telemetry", telemetry_data)
+    return log_to_sheet("BABU_Telemetry", telemetry_data)
 
 
 def create_doc(title: str, content: str) -> tuple[bool, str]:
@@ -493,7 +493,7 @@ def create_google_task(title: str, due_date: str = "", notes: str = "") -> tuple
         service = build("tasks", "v1", credentials=creds)
         task = {
             "title": title,
-            "notes": notes or "Created by ARIA Multi-Agent AI Assistant",
+            "notes": notes or "Created by BABU Multi-Agent AI Assistant",
         }
 
         if due_date:
