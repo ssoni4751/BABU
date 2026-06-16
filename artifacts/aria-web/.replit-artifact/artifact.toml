@@ -2,7 +2,7 @@ kind = "web"
 previewPath = "/"
 title = "ARIA"
 version = "1.0.0"
-id = "artifacts/aria-web"
+id = "artifacts/babu-web"
 router = "path"
 
 [[integratedSkills]]
@@ -15,11 +15,11 @@ paths = [ "/" ]
 localPort = 19606
 
 [services.development]
-run = "pnpm --filter @workspace/aria-web run dev"
+run = "pnpm --filter @workspace/babu-web run dev"
 
 [services.production]
-build = [ "pnpm", "--filter", "@workspace/aria-web", "run", "build" ]
-publicDir = "artifacts/aria-web/dist/public"
+build = [ "pnpm", "--filter", "@workspace/babu-web", "run", "build" ]
+publicDir = "artifacts/babu-web/dist/public"
 serve = "static"
 
 [[services.production.rewrites]]

@@ -8,9 +8,9 @@ if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
 
-# Add aria to python path so we can import google_service
+# Add babu to python path so we can import google_service
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "aria"))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "babu"))
 
 from google_service import get_google_creds, get_drive_folder_id
 from googleapiclient.discovery import build
@@ -87,19 +87,19 @@ def main():
     current_dir = os.path.dirname(os.path.abspath(__file__))
     
     # Paths to back up
-    aria_dir = os.path.join(current_dir, "aria")
+    babu_dir = os.path.join(current_dir, "babu")
     test_fb_file = os.path.join(current_dir, "test_facebook.py")
     pyproject_file = os.path.join(current_dir, "pyproject.toml")
     env_file = os.path.join(current_dir, ".env")
     
     # Temp zip path
-    temp_zip_path = os.path.join(current_dir, f"aria_backup_{today_str}.zip")
+    temp_zip_path = os.path.join(current_dir, f"babu_backup_{today_str}.zip")
     
     try:
         # Create ZIP
         create_backup_zip(
             temp_zip_path,
-            source_dirs=[aria_dir],
+            source_dirs=[babu_dir],
             source_files=[test_fb_file, pyproject_file, env_file]
         )
         

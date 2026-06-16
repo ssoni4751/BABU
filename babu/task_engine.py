@@ -523,7 +523,7 @@ class TaskEngine:
             self.goal.status = "FAILED"
 
     def _is_goal_blocked_unlocked(self) -> bool:
-        """Non-locking variant of :meth:`is_goal_blocked` for internal use."""
+        """Non-locking vbabunt of :meth:`is_goal_blocked` for internal use."""
         non_complete = [
             t for t in self.goal.tasks if t.state != TaskState.COMPLETED
         ]

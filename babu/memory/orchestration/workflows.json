@@ -1,0 +1,68 @@
+[
+  {
+    "timestamp": "2026-06-08T09:14:19.988331+00:00",
+    "last_used": "2026-06-08T09:14:19.988331+00:00",
+    "session_id": "default",
+    "gear": "DYNAMIC",
+    "sequence": [
+      "router",
+      "pa"
+    ],
+    "total_tokens": 269,
+    "latency_seconds": 0.12,
+    "success": true,
+    "note": "tell me a joke",
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-08T09:20:04.180286+00:00",
+    "last_used": "2026-06-08T09:20:04.180286+00:00",
+    "session_id": "default",
+    "gear": "DYNAMIC",
+    "sequence": [
+      "router",
+      "pa"
+    ],
+    "total_tokens": 265,
+    "latency_seconds": 2.32,
+    "success": true,
+    "note": "tell me a joke",
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-09T05:55:37.441285+00:00",
+    "last_used": "2026-06-09T05:55:37.441285+00:00",
+    "session_id": "default",
+    "gear": "DYNAMIC",
+    "sequence": [
+      "router",
+      "pa"
+    ],
+    "total_tokens": 433,
+    "latency_seconds": 0.08,
+    "success": true,
+    "note": "Search the web for upcoming international cricket matches for india",
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-09T06:16:19.696842+00:00",
+    "last_used": "2026-06-09T06:16:19.696842+00:00",
+    "session_id": "default",
+    "gear": "DYNAMIC",
+    "sequence": [
+      "router",
+      "planner",
+      "executor",
+      "pa"
+    ],
+    "total_tokens": 566,
+    "latency_seconds": 12.35,
+    "success": true,
+    "note": "Search the web for upcoming international cricket matches for india",
+    "ttl_days": 10,
+    "confidence": 1.0
+  }
+]

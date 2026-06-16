@@ -117,7 +117,7 @@ def generate_report():
         "during the Telegram bot initialization loop.\n\n"
         "2. PROACTIVE SWARM GARBAGE COLLECTION: Integrated explicit 'gc.collect()' garbage "
         "collection triggers at the end of each worker agent execution ('run_agent'), after the "
-        "entire state graph routing completed ('invoke_aria'), and at the end of the background "
+        "entire state graph routing completed ('invoke_babu'), and at the end of the background "
         "social marketing publisher ('run_autonomous_social_post'). This immediately flushes "
         "unused LLM text tensors, image binaries, and active state graphs, maintaining a very flat "
         "memory profile (~310MB baseline RAM)."
@@ -158,10 +158,10 @@ def generate_report():
     # --- Section: File Tree ---
     pdf.section_title("5. Production Codebase Footprint")
     pdf.mono(
-        "  aria/                             <-- Core BABU Monorepo Application\n"
+        "  babu/                             <-- Core BABU Monorepo Application\n"
         "    +-- memory/\n"
         "    |     +-- failures.json         <-- Failure Retention Immune Ledger\n"
-        "    |     +-- aria_checkpoint.db    <-- Durable SQLite Session DB\n"
+        "    |     +-- babu_checkpoint.db    <-- Durable SQLite Session DB\n"
         "    +-- bot.py                      <-- Graph Swarm Router & Telegram Bot\n"
         "    +-- google_service.py           <-- Google Workspace APIs & Telemetry Logger\n"
         "    +-- memory.py                   <-- Compression Gateways & Failure Immune Logger\n"

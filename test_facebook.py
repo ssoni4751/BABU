@@ -15,11 +15,11 @@ if not os.environ.get("GEMINI_API_KEY"):
     else:
         raise RuntimeError("GEMINI_API_KEY or GROQ_API_KEY is required in environment for this test.")
 
-# Add aria to python path so we can import from it
+# Add babu to python path so we can import from it
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "aria"))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "babu"))
 
-from aria.social_media import generate_daily_post, generate_flux_graphic, publish_to_facebook_page
+from babu.social_media import generate_daily_post, generate_flux_graphic, publish_to_facebook_page
 
 def main():
     print("="*60)
@@ -43,7 +43,7 @@ def main():
             print(f"⚠️ Backdrop download failed: {e}. Falling back to default layout.")
         
         print("\n[STEP 2.5] Rendering premium Pillow dashboard graphic card...")
-        from aria.social_media import generate_pillow_graphic
+        from babu.social_media import generate_pillow_graphic
         img_path = generate_pillow_graphic(card_title, card_tips, background_path=bg_path, category=category)
         print(f"✅ Finished Graphic saved at: {img_path}")
         print(f"Size of graphic: {os.path.getsize(img_path)} bytes")

@@ -283,7 +283,7 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
     from langchain_core.messages import SystemMessage, HumanMessage
     try:
         try:
-            from aria.bot import invoke_with_fallback
+            from babu.bot import invoke_with_fallback
         except ImportError:
             from bot import invoke_with_fallback
 
@@ -346,7 +346,7 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
                 confidence=packet.confidence,
             )
         try:
-            from aria.bot import extract_tokens
+            from babu.bot import extract_tokens
         except ImportError:
             from bot import extract_tokens
         packet.tokens = extract_tokens(response)
@@ -356,7 +356,8 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
         system_keywords = {
             "failures", "fail", "why did task", "why did my task", "error", "violation", "governance", "auditor", "immune", 
             "architecture", "codebase", "template", "etemp", "how old are you", "your age", "who are you", "what is your name",
-            "date of birth", "dob of babu", "babu birth", "babu creation", "self-awareness", "self-rag"
+            "date of birth", "dob of babu", "babu birth", "babu creation", "self-awareness", "self-rag",
+            "about yourself", "know about yourself", "describe yourself", "introduce yourself", "your identity"
         }
         if any(kw in query.lower() for kw in system_keywords):
             packet.system_query = True
@@ -370,7 +371,8 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
         system_keywords = {
             "failures", "fail", "why did task", "why did my task", "error", "violation", "governance", "auditor", "immune", 
             "architecture", "codebase", "template", "etemp", "how old are you", "your age", "who are you", "what is your name",
-            "date of birth", "dob of babu", "babu birth", "babu creation", "self-awareness", "self-rag"
+            "date of birth", "dob of babu", "babu birth", "babu creation", "self-awareness", "self-rag",
+            "about yourself", "know about yourself", "describe yourself", "introduce yourself", "your identity"
         }
         is_sys = any(kw in query.lower() for kw in system_keywords)
         return IntentPacket(
@@ -637,7 +639,7 @@ def plan_goal(
     # Call LLM (with automatic provider failover on rate limits) ------------
     try:
         try:
-            from aria.bot import invoke_with_fallback
+            from babu.bot import invoke_with_fallback
         except ImportError:
             from bot import invoke_with_fallback
 

@@ -12,15 +12,15 @@ if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
 
-# Ensure aria is in python path
+# Ensure babu is in python path
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(CURRENT_DIR)
-sys.path.append(os.path.join(CURRENT_DIR, "aria"))
+sys.path.append(os.path.join(CURRENT_DIR, "babu"))
 
-from aria.task_engine import TaskDTO, TaskState, GoalGraph
-from aria.planner import classify_intent, plan_goal, IntentPacket, _build_fallback_graph
-from aria.auditor import PreExecutionGatekeeper
-from aria.memory import log_execution_failure, get_anti_pattern_rules, FAILURES_PATH
+from babu.task_engine import TaskDTO, TaskState, GoalGraph
+from babu.planner import classify_intent, plan_goal, IntentPacket, _build_fallback_graph
+from babu.auditor import PreExecutionGatekeeper
+from babu.memory import log_execution_failure, get_anti_pattern_rules, FAILURES_PATH
 
 class TestIntentGovernance(unittest.TestCase):
 
@@ -151,9 +151,9 @@ class TestIntentGovernance(unittest.TestCase):
         )
         
         # Ensure credentials bypass or check
-        from aria.google_service import is_google_configured
+        from babu.google_service import is_google_configured
         if not is_google_configured():
-            import aria.google_service as gs
+            import babu.google_service as gs
             original_func = gs.is_google_configured
             gs.is_google_configured = lambda: True
             
@@ -181,7 +181,7 @@ class TestIntentGovernance(unittest.TestCase):
             "target_domain": "governance.classification"
         })
         
-        with patch("aria.bot.invoke_with_fallback", return_value=mock_response):
+        with patch("babu.bot.invoke_with_fallback", return_value=mock_response):
             ok = log_execution_failure(
                 domain="department.execution",
                 method="Send tax form email",
@@ -221,9 +221,9 @@ class TestIntentGovernance(unittest.TestCase):
             }
         )
 
-        from aria.google_service import is_google_configured
+        from babu.google_service import is_google_configured
         if not is_google_configured():
-            import aria.google_service as gs
+            import babu.google_service as gs
             original_func = gs.is_google_configured
             gs.is_google_configured = lambda: True
 
@@ -311,7 +311,7 @@ class TestIntentGovernance(unittest.TestCase):
         and that PreExecutionGatekeeper and PostExecutionValidator handle the 'information' department correctly without citation penalties.
         """
         # 1. Verify get_department_head factory returns InformationHead for "information"
-        from aria.departments import get_department_head, InformationHead
+        from babu.departments import get_department_head, InformationHead
         head = get_department_head("information")
         self.assertIsInstance(head, InformationHead)
         self.assertEqual(head.name, "information")
@@ -331,7 +331,7 @@ class TestIntentGovernance(unittest.TestCase):
         self.assertTrue(passed, f"Gatekeeper failed unexpectedly: {reason}")
 
         # 3. Verify PostExecutionValidator allows 'information' tasks without academic citations
-        from aria.auditor import PostExecutionValidator
+        from babu.auditor import PostExecutionValidator
         from unittest.mock import MagicMock
         from langchain_core.messages import SystemMessage
         mock_llm = MagicMock()

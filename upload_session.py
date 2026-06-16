@@ -12,7 +12,7 @@ if sys.platform == "win32":
 
 # Paths
 LOG_FILE = r"C:\Users\LENOVO\.gemini\antigravity\brain\592b40b0-97b4-4126-ac4c-99fd0a65df0e\.system_generated\logs\transcript.jsonl"
-OUTPUT_FILE = r"C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\Aria_Session_Transcript.md"
+OUTPUT_FILE = r"C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\Babu_Session_Transcript.md"
 
 print("="*60)
 print("ARIA Session Transcript Generator & Uploader")
@@ -82,7 +82,7 @@ with open(OUTPUT_FILE, "w", encoding="utf-8") as out:
 print(f"✅ Local transcript file created: {OUTPUT_FILE}")
 
 # ── Google Drive Upload ──
-sys.path.append(r"C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\aria")
+sys.path.append(r"C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\babu")
 try:
     from google_service import get_google_creds
     from googleapiclient.discovery import build
@@ -97,7 +97,7 @@ try:
     drive_service = build("drive", "v3", credentials=creds)
     
     file_metadata = {
-        'name': f'Aria_Session_Transcript_{datetime.now().strftime("%Y%m%d_%H%M")}.md',
+        'name': f'Babu_Session_Transcript_{datetime.now().strftime("%Y%m%d_%H%M")}.md',
         'mimeType': 'text/markdown'
     }
     media = MediaFileUpload(OUTPUT_FILE, mimetype='text/markdown', resumable=True)

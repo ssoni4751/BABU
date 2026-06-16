@@ -4,14 +4,14 @@ import json
 import unittest
 from unittest.mock import patch, MagicMock
 
-# Ensure aria is in python path
+# Ensure babu is in python path
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(CURRENT_DIR)
-sys.path.append(os.path.join(CURRENT_DIR, "aria"))
+sys.path.append(os.path.join(CURRENT_DIR, "babu"))
 
-from aria.rag_storage import init_rag_db, retrieve_knowledge, get_embeddings_model, MockEmbeddings
-from aria.rag_ingestion import run_full_ingestion
-from aria.bot import get_db_connection, get_telemetry_data, is_system_aware_query, requires_web_search, log_execution_ledger_event
+from babu.rag_storage import init_rag_db, retrieve_knowledge, get_embeddings_model, MockEmbeddings
+from babu.rag_ingestion import run_full_ingestion
+from babu.bot import get_db_connection, get_telemetry_data, is_system_aware_query, requires_web_search, log_execution_ledger_event
 
 class TestSelfRAG(unittest.TestCase):
 
@@ -83,12 +83,12 @@ class TestSelfRAG(unittest.TestCase):
         
         # Get mock embeddings
         embed = MockEmbeddings()
-        vec_template = embed.embed_query("tell me about aria templates and etemp")
+        vec_template = embed.embed_query("tell me about babu templates and etemp")
         vec_governance = embed.embed_query("tell me about bipartite auditor governance")
         
         cursor.execute(
             "INSERT INTO babu_knowledge (collection, source, title, chunk_text, embedding, metadata) VALUES (?, ?, ?, ?, ?, ?)",
-            ("templates", "test_source", "etemp", "aria uses etemp templates to define agent parameters.", json.dumps(vec_template), "{}")
+            ("templates", "test_source", "etemp", "babu uses etemp templates to define agent parameters.", json.dumps(vec_template), "{}")
         )
         cursor.execute(
             "INSERT INTO babu_knowledge (collection, source, title, chunk_text, embedding, metadata) VALUES (?, ?, ?, ?, ?, ?)",
@@ -99,7 +99,7 @@ class TestSelfRAG(unittest.TestCase):
         conn.close()
         
         # Retrieve templates query
-        results = retrieve_knowledge("tell me about aria templates and etemp", top_k=5)
+        results = retrieve_knowledge("tell me about babu templates and etemp", top_k=5)
         self.assertGreater(len(results), 0)
         self.assertEqual(results[0]["title"], "etemp")
         self.assertIn("etemp templates", results[0]["chunk_text"])
@@ -177,14 +177,14 @@ class TestSelfRAG(unittest.TestCase):
         
         # Setup mock fetchall returning a valid tuple of length 7
         cursor_mock.fetchall.return_value = [
-            (1, "templates", "test_source", "etemp", "aria uses etemp templates.", json.dumps({"key": "val"}), 0.85)
+            (1, "templates", "test_source", "etemp", "babu uses etemp templates.", json.dumps({"key": "val"}), 0.85)
         ]
         
-        with patch("aria.bot.get_db_connection") as mock_conn:
+        with patch("babu.bot.get_db_connection") as mock_conn:
             mock_conn.return_value = (conn_mock, True)
             
             # 1. Test retrieve_knowledge with collections
-            results = retrieve_knowledge("tell me about aria templates", collections=["templates"], top_k=3)
+            results = retrieve_knowledge("tell me about babu templates", collections=["templates"], top_k=3)
             self.assertEqual(len(results), 1)
             self.assertEqual(results[0]["title"], "etemp")
             
@@ -192,12 +192,12 @@ class TestSelfRAG(unittest.TestCase):
             cursor_mock.execute.assert_called()
             
             # 2. Test retrieve_knowledge without collections
-            results_all = retrieve_knowledge("tell me about aria templates", top_k=3)
+            results_all = retrieve_knowledge("tell me about babu templates", top_k=3)
             self.assertEqual(len(results_all), 1)
 
     def test_06_retrieve_system_memory_via_sql(self):
         """Test retrieve_system_memory_via_sql retrieves profile, goals, failures, timeline, rules, templates."""
-        from aria.bot import retrieve_system_memory_via_sql
+        from babu.bot import retrieve_system_memory_via_sql
         
         # Insert test records
         conn, is_pg = get_db_connection()
@@ -265,7 +265,7 @@ class TestSelfRAG(unittest.TestCase):
         try:
             cursor.execute(
                 "INSERT INTO babu_knowledge (collection, source, title, chunk_text, embedding, metadata) VALUES (?, ?, ?, ?, ?, ?)",
-                ("aria_docs", "test_source", "codebase doc", "this document explains the backend architecture of the aria scheduler.", "[]", "{}")
+                ("babu_docs", "test_source", "codebase doc", "this document explains the backend architecture of the babu scheduler.", "[]", "{}")
             )
             conn.commit()
         finally:
@@ -275,15 +275,15 @@ class TestSelfRAG(unittest.TestCase):
         # We query for 'backend architecture' using retrieve_knowledge.
         # Since we put embedding '[]', its cosine similarity with the query's MockEmbeddings will be 0.0 or fail.
         # The text search fallback should match 'architecture' in the chunk_text and return it!
-        results = retrieve_knowledge("tell me about the backend architecture", collections=["aria_docs"], top_k=3)
+        results = retrieve_knowledge("tell me about the backend architecture", collections=["babu_docs"], top_k=3)
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["title"], "codebase doc")
         self.assertIn("backend architecture", results[0]["chunk_text"])
 
     def test_08_auditor_risk_assessor_override(self):
         """Test that for research/information departments, post-execution auditor failure is overridden."""
-        from aria.auditor import PostExecutionValidator
-        from aria.task_engine import TaskDTO, TaskState
+        from babu.auditor import PostExecutionValidator
+        from babu.task_engine import TaskDTO, TaskState
         
         # Construct research task
         task = TaskDTO(

@@ -9,6 +9,6 @@ title = "ARIA Project Schema"
 
 [[outputs]]
 id = "Rt9oRxVHz7OJMX1ovRhfs"
-uri = "file://make_blueprint/aria_router.json"
+uri = "file://make_blueprint/babu_router.json"
 type = "unspecified"
 title = "ARIA Router — Make.com Blueprint"

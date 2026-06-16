@@ -84,7 +84,7 @@ def run_worker(task: TaskDTO, scoped_context: dict, llm: Any) -> tuple[str, dict
                 print(f"[WORKER:{task.department.upper()}] Primary LLM rate-limited → attempting provider failover", flush=True)
                 try:
                     try:
-                        from aria.bot import invoke_with_fallback, CURRENT_DEPT_MODEL
+                        from babu.bot import invoke_with_fallback, CURRENT_DEPT_MODEL
                     except ImportError:
                         from bot import invoke_with_fallback, CURRENT_DEPT_MODEL
                     res = invoke_with_fallback(messages, model_name=CURRENT_DEPT_MODEL, temp=0.7)

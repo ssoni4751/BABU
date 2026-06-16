@@ -10,12 +10,12 @@ name = "ARIA Bot"
 paths = ["/"]
 
 [services.development]
-run = "python aria/bot.py"
+run = "python babu/bot.py"
 
 [services.production]
 
 [services.production.run]
-args = ["python", "aria/bot.py"]
+args = ["python", "babu/bot.py"]
 
 [services.production.run.env]
 PORT = "8080"

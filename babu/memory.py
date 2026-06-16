@@ -6,7 +6,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, List, Any
 from dotenv import load_dotenv
 
-# Ensure environment variables are loaded
+# Ensure environment vbabubles are loaded
 load_dotenv()
 
 # Force UTF-8 encoding for Windows standard streams to prevent emoji/unicode logging crashes
@@ -124,7 +124,7 @@ def send_immune_rule_email(new_rule: dict, all_rules: list) -> None:
             from google_service import send_gmail
         except ImportError:
             try:
-                from aria.google_service import send_gmail
+                from babu.google_service import send_gmail
             except ImportError as imp_err:
                 print(f"[IMMUNE SYSTEM EMAIL ERROR] Could not import send_gmail: {imp_err}", flush=True)
                 return
@@ -252,7 +252,7 @@ def consolidate_failures_semantic(new_entry: dict, existing_failures: list) -> t
     try:
         from langchain_core.messages import SystemMessage, HumanMessage
         try:
-            from aria.bot import invoke_with_fallback
+            from babu.bot import invoke_with_fallback
         except ImportError:
             from bot import invoke_with_fallback
             
@@ -382,7 +382,7 @@ def log_execution_failure(
     try:
         from langchain_core.messages import SystemMessage, HumanMessage
         try:
-            from aria.bot import invoke_with_fallback
+            from babu.bot import invoke_with_fallback
         except ImportError:
             from bot import invoke_with_fallback
         
@@ -605,7 +605,7 @@ def compress_context_payload(raw_text: str, context_topic: str = "general data")
     try:
         from langchain_core.messages import SystemMessage, HumanMessage
         try:
-            from aria.bot import invoke_with_fallback
+            from babu.bot import invoke_with_fallback
         except ImportError:
             from bot import invoke_with_fallback
         

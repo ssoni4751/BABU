@@ -9,7 +9,7 @@ const rawPort = process.env.PORT;
 
 if (!rawPort) {
   throw new Error(
-    "PORT environment variable is required but was not provided.",
+    "PORT environment vbabuble is required but was not provided.",
   );
 }
 
@@ -23,7 +23,7 @@ const basePath = process.env.BASE_PATH;
 
 if (!basePath) {
   throw new Error(
-    "BASE_PATH environment variable is required but was not provided.",
+    "BASE_PATH environment vbabuble is required but was not provided.",
   );
 }
 

@@ -247,7 +247,7 @@
       "confidential": false,
       "dataloss": false,
       "dlq": false,
-      "freshVariables": false
+      "freshVbabubles": false
     },
     "designer": {
       "orphans": []

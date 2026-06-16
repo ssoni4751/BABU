@@ -14,12 +14,12 @@ if sys.platform == "win32":
 
 # Add paths
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "aria"))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "babu"))
 
-from aria.task_engine import TaskDTO, TaskState
-from aria.departments import get_department_head
-from aria.google_service import execute_google_action, send_gmail
-from aria.bot import resolve_action_params
+from babu.task_engine import TaskDTO, TaskState
+from babu.departments import get_department_head
+from babu.google_service import execute_google_action, send_gmail
+from babu.bot import resolve_action_params
 
 
 class TestUnifiedPublishing(unittest.TestCase):
@@ -122,8 +122,8 @@ class TestUnifiedPublishing(unittest.TestCase):
         self.assertEqual(resolved["file_path"], self.temp_img_path)
         self.assertEqual(resolved["image_path"], self.temp_img_path)
 
-    @patch("aria.social_media.publish_to_facebook_page")
-    @patch("aria.social_media.generate_social_post_draft")
+    @patch("babu.social_media.publish_to_facebook_page")
+    @patch("babu.social_media.generate_social_post_draft")
     def test_post_to_facebook_manual_bypass(self, mock_draft, mock_publish):
         """Test that post_to_facebook bypasses image-draft auto-generation if caption is manually specified."""
         mock_publish.return_value = (True, "Published successfully")
@@ -139,7 +139,7 @@ class TestUnifiedPublishing(unittest.TestCase):
         # Verify publish_to_facebook_page was called with None image path and the manual caption
         mock_publish.assert_called_once_with("", "Manual Post Hi")
 
-    @patch("aria.google_service.get_google_creds")
+    @patch("babu.google_service.get_google_creds")
     @patch("googleapiclient.discovery.build")
     def test_send_gmail_with_image_attachment(self, mock_build, mock_creds):
         """Test that send_gmail supports MIMEMultipart construction for image attachments."""
@@ -158,7 +158,7 @@ class TestUnifiedPublishing(unittest.TestCase):
         # Verify message send execution
         mock_service.users().messages().send.assert_called_once()
 
-    @patch("aria.bot.ChatGroq")
+    @patch("babu.bot.ChatGroq")
     def test_planner_no_cycle_for_image_generation(self, mock_chat_groq):
         """Verify that the planner does not introduce cyclic dependencies for generate_image task during post-processing."""
         mock_llm = MagicMock()
@@ -178,7 +178,7 @@ class TestUnifiedPublishing(unittest.TestCase):
         mock_llm.invoke.return_value = mock_response
         mock_chat_groq.return_value = mock_llm
 
-        from aria.planner import plan_goal
+        from babu.planner import plan_goal
         # Run plan_goal
         graph = plan_goal("generate image and post to facebook", model_name="llama-3.1-8b-instant")
         

@@ -15,13 +15,13 @@ if not os.environ.get("GEMINI_API_KEY"):
     else:
         raise RuntimeError("GEMINI_API_KEY or GROQ_API_KEY is required in environment for this test.")
 
-# Add aria to python path so we can import from it
+# Add babu to python path so we can import from it
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(CURRENT_DIR)
-sys.path.append(os.path.join(CURRENT_DIR, "aria"))
+sys.path.append(os.path.join(CURRENT_DIR, "babu"))
 
-from aria.social_media import fetch_india_tech_trends, generate_daily_post
-from aria.google_service import log_telemetry
+from babu.social_media import fetch_india_tech_trends, generate_daily_post
+from babu.google_service import log_telemetry
 
 def run_telemetry_tests():
     print("="*60)

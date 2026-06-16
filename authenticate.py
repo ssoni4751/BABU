@@ -6,8 +6,8 @@ if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
 
-# Add the 'aria' directory to the path so we can import google_service
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "aria"))
+# Add the 'babu' directory to the path so we can import google_service
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "babu"))
 
 from google_service import get_google_creds, TOKEN_PATH
 

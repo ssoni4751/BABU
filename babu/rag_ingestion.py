@@ -191,14 +191,14 @@ def run_full_ingestion(artifact_dir: str, project_dir: str):
     
     # 1. Ingest Documentation & Engineering History (Markdown Artifacts)
     markdown_files = [
-        ("aria_cognitive_os_architectural_blueprint.md", "aria_docs"),
-        ("retrieval_and_auditability_assessment.md", "aria_docs"),
-        ("orchestration_architecture_report.md", "aria_docs"),
-        ("model_architecture_report.md", "aria_docs"),
-        ("governance_separation_plan.md", "aria_docs"),
-        ("aria_execution_flow.md", "aria_docs"),
-        ("aria_immune_rules_report.md", "immune_lessons"),
-        ("aria_latency_analysis_report.md", "telemetry_knowledge"),
+        ("babu_cognitive_os_architectural_blueprint.md", "babu_docs"),
+        ("retrieval_and_auditability_assessment.md", "babu_docs"),
+        ("orchestration_architecture_report.md", "babu_docs"),
+        ("model_architecture_report.md", "babu_docs"),
+        ("governance_separation_plan.md", "babu_docs"),
+        ("babu_execution_flow.md", "babu_docs"),
+        ("babu_immune_rules_report.md", "immune_lessons"),
+        ("babu_latency_analysis_report.md", "telemetry_knowledge"),
         ("walkthrough.md", "engineering_history"),
         ("implementation_plan.md", "engineering_history")
     ]
@@ -213,7 +213,7 @@ def run_full_ingestion(artifact_dir: str, project_dir: str):
             ingest_markdown_file(proj_filepath, collection)
 
     # 2. Ingest E0 Config JSONs
-    e0_dir = os.path.join(project_dir, "aria", "e0")
+    e0_dir = os.path.join(project_dir, "babu", "e0")
     if os.path.exists(e0_dir):
         ingest_e0_configs(e0_dir)
     else:
@@ -229,5 +229,5 @@ def run_full_ingestion(artifact_dir: str, project_dir: str):
 if __name__ == "__main__":
     # Script entry point
     artifact_path = r"C:\Users\LENOVO\.gemini\antigravity\brain\6d0c89f4-8e58-41cb-9549-ca0575e8a3a5"
-    project_path = r"c:\Users\LENOVO\.gemini\antigravity\scratch\Aria"
+    project_path = r"c:\Users\LENOVO\.gemini\antigravity\scratch\Babu"
     run_full_ingestion(artifact_path, project_path)

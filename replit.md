@@ -4,8 +4,8 @@ ARIA is a multi-agent AI system accessible via Telegram and the web. It routes e
 
 ## Run & Operate
 
-- `python aria/bot.py` — run the ARIA bot (Telegram + web chat API)
-- `pnpm --filter @workspace/aria-web run dev` — run the status/chat web UI
+- `python babu/bot.py` — run the ARIA bot (Telegram + web chat API)
+- `pnpm --filter @workspace/babu-web run dev` — run the status/chat web UI
 - `pnpm run typecheck` — full typecheck across all packages
 
 ## Required Secrets
@@ -30,10 +30,10 @@ ARIA is a multi-agent AI system accessible via Telegram and the web. It routes e
 ## Where things live
 
 ```
-aria/
+babu/
   bot.py               ← All ARIA logic + HTTP server (chat API + health)
 artifacts/
-  aria-web/            ← React status page (/) and chat UI (/chat)
+  babu-web/            ← React status page (/) and chat UI (/chat)
   api-server/          ← Hosts deployment config (artifact.toml)
 ```
 

@@ -6,14 +6,14 @@ import sys
 # Setup paths
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(CURRENT_DIR)
-sys.path.append(os.path.join(CURRENT_DIR, "aria"))
+sys.path.append(os.path.join(CURRENT_DIR, "babu"))
 
 # Force test mode paths by setting sys.argv or environment
 os.environ["TESTING"] = "true"
 
-from aria.memory import FAILURES_PATH, get_anti_pattern_rules_for_domains
-from aria.planner import plan_goal, DEPARTMENTS
-from aria.task_engine import GoalGraph
+from babu.memory import FAILURES_PATH, get_anti_pattern_rules_for_domains
+from babu.planner import plan_goal, DEPARTMENTS
+from babu.task_engine import GoalGraph
 
 class TestPlannerImmuneAdaptation(unittest.TestCase):
 

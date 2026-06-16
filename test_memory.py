@@ -16,18 +16,18 @@ if not os.environ.get("GROQ_API_KEY"):
 os.environ["GEMINI_API_KEY"] = os.environ["GROQ_API_KEY"]
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "MOCK_TELEGRAM_TOKEN")
 
-# Add aria to python path so we can import from it
+# Add babu to python path so we can import from it
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(CURRENT_DIR)
-sys.path.append(os.path.join(CURRENT_DIR, "aria"))
+sys.path.append(os.path.join(CURRENT_DIR, "babu"))
 
-from aria.memory import (
+from babu.memory import (
     append_to_profile_ledger,
     log_execution_failure,
     get_anti_pattern_rules,
     compress_context_payload
 )
-from aria.bot import invoke_aria, _histories
+from babu.bot import invoke_babu, _histories
 
 def run_tests():
     print("="*60)
@@ -61,7 +61,7 @@ def run_tests():
     assert success, "Failed to commit to user_profile.json!"
     
     # Read user_profile.json to confirm
-    profile_path = os.path.join(CURRENT_DIR, "aria", "user_profile.json")
+    profile_path = os.path.join(CURRENT_DIR, "babu", "user_profile.json")
     with open(profile_path, "r", encoding="utf-8") as f:
         profile = json.load(f)
     ledger = profile.get("dynamic_memory_ledger", {}).get("chat_summaries", [])
@@ -96,14 +96,14 @@ def run_tests():
     session_id = "test_session_123"
     message = "Who are you and what is my nickname?"
     
-    # Call invoke_aria which compiles the graph with SqliteSaver
-    reply, gear, tokens = invoke_aria(message, session_id=session_id)
+    # Call invoke_babu which compiles the graph with SqliteSaver
+    reply, gear, tokens = invoke_babu(message, session_id=session_id)
     print(f"Bot response (Gear: {gear}):\n{reply}")
     print(f"Tokens consumed: {tokens}")
     assert len(reply) > 0, "Bot returned empty response!"
     
     # Check if SQLite DB file exists and contains checkpoint data
-    db_path = os.path.join(CURRENT_DIR, "aria", "memory", "aria_checkpoint.db")
+    db_path = os.path.join(CURRENT_DIR, "babu", "memory", "babu_checkpoint.db")
     assert os.path.exists(db_path), "SQLite checkpoint database was not created!"
     
     # Query database to confirm it actually populated checkpoint tables
@@ -120,7 +120,7 @@ def run_tests():
     # Test 5: Swarm Failure Injection (Negative Constraints)
     print("\n[TEST 5] Testing Swarm Failure Injection...")
     # Trigger a mock uploader run with invalid credentials to test social_media uploader hooking
-    from aria.social_media import run_autonomous_social_post
+    from babu.social_media import run_autonomous_social_post
     
     # Ensure FACEBOOK_PAGE_ID is invalid to force failure uploader hook
     os.environ["FACEBOOK_PAGE_ID"] = "invalid_page_123"
@@ -132,7 +132,7 @@ def run_tests():
     assert not ok, "Expected autonomous social post to fail!"
     
     # Verify a new failure entry was added for 'social_media.facebook_publisher' or similar
-    failures_path = os.path.join(CURRENT_DIR, "aria", "memory", "failures.json")
+    failures_path = os.path.join(CURRENT_DIR, "babu", "memory", "failures.json")
     with open(failures_path, "r", encoding="utf-8") as f:
         failures = json.load(f)
         

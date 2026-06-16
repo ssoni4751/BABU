@@ -5,9 +5,9 @@ test_orchestration.py — Comprehensive Test Suite for ARIA's DAG Orchestration 
 import unittest
 from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock
-from aria.task_engine import TaskDTO, GoalGraph, TaskState, TaskEngine, validate_dag
-from aria.planner import build_walk_graph, build_action_graph
-from aria.departments import get_department_head, DepartmentHead
+from babu.task_engine import TaskDTO, GoalGraph, TaskState, TaskEngine, validate_dag
+from babu.planner import build_walk_graph, build_action_graph
+from babu.departments import get_department_head, DepartmentHead
 
 class TestTaskEngine(unittest.TestCase):
     
@@ -155,7 +155,7 @@ class TestDepartments(unittest.TestCase):
 class TestBipartiteAuditor(unittest.TestCase):
     
     def test_pre_execution_gatekeeper_basic(self):
-        from aria.auditor import PreExecutionGatekeeper
+        from babu.auditor import PreExecutionGatekeeper
         gatekeeper = PreExecutionGatekeeper()
         
         # 1. Missing action payload
@@ -184,9 +184,9 @@ class TestBipartiteAuditor(unittest.TestCase):
         self.assertFalse(passed)
         self.assertIn("Unsupported Workspace action", reason)
 
-    @patch("aria.auditor.is_google_configured")
+    @patch("babu.auditor.is_google_configured")
     def test_pre_execution_gatekeeper_google_config(self, mock_is_configured):
-        from aria.auditor import PreExecutionGatekeeper
+        from babu.auditor import PreExecutionGatekeeper
         gatekeeper = PreExecutionGatekeeper()
         
         task_valid = TaskDTO(
@@ -211,7 +211,7 @@ class TestBipartiteAuditor(unittest.TestCase):
         self.assertEqual(reason, "")
 
     def test_post_execution_validator_deterministic(self):
-        from aria.auditor import PostExecutionValidator
+        from babu.auditor import PostExecutionValidator
         validator = PostExecutionValidator()
         task = TaskDTO(task_id="T1", objective="Research things", department="research", depends_on=[], priority=1)
         
@@ -236,7 +236,7 @@ class TestBipartiteAuditor(unittest.TestCase):
         self.assertEqual(reason, "Search results: Python 3.12 is released.")
 
     def test_post_execution_validator_semantic_pass(self):
-        from aria.auditor import PostExecutionValidator
+        from babu.auditor import PostExecutionValidator
         # Mock LLM to return JSON indicating passing audit
         mock_llm = MagicMock()
         mock_response = MagicMock()
@@ -251,7 +251,7 @@ class TestBipartiteAuditor(unittest.TestCase):
         self.assertEqual(reason, "The count is 42.")
         
     def test_post_execution_validator_semantic_fail(self):
-        from aria.auditor import PostExecutionValidator
+        from babu.auditor import PostExecutionValidator
         # Mock LLM to return JSON indicating failed audit (hallucination)
         mock_llm = MagicMock()
         mock_response = MagicMock()
@@ -266,7 +266,7 @@ class TestBipartiteAuditor(unittest.TestCase):
         self.assertIn("Claims action was executed", reason)
 
     def test_post_execution_validator_execution_bypass(self):
-        from aria.auditor import PostExecutionValidator
+        from babu.auditor import PostExecutionValidator
         # If department is execution, LLM should not be called at all
         mock_llm = MagicMock()
         validator = PostExecutionValidator(llm=mock_llm)
@@ -278,7 +278,7 @@ class TestBipartiteAuditor(unittest.TestCase):
         mock_llm.invoke.assert_not_called()
 
     def test_post_execution_validator_compliance_checklist(self):
-        from aria.auditor import PostExecutionValidator
+        from babu.auditor import PostExecutionValidator
         # Verify the auditor evaluates custom checklists correctly
         mock_llm = MagicMock()
         mock_response = MagicMock()
@@ -321,24 +321,24 @@ class TestBipartiteAuditor(unittest.TestCase):
         self.assertFalse(is_ok)
         self.assertIn("Task-level token budget exhausted", reason)
 
-    def test_structured_schema_invariants(self):
+    def test_structured_schema_invbabunts(self):
         head = get_department_head("research")
         
         valid_json = '{"findings": "Clear skies", "sources": ["NASA"]}'
-        head.validate_schema_invariants(valid_json)
+        head.validate_schema_invbabunts(valid_json)
         
         invalid_json = '{"findings": "Clear skies", "sources": ["NASA"'
         with self.assertRaises(ValueError) as ctx:
-            head.validate_schema_invariants(invalid_json)
+            head.validate_schema_invbabunts(invalid_json)
         self.assertIn("Worker returned malformed JSON output", str(ctx.exception))
         
         short_out = "12"
         with self.assertRaises(ValueError) as ctx:
-            head.validate_schema_invariants(short_out)
+            head.validate_schema_invbabunts(short_out)
         self.assertIn("extremely short output", str(ctx.exception))
 
     def test_fail_closed_ambiguity_refusal(self):
-        from aria.planner import _build_fallback_graph
+        from babu.planner import _build_fallback_graph
         graph = _build_fallback_graph("gibberish query")
         self.assertEqual(graph.status, "FAILED")
         self.assertEqual(len(graph.tasks), 1)
@@ -346,14 +346,14 @@ class TestBipartiteAuditor(unittest.TestCase):
         self.assertIn("ambiguous", graph.tasks[0].objective)
 
     def test_sqlite_epoch_sealing(self):
-        from aria.bot import is_epoch_sealed, seal_epoch
+        from babu.bot import is_epoch_sealed, seal_epoch
         epoch = f"test_session_{datetime.now(timezone.utc).timestamp()}:G-test-epoch"
         self.assertFalse(is_epoch_sealed(epoch))
         seal_epoch(epoch)
         self.assertTrue(is_epoch_sealed(epoch))
 
     def test_autoimmune_confidence_decay(self):
-        from aria.memory import log_execution_failure, register_successful_execution, get_anti_pattern_rules, FAILURES_PATH
+        from babu.memory import log_execution_failure, register_successful_execution, get_anti_pattern_rules, FAILURES_PATH
         import json
         
         domain = "test.autoimmune_decay"
@@ -390,7 +390,7 @@ class TestBipartiteAuditor(unittest.TestCase):
         self.assertIsNone(entry_after, "Failed rule was not healed and pruned from failures.json")
 
     def test_intent_router_overrides(self):
-        from aria.bot import intent_router, BabuState
+        from babu.bot import intent_router, BabuState
         from langchain_core.messages import HumanMessage
         
         # Test 1: explicit /launch command should strip prefix
@@ -441,7 +441,7 @@ class TestBipartiteAuditor(unittest.TestCase):
 
     @patch("requests.get")
     def test_wikipedia_search(self, mock_get):
-        from aria.bot import wikipedia_search
+        from babu.bot import wikipedia_search
         
         # Mock response for Wikipedia opensearch
         mock_response = MagicMock()
@@ -464,7 +464,7 @@ class TestExecutionLedger(unittest.TestCase):
     def test_log_event(self):
         import sqlite3
         import uuid
-        from aria.bot import log_execution_ledger_event, DB_PATH
+        from babu.bot import log_execution_ledger_event, DB_PATH
         
         session_id = f"test_session_{uuid.uuid4().hex[:6]}"
         goal_id = "G_test_ledger"
@@ -499,13 +499,13 @@ class TestExecutionLedger(unittest.TestCase):
         self.assertEqual(row[6], "RUNNING")
         self.assertIn("hello world", row[7])
 
-    @patch("aria.departments.get_department_head")
-    @patch("aria.auditor.BipartiteAuditor")
+    @patch("babu.departments.get_department_head")
+    @patch("babu.auditor.BipartiteAuditor")
     def test_executor_node_logging(self, mock_auditor_cls, mock_get_dept_head):
         import sqlite3
         import uuid
-        from aria.bot import task_executor_node, BabuState, DB_PATH
-        from aria.task_engine import TaskDTO, GoalGraph, TaskState
+        from babu.bot import task_executor_node, BabuState, DB_PATH
+        from babu.task_engine import TaskDTO, GoalGraph, TaskState
         from langchain_core.messages import HumanMessage
         
         # Mock BipartiteAuditor methods to pass
@@ -576,13 +576,13 @@ class TestExecutionLedger(unittest.TestCase):
         self.assertIn("AUDIT_POST", event_types)
         self.assertIn("AUDIT_POST_PASS", event_types)
 
-    @patch("aria.bot.is_simple_query")
-    @patch("aria.planner.plan_goal")
+    @patch("babu.bot.is_simple_query")
+    @patch("babu.planner.plan_goal")
     def test_planner_node_logging(self, mock_plan_goal, mock_is_simple):
         import sqlite3
         import uuid
-        from aria.bot import planner_node, BabuState, DB_PATH
-        from aria.task_engine import TaskDTO, GoalGraph, TaskState
+        from babu.bot import planner_node, BabuState, DB_PATH
+        from babu.task_engine import TaskDTO, GoalGraph, TaskState
         from langchain_core.messages import HumanMessage
         
         mock_is_simple.return_value = False
@@ -681,7 +681,7 @@ class TestGoalCorrection(unittest.TestCase):
     def test_get_last_goal_graph_retrieval(self):
         import sqlite3
         import uuid
-        from aria.bot import log_execution_ledger_event, get_last_goal_graph, DB_PATH
+        from babu.bot import log_execution_ledger_event, get_last_goal_graph, DB_PATH
         
         session_id = f"test_corr_session_{uuid.uuid4().hex[:6]}"
         goal_id = "G_test_corr_123"

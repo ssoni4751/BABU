@@ -1,8 +1,8 @@
 import os, sqlite3, sys
 
 # Path to the ARIA checkpoint SQLite DB
-base_dir = os.path.dirname(os.path.abspath(r'C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\aria\bot.py'))
-db_path = os.path.join(base_dir, 'memory', 'aria_checkpoint.db')
+base_dir = os.path.dirname(os.path.abspath(r'C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\babu\bot.py'))
+db_path = os.path.join(base_dir, 'memory', 'babu_checkpoint.db')
 
 if not os.path.exists(db_path):
     print('SQLite DB not found at', db_path)

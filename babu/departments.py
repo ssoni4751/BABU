@@ -71,8 +71,8 @@ class DepartmentHead:
             "constraints": task.context.get("constraints", []),
         }
 
-    def validate_schema_invariants(self, raw_result: str) -> None:
-        """Enforce strict structured output invariants for departments requiring JSON shapes.
+    def validate_schema_invbabunts(self, raw_result: str) -> None:
+        """Enforce strict structured output invbabunts for departments requiring JSON shapes.
 
         Raises ValueError on mismatch.
         """
@@ -122,8 +122,8 @@ class DepartmentHead:
         )
         raw_result, tokens = self._run_worker(task, scoped, llm)
         
-        # Enforce structural schema invariants
-        self.validate_schema_invariants(raw_result)
+        # Enforce structural schema invbabunts
+        self.validate_schema_invbabunts(raw_result)
         
         compressed = self.compress_result(raw_result)
         print(

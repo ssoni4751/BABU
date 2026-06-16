@@ -1,5 +1,5 @@
 {
-  "name": "@workspace/aria-web",
+  "name": "@workspace/babu-web",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -49,7 +49,7 @@
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "@workspace/api-client-react": "workspace:*",
-    "class-variance-authority": "catalog:",
+    "class-vbabunce-authority": "catalog:",
     "clsx": "catalog:",
     "cmdk": "^1.1.1",
     "date-fns": "^3.6.0",

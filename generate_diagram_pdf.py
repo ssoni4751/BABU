@@ -2,8 +2,8 @@ import os
 import sys
 from fpdf import FPDF
 
-IMAGE_PATH = r"C:\Users\LENOVO\.gemini\antigravity\brain\6d0c89f4-8e58-41cb-9549-ca0575e8a3a5\aria_flow_diagram_1780467365626.png"
-OUTPUT_PATH = r"c:\Users\LENOVO\.gemini\antigravity\scratch\Aria\ARIA_Architecture_and_Flow.pdf"
+IMAGE_PATH = r"C:\Users\LENOVO\.gemini\antigravity\brain\6d0c89f4-8e58-41cb-9549-ca0575e8a3a5\babu_flow_diagram_1780467365626.png"
+OUTPUT_PATH = r"c:\Users\LENOVO\.gemini\antigravity\scratch\Babu\ARIA_Architecture_and_Flow.pdf"
 
 class PDF(FPDF):
     def header(self):

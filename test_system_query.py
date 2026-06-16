@@ -19,13 +19,13 @@ os.environ.setdefault("TELEGRAM_BOT_TOKEN", "MOCK_TELEGRAM_TOKEN")
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(CURRENT_DIR)
-sys.path.append(os.path.join(CURRENT_DIR, "aria"))
+sys.path.append(os.path.join(CURRENT_DIR, "babu"))
 
-from aria.planner import classify_intent
-from aria.bot import (
+from babu.planner import classify_intent
+from babu.bot import (
     get_babu_age_string,
     get_babu_self_context,
-    invoke_aria,
+    invoke_babu,
     BabuState
 )
 
@@ -58,33 +58,33 @@ def test_classify_intent_system_query():
 def test_deterministic_short_circuits():
     """Verify that high-frequency system/FAQ queries short-circuit and consume 0 tokens."""
     # Test Time Query
-    res_time, mode, tokens = invoke_aria("what is the current time in IST", session_id="test_system_session")
+    res_time, mode, tokens = invoke_babu("what is the current time in IST", session_id="test_system_session")
     assert "Indian Standard Time" in res_time
     assert tokens["prompt"] == 0
     assert tokens["completion"] == 0
     
     # Test Age Query
-    res_age, mode, tokens = invoke_aria("how old are you", session_id="test_system_session")
+    res_age, mode, tokens = invoke_babu("how old are you", session_id="test_system_session")
     assert "Project BABU" in res_age
     assert "May 27, 2026" in res_age
     assert tokens["prompt"] == 0
     assert tokens["completion"] == 0
 
     # Test Identity Query
-    res_identity, mode, tokens = invoke_aria("who are you", session_id="test_system_session")
+    res_identity, mode, tokens = invoke_babu("who are you", session_id="test_system_session")
     assert "Behavioral Autonomous Bureaucratic Utility" in res_identity
     assert tokens["prompt"] == 0
     assert tokens["completion"] == 0
 
     # Test Architecture Query
-    res_arch, mode, tokens = invoke_aria("tell me about your architecture", session_id="test_system_session")
+    res_arch, mode, tokens = invoke_babu("tell me about your architecture", session_id="test_system_session")
     assert "decentralized LangGraph-based swarm" in res_arch
     assert "Bipartite Auditor" in res_arch
     assert tokens["prompt"] == 0
     assert tokens["completion"] == 0
 
     # Test Failures Query
-    res_fail, mode, tokens = invoke_aria("what are failures happened in last 5 days", session_id="test_system_session")
+    res_fail, mode, tokens = invoke_babu("what are failures happened in last 5 days", session_id="test_system_session")
     assert "failures" in res_fail or "No system failures" in res_fail
     assert tokens["prompt"] == 0
     assert tokens["completion"] == 0

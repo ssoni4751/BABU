@@ -138,7 +138,7 @@ pdf.table(
 # --- File Structure ---
 pdf.section_title("File Structure")
 pdf.mono(
-    "  aria/\n"
+    "  babu/\n"
     "    bot.py           <- All BABU logic: router, research dept, PA, Telegram handler\n"
     "    generate_pdf.py  <- This PDF generator\n"
     "  replit.md          <- Project documentation & architecture\n"

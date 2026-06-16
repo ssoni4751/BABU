@@ -1,7 +1,7 @@
 import sys
 import os
 
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "aria"))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "babu"))
 
 from google_service import get_google_creds
 from googleapiclient.discovery import build

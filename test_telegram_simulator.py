@@ -19,9 +19,9 @@ os.environ.setdefault("TELEGRAM_BOT_TOKEN", "MOCK_TELEGRAM_TOKEN")
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(CURRENT_DIR)
-sys.path.append(os.path.join(CURRENT_DIR, "aria"))
+sys.path.append(os.path.join(CURRENT_DIR, "babu"))
 
-from aria.bot import invoke_aria, _histories, get_history_text
+from babu.bot import invoke_babu, _histories, get_history_text
 
 def run_simulator():
     print("="*60)
@@ -59,7 +59,7 @@ def run_simulator():
         print(f"\n[RUNNING {test['description']}]")
         print(f"User: \"{test['message']}\"")
         
-        reply, gear, tokens = invoke_aria(test["message"], session_id=session_id)
+        reply, gear, tokens = invoke_babu(test["message"], session_id=session_id)
         
         print(f"ARIA (Gear: {gear}): {reply[:120]}...")
         print(f"Token Stats: {tokens}")
@@ -80,19 +80,19 @@ def run_simulator():
     _histories[session_id].clear()
     for i in range(50):
         _histories[session_id].append(("user", "Let's talk about computer parts and upgrades."))
-        _histories[session_id].append(("aria", "I can help with that. Visit Anshu Computers Orai in Kaushal Market, Jalaun."))
+        _histories[session_id].append(("babu", "I can help with that. Visit Anshu Computers Orai in Kaushal Market, Jalaun."))
         
     print(f"Current history length: {len(get_history_text(session_id))} characters.")
     
     # Triggering the next message will detect the overflow, compress it via Gemini 2.5 Flash,
     # log it to user_profile.json dynamic ledger, and clear active history!
     print("Sending message under saturated history state...")
-    reply, gear, tokens = invoke_aria("What parts do you recommend for boosting PC speed?", session_id=session_id)
+    reply, gear, tokens = invoke_babu("What parts do you recommend for boosting PC speed?", session_id=session_id)
     print(f"ARIA (Gear: {gear}): {reply[:120]}...")
     print(f"Token Stats: {tokens}")
     
     # Read user_profile.json to confirm summary commit
-    profile_path = os.path.join(CURRENT_DIR, "aria", "user_profile.json")
+    profile_path = os.path.join(CURRENT_DIR, "babu", "user_profile.json")
     with open(profile_path, "r", encoding="utf-8") as f:
         profile = json.load(f)
     ledger = profile.get("dynamic_memory_ledger", {}).get("chat_summaries", [])

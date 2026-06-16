@@ -81,21 +81,21 @@ find the folder replit export under scratch
 I have found the exported Replit file (`ReplitExport-ssoni4751.tar`) in your scratch folder and successfully extracted your full project! 
 
 The project has been extracted to:
-📁 **`C:\Users\LENOVO\.gemini\antigravity\scratch\Aria`**
+📁 **`C:\Users\LENOVO\.gemini\antigravity\scratch\Babu`**
 
 > [!TIP]
-> **Recommendation:** Please set this subdirectory (`C:\Users\LENOVO\.gemini\antigravity\scratch\Aria`) as your active workspace in your editor/environment so we can build, run, and modify it smoothly.
+> **Recommendation:** Please set this subdirectory (`C:\Users\LENOVO\.gemini\antigravity\scratch\Babu`) as your active workspace in your editor/environment so we can build, run, and modify it smoothly.
 
 ---
 
 ### 🔍 What we have extracted:
 The **ARIA (Adaptive Research Intelligence Assistant)** monorepo is fully intact:
-1. **Multi-Agent Backend (`aria/bot.py`)**: 
+1. **Multi-Agent Backend (`babu/bot.py`)**: 
    * Orchestrated using **LangGraph + LangChain** with a **Groq (Llama 3)** backend.
    * Built-in dynamic router for three gears: **WALK** (1-step casual chat / automations), **SPRINT** (3-agent search swarm), and **LAUNCH** (6-agent deep swarm).
    * Web search using DuckDuckGo and a localized key-value knowledge base.
    * Make.com webhook automations (email, calendar, Slack, Sheets).
-2. **Vite + React Web UI (`artifacts/aria-web/`)**:
+2. **Vite + React Web UI (`artifacts/babu-web/`)**:
    * A beautiful, responsive dark-themed dashboard `/` showing the gear specs, and `/chat` for a full-featured real-time chat interface.
 3. **Database & API Libraries (`lib/`)**:
    * `lib/db/` (Drizzle schema definition) and `lib/api-client-react/` (front-end client).
@@ -123,12 +123,12 @@ I have done a quick check on your system's environment to see what tools are rea
 ### How we can run your app locally:
 
 #### 1. Running the Multi-Agent Backend & Telegram Bot (Ready to go!)
-Since Python is installed, we can easily set up a clean Python virtual environment, install your dependencies (`langgraph`, `langchain-groq`, `python-telegram-bot`, etc.), and run `aria/bot.py`. This will launch:
+Since Python is installed, we can easily set up a clean Python virtual environment, install your dependencies (`langgraph`, `langchain-groq`, `python-telegram-bot`, etc.), and run `babu/bot.py`. This will launch:
 * The **Telegram Bot** (once we add your bot token).
 * The **HTTP Chat API server** (which the web UI communicates with).
 
 #### 2. Running the React Web UI
-To run the front-end status/chat pages (`artifacts/aria-web`) locally, we will need **Node.js**. 
+To run the front-end status/chat pages (`artifacts/babu-web`) locally, we will need **Node.js**. 
 * If you want to use the web interface locally, would you like me to guide you through installing Node.js on your Windows machine? (It only takes a couple of minutes!)
 * Otherwise, we can focus completely on the Python Telegram bot first.
 
@@ -146,7 +146,7 @@ telegram bot is already setup
 
 ### 🤖 Antigravity Assistant (2026-05-24 06:15)
 
-I am setting up a Python virtual environment (`.venv`) under your `Aria` project directory. Once it is fully initialized, I will install the necessary dependencies (`langgraph`, `langchain-groq`, `python-telegram-bot`, `ddgs`, etc.) to run the bot. 
+I am setting up a Python virtual environment (`.venv`) under your `Babu` project directory. Once it is fully initialized, I will install the necessary dependencies (`langgraph`, `langchain-groq`, `python-telegram-bot`, `ddgs`, etc.) to run the bot. 
 
 I'll let you know as soon as the setup is complete!
 
@@ -185,14 +185,14 @@ All Python dependencies have been successfully installed into the virtual enviro
 
 To make running the bot locally as simple as possible, I have set up a localized configuration system for you:
 
-1. **Created a template [`.env`](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Aria/.env) file** in the root of your `Aria` directory.
-2. **Added `python-dotenv` support** to your [**`aria/bot.py`**](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Aria/aria/bot.py) script. It will now automatically read your secrets from the `.env` file upon startup.
+1. **Created a template [`.env`](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Babu/.env) file** in the root of your `Babu` directory.
+2. **Added `python-dotenv` support** to your [**`babu/bot.py`**](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Babu/babu/bot.py) script. It will now automatically read your secrets from the `.env` file upon startup.
 
 ---
 
 ### 🚀 What you need to do now:
 
-1. Open the [**`.env`**](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Aria/.env) file in your editor.
+1. Open the [**`.env`**](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Babu/.env) file in your editor.
 2. Replace the placeholder values with your actual keys:
    * **`TELEGRAM_BOT_TOKEN`**: Paste your Telegram bot token from `@BotFather`.
    * **`GROQ_API_KEY`**: Paste your Groq API key (which you can get for free at [console.groq.com](https://console.groq.com/)).
@@ -205,7 +205,7 @@ Once you have saved your keys in the `.env` file, simply:
 * Type **"I have filled in the keys, run the bot!"** here, and I will execute the startup command for you, OR
 * Run this command yourself in your terminal:
   ```powershell
-  .venv\Scripts\python aria/bot.py
+  .venv\Scripts\python babu/bot.py
   ```
 
 Let me know once your keys are ready!
@@ -218,7 +218,7 @@ telegram bot key:  8604192307:AAH4slCPMvsB3UeH04CZwpDSmGDoj8gn70o
 
 ### 🤖 Antigravity Assistant (2026-05-24 06:33)
 
-I have updated the [`.env`](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Aria/.env) file with your Telegram Bot Token!
+I have updated the [`.env`](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Babu/.env) file with your Telegram Bot Token!
 
 To start the bot, we also need a **Groq API Key** (since ARIA's agents run on Groq's Llama 3 models). Without this key, the bot will crash when trying to contact the AI brain.
 
@@ -240,8 +240,8 @@ grok api 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
 I have successfully updated your configuration and launched the backend. 
 
 Here is what was completed:
-1. **Configured Environment Variables**: Added your Telegram Bot Token and Groq API Key to your local [`.env`](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Aria/.env) file.
-2. **Started the Bot**: Launched `aria/bot.py` using your new virtual environment.
+1. **Configured Environment Vbabubles**: Added your Telegram Bot Token and Groq API Key to your local [`.env`](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Babu/.env) file.
+2. **Started the Bot**: Launched `babu/bot.py` using your new virtual environment.
 
 ---
 
@@ -265,7 +265,7 @@ I ran an automated health check on your local server, and it responded successfu
 ---
 
 ### 🛠️ What would you like to do next?
-* **Run the React Web UI:** If you want to launch the local web chat client (`artifacts/aria-web`) that connects to this backend, I can help you install **Node.js** next.
+* **Run the React Web UI:** If you want to launch the local web chat client (`artifacts/babu-web`) that connects to this backend, I can help you install **Node.js** next.
 * **Customize Agents/Logic:** Would you like to modify the research agents (Analyst, Skeptic, Strategist) or change their instructions or routing rules?
 * **Configure Make.com:** If you want to connect Google Services (Gmail, Calendar, Sheets), we can hook up your Make.com webhooks!
 
@@ -294,7 +294,7 @@ Here is the step-by-step guide on how to configure it:
 ---
 
 ### Step 2: Add the URL to ARIA
-Provide your Make.com Webhook URL to me here, or open your local [**`.env`**](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Aria/.env) file and paste it next to `MAKE_WEBHOOK_URL`:
+Provide your Make.com Webhook URL to me here, or open your local [**`.env`**](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Babu/.env) file and paste it next to `MAKE_WEBHOOK_URL`:
 
 ```env
 MAKE_WEBHOOK_URL=https://hook.us1.make.com/your_webhook_id_here
@@ -305,7 +305,7 @@ Once updated, I will automatically restart the bot for you to apply the changes!
 ---
 
 ### 💡 How the webhook works (Payload Structure):
-When you ask ARIA to perform an action (e.g. *"Aria, send an email to test@example.com saying Hello"*), ARIA's brain will detect the intent and POST a JSON payload to your Make.com webhook like this:
+When you ask ARIA to perform an action (e.g. *"Babu, send an email to test@example.com saying Hello"*), ARIA's brain will detect the intent and POST a JSON payload to your Make.com webhook like this:
 
 ```json
 {
@@ -316,7 +316,7 @@ When you ask ARIA to perform an action (e.g. *"Aria, send an email to test@examp
     "body": "..."
   },
   "session_id": "tg_xxxxxx",
-  "source": "aria"
+  "source": "babu"
 }
 ```
 
@@ -386,7 +386,7 @@ However, under Windows, Python's default console encoding is configured to use a
 ---
 
 ### 🛠️ The Fix:
-I have modified your [**`aria/bot.py`**](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Aria/aria/bot.py) script to force UTF-8 encoding on standard output and error streams when running on Windows:
+I have modified your [**`babu/bot.py`**](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Babu/babu/bot.py) script to force UTF-8 encoding on standard output and error streams when running on Windows:
 ```python
 # Force UTF-8 encoding for Windows standard streams to prevent emoji/unicode logging crashes
 if sys.platform == "win32":
@@ -481,7 +481,7 @@ I've written a detailed **step-by-step checklist** at the top of the **[Implemen
 ### 🚦 Next Steps:
 1. Review the plan.
 2. **Give me the green light (approval)** to start installing dependencies and writing the Python implementation.
-3. Once the code is written, you can drop the **`credentials.json`** file in the root of the `Aria` directory, and we will do our first live test!
+3. Once the code is written, you can drop the **`credentials.json`** file in the root of the `Babu` directory, and we will do our first live test!
 
 Please let me know if you approve this plan or if you would like any modifications!
 
@@ -522,8 +522,8 @@ It is currently showing `Google Workspace (NOT configured)` because it is waitin
 To authorize ARIA to speak to your Google Account directly:
 1. Follow the **OAuth Consent / Desktop ID setup steps** listed at the top of the **[Implementation Plan](file:///C:/Users/LENOVO/.gemini/antigravity/brain/592b40b0-97b4-4126-ac4c-99fd0a65df0e/implementation_plan.md)**.
 2. Download your **`credentials.json`** file and place it in the root folder of your project:
-   `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\credentials.json`
-3. **Trigger an action on Telegram** (e.g., send the bot a message like *"Aria, send an email to anshucomputerorai@gmail.com saying Hello"*).
+   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\credentials.json`
+3. **Trigger an action on Telegram** (e.g., send the bot a message like *"Babu, send an email to anshucomputerorai@gmail.com saying Hello"*).
 4. **Complete the Login**: The first time you do this, the bot will launch a browser tab on your local machine. Simply log in to your Google Account, click **Allow**, and you are set! ARIA will save a local `token.json` file for permanent auto-refreshing authorization.
 
 You have a completely free, lightning-fast direct Google Workspace agent now running locally! Let me know if you run into any issues during the Google Cloud credentials setup.
@@ -581,7 +581,7 @@ This tells Google who is running this desktop app:
 
 ### Step 5: Place the File in your Project Directory
 1. Move the downloaded JSON file into your ARIA folder:
-   📁 `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\`
+   📁 `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\`
 2. **Rename** the file to exactly **`credentials.json`** (make sure it's all lowercase).
 
 ---
@@ -606,7 +606,7 @@ You are in the perfect place!
 2. Give it a name (like `ARIA Desktop Client`).
 3. Click the **"Create"** button at the bottom of the page.
 4. Download the resulting JSON file.
-5. Move it into the `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\` folder and rename it to **`credentials.json`**.
+5. Move it into the `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\` folder and rename it to **`credentials.json`**.
 
 You are just one click away from generating the file!
 
@@ -655,7 +655,7 @@ The reason it was hanging is that Google's authorization flow was trying to open
 
 To fix this completely and elegantly, I have created a **standalone authenticator script** for you:
 
-### 🛠️ [**`authenticate.py`**](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Aria/authenticate.py)
+### 🛠️ [**`authenticate.py`**](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Babu/authenticate.py)
 
 By running this directly in your terminal, it will open the browser sign-in immediately, authorize your account, save your permanent credentials (`token.json`), and exit!
 
@@ -756,55 +756,104 @@ I activated all free api on google cloud, plz check and upadate the data as such
 
 ### 👤 User (2026-05-24 08:52)
 
-Gemini for Google Cloud API 	9 	0 	25 	50 	
-Gemini Cloud Assist API 	2 	0 	131 	249 	
-Gmail API 	1 	0 	393 	511 	
-Actions API 	—	—	—	—	
-Analytics Hub API 	—	—	—	—	
-Android Management API 	—	—	—	—	
-API Discovery Service 	—	—	—	—	
-API Keys API 	—	—	—	—	
-App Engine Admin API 	—	—	—	—	
-App Optimize API 	—	—	—	—	
-BigQuery API 	—	—	—	—	
-BigQuery Connection API 	—	—	—	—	
-BigQuery Data Policy API 	—	—	—	—	
-BigQuery Data Transfer API 	—	—	—	—	
-BigQuery Migration API 	—	—	—	—	
-BigQuery Reservation API 	—	—	—	—	
-BigQuery Storage API 	—	—	—	—	
-Checks API 	—	—	—	—	
-Chrome Verified Access API 	—	—	—	—	
-Cloud Dataplex API 	—	—	—	—	
-Cloud Datastore API 	—	—	—	—	
-Cloud Identity API 	—	—	—	—	
-Cloud Location Finder API 	—	—	—	—	
-Cloud Logging API 	—	—	—	—	
-Cloud Monitoring API 	—	—	—	—	
-Cloud Optimization API 	—	—	—	—	
-Cloud SQL 	—	—	—	—	
-Cloud Storage 	—	—	—	—	
-Cloud Storage API 	—	—	—	—	
-Cloud Storage for Firebase API 	—	—	—	—	
-Cloud Trace API 	—	—	—	—	
-Contacts API 	—	—	—	—	
-Data Connectors API 	—	—	—	—	
-Database Migration API 	—	—	—	—	
-Dataform API 	—	—	—	—	
-Directions API 	—	—	—	—	
-Distance Matrix API 	—	—	—	—	
-Drive Activity API 	—	—	—	—	
-Firebase Rules API 	—	—	—	—	
-Fitness API 	—	—	—	—	
-Gemini API 	—	—	—	—	
-Gmail Postmaster Tools API 	—	—	—	—	
-Google Calendar API 	—	—	—	—	
-Google Chat API 	—	—	—	—	
-Google Civic Information API 	—	—	—	—	
-Google Cloud APIs 	—	—	—	—	
-Google Cloud Storage JSON API 	—	—	—	—	
-Google Drive API 	—	—	—	—	
-Google Photos Ambient API 	—	—	—	—	
+Gemini for Google Cloud API 	9 	0 	25 	50 	
+
+Gemini Cloud Assist API 	2 	0 	131 	249 	
+
+Gmail API 	1 	0 	393 	511 	
+
+Actions API 	—	—	—	—	
+
+Analytics Hub API 	—	—	—	—	
+
+Android Management API 	—	—	—	—	
+
+API Discovery Service 	—	—	—	—	
+
+API Keys API 	—	—	—	—	
+
+App Engine Admin API 	—	—	—	—	
+
+App Optimize API 	—	—	—	—	
+
+BigQuery API 	—	—	—	—	
+
+BigQuery Connection API 	—	—	—	—	
+
+BigQuery Data Policy API 	—	—	—	—	
+
+BigQuery Data Transfer API 	—	—	—	—	
+
+BigQuery Migration API 	—	—	—	—	
+
+BigQuery Reservation API 	—	—	—	—	
+
+BigQuery Storage API 	—	—	—	—	
+
+Checks API 	—	—	—	—	
+
+Chrome Verified Access API 	—	—	—	—	
+
+Cloud Dataplex API 	—	—	—	—	
+
+Cloud Datastore API 	—	—	—	—	
+
+Cloud Identity API 	—	—	—	—	
+
+Cloud Location Finder API 	—	—	—	—	
+
+Cloud Logging API 	—	—	—	—	
+
+Cloud Monitoring API 	—	—	—	—	
+
+Cloud Optimization API 	—	—	—	—	
+
+Cloud SQL 	—	—	—	—	
+
+Cloud Storage 	—	—	—	—	
+
+Cloud Storage API 	—	—	—	—	
+
+Cloud Storage for Firebase API 	—	—	—	—	
+
+Cloud Trace API 	—	—	—	—	
+
+Contacts API 	—	—	—	—	
+
+Data Connectors API 	—	—	—	—	
+
+Database Migration API 	—	—	—	—	
+
+Dataform API 	—	—	—	—	
+
+Directions API 	—	—	—	—	
+
+Distance Matrix API 	—	—	—	—	
+
+Drive Activity API 	—	—	—	—	
+
+Firebase Rules API 	—	—	—	—	
+
+Fitness API 	—	—	—	—	
+
+Gemini API 	—	—	—	—	
+
+Gmail Postmaster Tools API 	—	—	—	—	
+
+Google Calendar API 	—	—	—	—	
+
+Google Chat API 	—	—	—	—	
+
+Google Civic Information API 	—	—	—	—	
+
+Google Cloud APIs 	—	—	—	—	
+
+Google Cloud Storage JSON API 	—	—	—	—	
+
+Google Drive API 	—	—	—	—	
+
+Google Photos Ambient API 	—	—	—	—	
+
 Google Photos Picker API 	—	—	—	 these are the APIs I activated
 
 
@@ -822,7 +871,7 @@ As per your request, **I have completely implemented Google Tasks API support in
 ---
 
 ### 🛠️ What I have updated:
-1. **Scopes Updated**: Added `https://www.googleapis.com/auth/tasks` to the scopes list in [**`aria/google_service.py`**](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Aria/aria/google_service.py).
+1. **Scopes Updated**: Added `https://www.googleapis.com/auth/tasks` to the scopes list in [**`babu/google_service.py`**](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Babu/babu/google_service.py).
 2. **Added Due-Date Parser**: Wrote `parse_task_due_date` which automatically translates expressions like `"tomorrow 12:00 PM"` into Google's strict RFC 3339 timestamp format.
 3. **Added Task Helper**: Created `create_google_task` using the official `'tasks'` API client (`v1`) to push new tasks directly to your default Google Tasks board.
 4. **Integrated with Router**: Connected `create_task` in the main execution router (`execute_google_action`) so that **any ARIA research agent** (Analyst, Strategist, etc.) can now natively create tasks!
@@ -887,7 +936,7 @@ Your logs show that you successfully authorized Google Tasks, and the recovery p
 
 ### 2. Google Sheets "Invalid Value" error (Fixed!) 🛠️
 * **The issue:** When ARIA tried to search your Google Drive for a spreadsheet named **`Today's India Top Headlines`**, the single quote in **`Today's`** caused a syntax error in Google's search query (breaking the search string formatting).
-* **The fix:** I have updated [**`aria/google_service.py`**](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Aria/aria/google_service.py) to automatically escape single quotes (`Today\'s`) in search query names. This completely resolves the bug and prevents any search crashes!
+* **The fix:** I have updated [**`babu/google_service.py`**](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Babu/babu/google_service.py) to automatically escape single quotes (`Today\'s`) in search query names. This completely resolves the bug and prevents any search crashes!
 
 ---
 
@@ -1242,7 +1291,8 @@ We are fully live on Telegram for Gmail, Calendar, Sheets, Docs, and Tasks, so o
 
 ### 👤 User (2026-05-24 10:03)
 
-[WALK]
+[WALK]
+
 I attempted to move 5 photos from Google Photos to your Google Drive 'photos' folder again, but unfortunately, I received the same "Forbidden" error from the Google Photos API. It seems the permission settings or API access restrictions are still preventing me from completing this task. I can try to guide you through adjusting the settings or explore alternative methods to achieve this. Would you like me to assist with that?
 
 
@@ -1284,27 +1334,27 @@ Since you already have a Replit account and workspace for this project:
 1. **No Agent Tokens Needed:** The "agent token" you ran out of is only for Replit's AI assistant. You can still upload files, edit code, and deploy manually for free!
 2. **How to do it:**
    * Go to your Repl editor on Replit.
-   * Upload (or copy-paste) our updated, fixed local [**`aria/bot.py`**](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Aria/aria/bot.py) and [**`aria/google_service.py`**](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Aria/aria/google_service.py) files into your Repl.
+   * Upload (or copy-paste) our updated, fixed local [**`babu/bot.py`**](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Babu/babu/bot.py) and [**`babu/google_service.py`**](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Babu/babu/google_service.py) files into your Repl.
    * **Crucial:** Upload the **`credentials.json`** and **`token.json`** files we generated into the root folder of your Repl! (Since the token is already authorized, the bot on Replit will run instantly without needing to open a browser login!).
-   * Fill in your `TELEGRAM_BOT_TOKEN` and `GROQ_API_KEY` in the **Secrets (Environment Variables)** section in Replit.
+   * Fill in your `TELEGRAM_BOT_TOKEN` and `GROQ_API_KEY` in the **Secrets (Environment Vbabubles)** section in Replit.
    * Click the **"Deploy"** button in the top-right corner of Replit to set up an always-on VM!
 
 ---
 
 ### Option 2: Deploy to Railway (Highly Recommended for Dedicated Cloud)
 [**Railway.app**](https://railway.app/) is a modern, cheap hosting platform that is perfect for running Python background bots 24/7:
-1. Create a private repository on **GitHub** and push your local `Aria` project directory to it.
+1. Create a private repository on **GitHub** and push your local `Babu` project directory to it.
 2. Log in to Railway, click **"New Project"**, and select **"Deploy from GitHub repo"**.
 3. Railway will automatically detect the Python project and launch it.
-4. Add your secrets (`TELEGRAM_BOT_TOKEN`, `GROQ_API_KEY`, etc.) in Railway's variables tab, and your bot will be live 24/7!
+4. Add your secrets (`TELEGRAM_BOT_TOKEN`, `GROQ_API_KEY`, etc.) in Railway's vbabubles tab, and your bot will be live 24/7!
 
 ---
 
 ### Option 3: Deploy to Render (Completely Free Web Hosting)
 [**Render.com**](https://render.com/) offers free hosting for Web Services:
 1. Push your project to **GitHub**.
-2. Connect the repository to Render as a **Web Service** (running `.venv/Scripts/python aria/bot.py` or `python aria/bot.py`).
-3. Add your environment variables.
+2. Connect the repository to Render as a **Web Service** (running `.venv/Scripts/python babu/bot.py` or `python babu/bot.py`).
+3. Add your environment vbabubles.
 4. To prevent Render's free tier from "sleeping" after 15 minutes of inactivity, we can set up a free ping service (like UptimeRobot) to ping `https://your-app.onrender.com/healthz` every 5 minutes, keeping it awake 24/7!
 
 ---
@@ -1343,12 +1393,12 @@ Here is the step-by-step guide to do this securely:
 ### Step 2: Upload your Files
 1. On the empty repository page, click the link in the text that says **"uploading an existing file"**.
 2. Open your computer's File Explorer and go to your project folder:
-   📁 `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\`
+   📁 `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\`
 3. **Select all files and folders EXCEPT the `.venv` and `.git` folders**:
    * ⚠️ **Do NOT upload the `.venv` folder** (it contains thousands of local system files; Render will build its own clean virtual environment in the cloud!).
    * ⚠️ **Do NOT upload the hidden `.git` folder**.
    * **DO upload everything else**, including:
-     * `aria/` (folder)
+     * `babu/` (folder)
      * `credentials.json` (file)
      * `token.json` (file)
      * `pyproject.toml` (file)
@@ -1377,7 +1427,7 @@ Based on the screenshot you shared, here is exactly what to fill out and select:
 
 ### 1. What to Fill on the Repository Page
 
-*   **Repository name:** `Aria` *(Perfect, already filled!)*
+*   **Repository name:** `Babu` *(Perfect, already filled!)*
 *   **Description:** `I am a virtual assistance of Shubham Swanrar` *(Perfect, already filled!)*
 *   **Choose visibility:** **Change this from "Public" to "Private"** (🔴 **CRITICAL!**)
     > [!IMPORTANT]
@@ -1397,9 +1447,9 @@ Once you click **Create repository**, GitHub will open a new page. Since you do 
 
 1. Look for a line on the setup page that says: **"...or upload an existing file."** Click the blue **"upload an existing file"** link.
 2. Open your computer's file explorer and navigate to your project directory:
-   `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria`
+   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu`
 3. Select and **drag-and-drop** the following files and folders from your computer into the GitHub browser window:
-   *   📁 `aria/` (folder)
+   *   📁 `babu/` (folder)
    *   📄 `pyproject.toml`
    *   📄 `.gitignore`
    *   📄 `credentials.json` (Safe to upload since your repo is **Private**)
@@ -1426,17 +1476,17 @@ have a look
 
 You did an excellent job! The repository is now successfully created, set to **Private** (we can see the lock icon), and those configuration files are in place.
 
-However, there is one critical folder missing: **the `aria` folder itself**. This folder contains the actual brain and code of your assistant (`bot.py` and `google_service.py`), so we need to make sure it is uploaded.
+However, there is one critical folder missing: **the `babu` folder itself**. This folder contains the actual brain and code of your assistant (`bot.py` and `google_service.py`), so we need to make sure it is uploaded.
 
-### How to Upload the `aria` Folder
+### How to Upload the `babu` Folder
 
 1. On your current GitHub page, click the **Add file** button (near the green `Code` button) and select **Upload files**.
 2. Open your computer's file explorer and find your project folder:
-   `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria`
-3. Drag and drop the **`aria` folder** directly into the GitHub upload area in your browser.
+   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu`
+3. Drag and drop the **`babu` folder** directly into the GitHub upload area in your browser.
 4. Scroll to the bottom of the page, type a commit message like `Add bot code`, and click the green **Commit changes** button.
 
-Once you commit, you should see the `aria` folder listed alongside your other files. Let me know when that is done, and we'll immediately move to the **Render** deployment stage!
+Once you commit, you should see the `babu` folder listed alongside your other files. Let me know when that is done, and we'll immediately move to the **Render** deployment stage!
 
 
 ### 👤 User (2026-05-24 10:23)
@@ -1474,8 +1524,8 @@ Please upload these two files to your GitHub repository to overwrite/add them:
 
 1. Click **Add file** -> **Upload files** on your GitHub page.
 2. Drag and drop these two files from your computer:
-   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\aria\google_service.py` (This will update the one you just uploaded)
-   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\requirements.txt` (This is the new file I created for you)
+   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\babu\google_service.py` (This will update the one you just uploaded)
+   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\requirements.txt` (This is the new file I created for you)
 3. Scroll down and click the green **Commit changes** button.
 
 ---
@@ -1489,14 +1539,14 @@ I see you already have the **Render** tab open in your browser! Let's get the bo
 3. Select **Build and deploy from a Git repository**.
 4. You will see a list of your GitHub repositories. Find **ARIA** (under owner `ssoni4751`) and click **Connect**.
 5. Configure the following settings on the creation page:
-   *   **Name:** `aria-assistant`
+   *   **Name:** `babu-assistant`
    *   **Region:** Select your nearest region (e.g., `Singapore` or `Oregon`).
    *   **Branch:** `main`
    *   **Runtime:** `Python`
    *   **Build Command:** `pip install -r requirements.txt` *(Render will likely auto-fill this!)*
    *   **Start Command:** `python bot.py` *(Since we put the files directly in the root folder, this is the simple command!)*
 6. Scroll down to the **Instance Type** section and make sure the **Free** tier is selected.
-7. Click the **Advanced** button at the bottom of the page and find the **Environment Variables** section. Add these two keys:
+7. Click the **Advanced** button at the bottom of the page and find the **Environment Vbabubles** section. Add these two keys:
    *   `TELEGRAM_BOT_TOKEN` = `8604192307:AAH4slCPMvsB3UeH04CZwpDSmGDoj8gn70o`
    *   `GROQ_API_KEY` = `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`
 8. Click **Create Web Service** at the bottom of the page!
@@ -1511,7 +1561,7 @@ lets have a look everything is okay?
 
 ### 🤖 Antigravity Assistant (2026-05-24 10:30)
 
-This looks **absolutely perfect**! Having the `aria` folder containing the code and the credentials in the root directory is the exact correct setup. 
+This looks **absolutely perfect**! Having the `babu` folder containing the code and the credentials in the root directory is the exact correct setup. 
 
 We only have **one quick file to add** and then we are ready to deploy to Render!
 
@@ -1522,7 +1572,7 @@ Render needs the `requirements.txt` file in the root folder so it knows which Py
 
 1. Click **Add file** -> **Upload files** on your GitHub page.
 2. Drag and drop this single file from your computer:
-   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\requirements.txt`
+   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\requirements.txt`
 3. Scroll down and click the green **Commit changes** button.
 
 ---
@@ -1535,14 +1585,14 @@ Now, open your **Render Dashboard** tab that you have open at the top, and follo
 2. Select **Build and deploy from a Git repository**.
 3. Select your **ARIA** repository and click **Connect**.
 4. Configure these settings:
-   *   **Name:** `aria-assistant`
+   *   **Name:** `babu-assistant`
    *   **Region:** Select your nearest region (e.g. `Singapore` or `Oregon`).
    *   **Branch:** `main`
    *   **Runtime:** `Python`
    *   **Build Command:** `pip install -r requirements.txt` *(Render will auto-fill this once you upload the file!)*
-   *   **Start Command:** **`python aria/bot.py`** *(Since the bot file is inside the `aria` folder, we run it from there!)*
+   *   **Start Command:** **`python babu/bot.py`** *(Since the bot file is inside the `babu` folder, we run it from there!)*
 5. Ensure the **Free** tier is selected under **Instance Type**.
-6. Click the **Advanced** button at the bottom of the page, and add these two **Environment Variables**:
+6. Click the **Advanced** button at the bottom of the page, and add these two **Environment Vbabubles**:
    *   `TELEGRAM_BOT_TOKEN` = `8604192307:AAH4slCPMvsB3UeH04CZwpDSmGDoj8gn70o`
    *   `GROQ_API_KEY` = `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`
 7. Click **Create Web Service**!
@@ -1564,7 +1614,7 @@ You can safely close your terminals, shut down your PC, or put it to sleep.
 *   **The bot will run 24/7 in the cloud on Render.** It will respond to your Telegram messages instantly at any time of day, completely independent of your PC.
 
 ### 2. Your Local Project Files (Safe backup)
-The files on your computer (`C:\Users\LENOVO\.gemini\antigravity\scratch\Aria`) will remain **completely untouched**. 
+The files on your computer (`C:\Users\LENOVO\.gemini\antigravity\scratch\Babu`) will remain **completely untouched**. 
 *   They serve as your local backup.
 *   In the future, if you want to add new features or modify the bot, we can edit the code locally on your PC, test it, and then simply upload the updated files to GitHub. Render will automatically detect the update and redeploy the bot with the new changes in about a minute!
 
@@ -1589,7 +1639,7 @@ have a look
 🎉 **A HUGE SUCCESS! ARIA IS OFFICIALLY LIVE IN THE CLOUD!** 🎉
 
 Looking at your Render logs, this is absolutely beautiful:
-*   `--> Running 'python aria/bot.py'` — The entry point executed successfully.
+*   `--> Running 'python babu/bot.py'` — The entry point executed successfully.
 *   `Google Workspace (active)` — **It successfully read your Google credentials!** All your native Google Drive, Sheets, Gmail, Tasks, and Calendar automations are active and ready.
 *   `Your service is live 🚀` — The deployment is 100% complete and stable.
 
@@ -1608,7 +1658,7 @@ To keep it awake and responding **instantly 24/7**, we can set up a free keep-al
 3. Configure the monitor like this:
    *   **Monitor Type:** `HTTP(s)`
    *   **Friendly Name:** `ARIA Assistant`
-   *   **URL (or IP):** `https://aria-assistant-bxpj.onrender.com/healthz` *(This is your specific Render health-check link!)*
+   *   **URL (or IP):** `https://babu-assistant-bxpj.onrender.com/healthz` *(This is your specific Render health-check link!)*
    *   **Monitoring Interval:** Every `5 minutes` (or `10 minutes`).
 4. Click **Create Monitor**.
 
@@ -1665,19 +1715,19 @@ On your computer:
 #### Step 2: Upload the updated files to GitHub
 Go to your `ARIA` GitHub repository and upload the updated files to apply the new feature:
 
-1.  **For the bot code (inside the `aria` folder on GitHub)**:
-    *   Navigate into your `aria` folder on GitHub.
+1.  **For the bot code (inside the `babu` folder on GitHub)**:
+    *   Navigate into your `babu` folder on GitHub.
     *   Click **Add file** -> **Upload files**.
     *   Drag and drop these two local files:
-        *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\aria\google_service.py`
-        *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\aria\bot.py`
+        *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\babu\google_service.py`
+        *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\babu\bot.py`
     *   Commit changes.
 
 2.  **For the new token (in the root directory on GitHub)**:
     *   Go back to the root of your GitHub repository.
     *   Click **Add file** -> **Upload files**.
     *   Drag and drop the newly generated token file:
-        *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\token.json`
+        *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\token.json`
     *   Commit changes.
 
 ---
@@ -1721,7 +1771,7 @@ On your computer:
 1. Open **Command Prompt** (cmd).
 2. Navigate to your project folder (if you aren't already there):
    ```cmd
-   cd C:\Users\LENOVO\.gemini\antigravity\scratch\Aria
+   cd C:\Users\LENOVO\.gemini\antigravity\scratch\Babu
    ```
 3. Run the authenticator script:
    ```cmd
@@ -1735,19 +1785,19 @@ On your computer:
 #### 3. Upload the updated files to GitHub
 Now, upload the newly generated credentials and the updated bot logic to your GitHub repository so Render can use them:
 
-1.  **For the bot code (inside the `aria` folder on GitHub)**:
-    *   Navigate into your `aria` folder on GitHub.
+1.  **For the bot code (inside the `babu` folder on GitHub)**:
+    *   Navigate into your `babu` folder on GitHub.
     *   Click **Add file** -> **Upload files**.
     *   Drag and drop these two updated files from your computer:
-        *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\aria\google_service.py`
-        *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\aria\bot.py`
+        *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\babu\google_service.py`
+        *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\babu\bot.py`
     *   Commit changes.
 
 2.  **For the new token (in the root directory on GitHub)**:
     *   Go back to the root of your GitHub repository.
     *   Click **Add file** -> **Upload files**.
     *   Drag and drop the newly generated token file:
-        *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\token.json`
+        *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\token.json`
     *   Commit changes.
 
 Once you commit `token.json`, Render will automatically restart in about a minute. You can then test it in Telegram by typing **"Copy my contacts"**, and it will pull your actual contact list beautifully!
@@ -1755,7 +1805,8 @@ Once you commit `token.json`, Render will automatically restart in about a minut
 
 ### 👤 User (2026-05-24 11:07)
 
-[SPRINT]
+[SPRINT]
+
 To fetch contacts from Google Contacts and create a spreadsheet, authentication with Google Workspace is required. Please configure Google Workspace authentication to proceed. Once authenticated, I can assist with creating a spreadsheet and saving it to Google Drive. says thast
 
 
@@ -1775,7 +1826,7 @@ To solve this and get your contacts syncing, please complete **Steps 2 and 3** f
 On your computer:
 1. Open **Command Prompt** (cmd) and go to your project folder:
    ```cmd
-   cd C:\Users\LENOVO\.gemini\antigravity\scratch\Aria
+   cd C:\Users\LENOVO\.gemini\antigravity\scratch\Babu
    ```
 2. Run the authenticator script:
    ```cmd
@@ -1790,7 +1841,7 @@ On your computer:
 Go to your `ARIA` GitHub repository:
 1. Click **Add file** -> **Upload files** at the root directory of your repository.
 2. Drag and drop the newly generated token file from your computer:
-   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\token.json`
+   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\token.json`
 3. Scroll down and click the green **Commit changes** button.
 
 ---
@@ -1840,15 +1891,15 @@ Now, let's upload the new files so Render can start using them:
 1. Open your main GitHub page (https://github.com/ssoni4751/ARIA).
 2. Click **Add file** -> **Upload files**.
 3. Drag and drop this file from your computer:
-   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\token.json`
+   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\token.json`
 4. Click the green **Commit changes** button.
 
-#### 2. Upload the Bot files (into the `aria` folder)
-1. On your GitHub page, click on the **`aria`** folder to go inside it.
+#### 2. Upload the Bot files (into the `babu` folder)
+1. On your GitHub page, click on the **`babu`** folder to go inside it.
 2. Click **Add file** -> **Upload files**.
 3. Drag and drop these two updated files from your computer:
-   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\aria\google_service.py`
-   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\aria\bot.py`
+   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\babu\google_service.py`
+   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\babu\bot.py`
 4. Click the green **Commit changes** button.
 
 ---
@@ -1863,8 +1914,10 @@ It will fetch your real contacts, create a new Google Sheet named **Contacts** i
 
 ### 👤 User (2026-05-24 11:13)
 
-To proceed with fetching contacts from Google Contacts and creating a spreadsheet, I need to authenticate with Google Workspace. Please configure Google Workspace authentication to allow me to access your contacts and create a spreadsheet. Once authenticated, I can assist with creating a spreadsheet and saving it to Google Drive. 
-
+To proceed with fetching contacts from Google Contacts and creating a spreadsheet, I need to authenticate with Google Workspace. Please configure Google Workspace authentication to allow me to access your contacts and create a spreadsheet. Once authenticated, I can assist with creating a spreadsheet and saving it to Google Drive. 
+
+
+
 Please confirm when you are ready to proceed with authentication.
 
 
@@ -1878,7 +1931,7 @@ To make it work, please check these two things:
 Double-check that you completed the uploads in the two different places on your GitHub repository:
 *   📁 **In the main root folder**:
     *   Did you upload the new `token.json`?
-*   📁 **Inside the `aria` folder**:
+*   📁 **Inside the `babu` folder**:
     *   Did you upload the updated `google_service.py`?
     *   Did you upload the updated `bot.py`?
 
@@ -1932,7 +1985,7 @@ You now have a fully functioning, secure, enterprise-grade AI Personal Assistant
 
 ### Final Maintenance Tip:
 If you haven't yet, go ahead and set up that free monitor on **[UptimeRobot.com](https://uptimerobot.com/)** pinging your Render health URL:
-`https://aria-assistant-bxpj.onrender.com/healthz` every **5 minutes**. This will ensure that ARIA stays awake 24/7 and replies to your Telegram commands instantly without any startup delay.
+`https://babu-assistant-bxpj.onrender.com/healthz` every **5 minutes**. This will ensure that ARIA stays awake 24/7 and replies to your Telegram commands instantly without any startup delay.
 
 It was an absolute pleasure pair-programming with you to build this migration and contacts sync tool. Enjoy your always-on AI assistant ARIA! If you ever need more features or updates, I'm always here to help!
 
@@ -1960,7 +2013,8 @@ It was a true pleasure working with you. Enjoy using ARIA! 🤖🎉
 
 ### 👤 User (2026-05-24 11:24)
 
-[WALK]
+[WALK]
+
 I've checked the 'Contacts' spreadsheet in your Google Drive. To find Mama Jalaun's mobile number, I'll need to search the spreadsheet. Unfortunately, I don't have direct access to perform a search within the spreadsheet. However, I can guide you to find the information. You can open the 'Contacts' spreadsheet and use the search function to look for Mama Jalaun's contact details. If you need help with anything else, feel free to ask., do we have solution for this?
 
 
@@ -1981,11 +2035,11 @@ Now, ARIA won't just say "I can't read your sheet"—instead, it will directly o
 Since you already authorized Google Drive and Sheets permissions in your `token.json`, **you do not need to regenerate your token!** You only need to upload the updated code files to GitHub:
 
 1. Open your `ARIA` GitHub repository.
-2. Click into the **`aria`** folder.
+2. Click into the **`babu`** folder.
 3. Click **Add file** -> **Upload files**.
 4. Drag and drop these two updated files from your computer:
-   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\aria\google_service.py`
-   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\aria\bot.py`
+   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\babu\google_service.py`
+   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\babu\bot.py`
 5. Click **Commit changes**.
 
 ---
@@ -2022,11 +2076,11 @@ I have just modified your local `bot.py` file to add full support for **`HEAD` r
 To fix this and get UptimeRobot to show a bright green **"UP"** status, simply upload the updated files to your GitHub repository (this is the same step as before, which also adds your new **Contacts Search** feature!):
 
 1. Go to your `ARIA` GitHub repository.
-2. Click into the **`aria`** folder.
+2. Click into the **`babu`** folder.
 3. Click **Add file** -> **Upload files**.
 4. Drag and drop these two updated files from your computer:
-   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\aria\bot.py`
-   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\aria\google_service.py`
+   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\babu\bot.py`
+   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\babu\google_service.py`
 5. Click **Commit changes**.
 
 ---
@@ -2169,14 +2223,14 @@ Now, when you ask your bot to search for an image or photo, it will:
 
 ### How to activate this new feature
 
-You just need to upload the updated files to your GitHub repository (into your `aria` folder):
+You just need to upload the updated files to your GitHub repository (into your `babu` folder):
 
 1. Go to your `ARIA` GitHub repository.
-2. Click into the **`aria`** folder.
+2. Click into the **`babu`** folder.
 3. Click **Add file** -> **Upload files**.
 4. Drag and drop these two updated files from your computer:
-   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\aria\google_service.py`
-   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\aria\bot.py`
+   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\babu\google_service.py`
+   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\babu\bot.py`
 5. Click **Commit changes**.
 
 ---
@@ -2248,14 +2302,14 @@ Now, if you ever hit a "Token Exhausted" or rate-limit error, you can simply typ
 
 ### How to activate it right now:
 
-Upload these updated files to your GitHub repository inside the **`aria`** folder (this single upload will activate both the **Dynamic Model Switcher** and the **Image Search & Send** features we just built!):
+Upload these updated files to your GitHub repository inside the **`babu`** folder (this single upload will activate both the **Dynamic Model Switcher** and the **Image Search & Send** features we just built!):
 
 1. Go to your `ARIA` GitHub repository.
-2. Click into the **`aria`** folder.
+2. Click into the **`babu`** folder.
 3. Click **Add file** -> **Upload files**.
 4. Drag and drop these two updated files from your computer:
-   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\aria\bot.py`
-   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\aria\google_service.py`
+   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\babu\bot.py`
+   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\babu\google_service.py`
 5. Click **Commit changes**.
 
 ---
@@ -2286,19 +2340,19 @@ I have just modified `bot.py` to add native support for **Gemini models (Gemini 
 
 Here is what I did:
 1.  Imported `ChatGoogleGenerativeAI` to use Google's official Gemini models directly.
-2.  Built a smart model loader that reads `GEMINI_API_KEY` from the cloud environment variables.
+2.  Built a smart model loader that reads `GEMINI_API_KEY` from the cloud environment vbabubles.
 3.  Updated the `/model` Telegram command. Options **6** (`gemini-1.5-flash`) and **7** (`gemini-2.5-pro`) are now fully active!
 
 ---
 
-### Step 1: Add the `GEMINI_API_KEY` variable in Render
+### Step 1: Add the `GEMINI_API_KEY` vbabuble in Render
 
 Before uploading the code, let's configure your key in Render so the bot can read it:
 
 1. Open your **Render Dashboard** (https://dashboard.render.com).
 2. Click on your **ARIA Assistant** service.
 3. Click on **Environment** in the left sidebar menu.
-4. Click **Add Environment Variable**.
+4. Click **Add Environment Vbabuble**.
 5. Set:
    *   **Key:** `GEMINI_API_KEY`
    *   **Value:** `AIzaSyDvdk3YviRanZywosse2rF8ZumBGzZqLbc` *(Your actual key!)*
@@ -2311,10 +2365,10 @@ Before uploading the code, let's configure your key in Render so the bot can rea
 Now, let's upload the new model switcher code to your GitHub:
 
 1. Open your `ARIA` GitHub repository.
-2. Click into the **`aria`** folder.
+2. Click into the **`babu`** folder.
 3. Click **Add file** -> **Upload files**.
 4. Drag and drop this single updated file:
-   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Aria\aria\bot.py`
+   *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\babu\bot.py`
 5. Click **Commit changes**.
 
 ---

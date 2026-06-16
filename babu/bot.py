@@ -522,7 +522,7 @@ def build_llm(model_name: str, temp: float):
     elif "/" in target_model or target_model.startswith("openrouter/"):
         clean_model = target_model.replace("openrouter/", "")
         if not openrouter_key:
-            raise ValueError("OPENROUTER_API_KEY is not configured in environment variables.")
+            raise ValueError("OPENROUTER_API_KEY is not configured in environment vbabubles.")
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(
             model=clean_model,
@@ -534,7 +534,7 @@ def build_llm(model_name: str, temp: float):
     # 3. OpenAI Native Support
     elif target_model.startswith("gpt-"):
         if not openai_key:
-            raise ValueError("OPENAI_API_KEY is not configured in environment variables.")
+            raise ValueError("OPENAI_API_KEY is not configured in environment vbabubles.")
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(model=target_model, temperature=temp, api_key=openai_key)
 
@@ -1583,7 +1583,8 @@ def is_deterministic_faq_query(query: str) -> bool:
     faq_keywords = (
         "current time", "time in ist", "time here in ist", "what is the time", "what time is it",
         "how old are you", "how old you are", "your age", "what is your age",
-        "who are you", "tell me about yourself", "your identity", "what is your name",
+        "who are you", "tell me about yourself", "about yourself", "know about yourself",
+        "describe yourself", "introduce yourself", "your identity", "what is your name",
         "your architecture", "tell me about your architecture", "how are you built", "how do you work",
         "failures happened", "recent failures", "what are failures", "failures in last", "failures happened in last"
     )
@@ -1671,14 +1672,17 @@ def get_babu_self_context() -> str:
 
 
 def is_system_aware_query(query: str) -> bool:
-    """Determine if a query is related to ARIA's codebase, architecture, templates, or governance."""
+    """Determine if a query is related to BABU's codebase, architecture, templates, governance, or self-identity."""
     q = query.lower()
     keywords = {
         "etemp", "governance", "auditor", "anti-pattern", "failures", "telemetry",
         "self-awareness", "self-rag", "architecture", "codebase", "immune lesson",
         "why did this task fail", "why did my task fail", "why did task fail",
-        "how does aria work", "how do you work", "bipartite auditor", "what governance rule",
-        "what recurring problems", "what fixes were previously applied"
+        "how does babu work", "how do you work", "bipartite auditor", "what governance rule",
+        "what recurring problems", "what fixes were previously applied",
+        "about yourself", "know about yourself", "describe yourself",
+        "introduce yourself", "who are you", "what is your name", "your identity",
+        "how old are you", "your age", "date of birth", "dob of babu"
     }
     return any(kw in q for kw in keywords)
 
@@ -1883,7 +1887,7 @@ def planner_node(state: BabuState):
     # 2. Retrieve RAG context if query relates to codebase, architecture, or documents
     retrieved = []
     if is_system:
-        doc_keywords = ("architecture", "codebase", "how do you work", "how does aria work", "docs", "walkthrough", "implementation", "design", "blueprint")
+        doc_keywords = ("architecture", "codebase", "how do you work", "how does babu work", "docs", "walkthrough", "implementation", "design", "blueprint")
         if any(kw in query.lower() for kw in doc_keywords) or not sql_context:
             try:
                 from .rag_storage import retrieve_knowledge
@@ -1891,7 +1895,7 @@ def planner_node(state: BabuState):
                 from rag_storage import retrieve_knowledge
                 
             rag_start = time.time()
-            retrieved = retrieve_knowledge(query, collections=["aria_docs", "engineering_history"])
+            retrieved = retrieve_knowledge(query, collections=["babu_docs", "engineering_history"])
             rag_end = time.time()
             rag_latency = round((rag_end - rag_start) * 1000, 2)
             
@@ -1976,7 +1980,7 @@ def planner_node(state: BabuState):
     is_compatible = False
     sig = ""
     
-    # E[Temp] Telemetry variables initialization
+    # E[Temp] Telemetry vbabubles initialization
     template_lookup_attempted = True
     template_candidates_found = 0
     template_selected = None
@@ -3374,7 +3378,7 @@ def pa_node(state: BabuState):
         return {"messages": state["messages"] + [AIMessage(content=age_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
 
     # 3. Who are you / Tell me about yourself
-    if any(k in lowered_query for k in ("who are you", "tell me about yourself", "your identity", "what is your name")):
+    if any(k in lowered_query for k in ("who are you", "tell me about yourself", "about yourself", "know about yourself", "describe yourself", "introduce yourself", "your identity", "what is your name")):
         identity_response = (
             "I am **Project BABU** (Behavioral Autonomous Bureaucratic Utility), a next-generation AI agentic assistant "
             "designed to automate research, analysis, writing, and Google Workspace execution tasks using a decentralized swarm architecture."
@@ -3691,14 +3695,14 @@ workflow.add_edge("planner", "executor")
 workflow.add_edge("executor", "pa")
 workflow.add_edge("pa",           END)
 if checkpointer:
-    aria_brain = workflow.compile(checkpointer=checkpointer)
+    babu_brain = workflow.compile(checkpointer=checkpointer)
 else:
-    aria_brain = workflow.compile()
+    babu_brain = workflow.compile()
 
 
 # â”€â”€ Core invoke helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-def invoke_aria(message: str, session_id: str = "default", goal_id: Optional[str] = None, gear: str = "LAUNCH") -> tuple[str, str, dict]:
+def invoke_babu(message: str, session_id: str = "default", goal_id: Optional[str] = None, gear: str = "LAUNCH") -> tuple[str, str, dict]:
     t_start = time.time()
     if not goal_id:
         goal_id = f"G-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
@@ -3715,7 +3719,7 @@ def invoke_aria(message: str, session_id: str = "default", goal_id: Optional[str
     if checkpointer:
         config = {"configurable": {"thread_id": epoch_id}}
         
-    output = aria_brain.invoke({
+    output = babu_brain.invoke({
         "messages":       [HumanMessage(content=message)],
         "research_data":  [],
         "user_query":     message,
@@ -5027,17 +5031,17 @@ STATUS_HTML = """<!DOCTYPE html>
   // Authorization token management
   function saveAuthToken() {
     const val = document.getElementById('auth-token-input').value;
-    localStorage.setItem('aria_api_token', val);
+    localStorage.setItem('babu_api_token', val);
   }
   function loadAuthToken() {
-    const val = localStorage.getItem('aria_api_token') || '';
+    const val = localStorage.getItem('babu_api_token') || '';
     document.getElementById('auth-token-input').value = val;
   }
   function getHeaders() {
     const headers = {
       'Content-Type': 'application/json'
     };
-    const token = localStorage.getItem('aria_api_token') || '';
+    const token = localStorage.getItem('babu_api_token') || '';
     if (token) {
       headers['Authorization'] = 'Bearer ' + token;
       headers['X-API-Key'] = token;
@@ -6226,7 +6230,7 @@ class HealthHandler(BaseHTTPRequestHandler):
             if not msg:
                 raise ValueError("empty message")
             print(f"[WEB] session={sid[:16]} msg={msg[:80]}", flush=True)
-            reply, gear_res, tokens = invoke_aria(msg, sid)
+            reply, gear_res, tokens = invoke_babu(msg, sid)
             print(f"[WEB OK] len={len(reply)} | Tokens: {tokens.get('total', 0)}", flush=True)
             response = json.dumps({"reply": reply, "gear": "DYNAMIC"}).encode()
             self.send_response(200)
@@ -6759,7 +6763,7 @@ async def cmd_retire(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
 
 
-async def run_aria(update: Update, msg: str, session_id: str):
+async def run_babu(update: Update, msg: str, session_id: str):
     if update and update.effective_chat:
         persist_chat_id(update.effective_chat.id)
         
@@ -6775,7 +6779,7 @@ async def run_aria(update: Update, msg: str, session_id: str):
 
     typing_task = asyncio.create_task(keep_typing())
     try:
-        reply, gear, tokens = await asyncio.to_thread(invoke_aria, msg, session_id)
+        reply, gear, tokens = await asyncio.to_thread(invoke_babu, msg, session_id)
         print(f"[TG OK] gear={gear} len={len(reply)} | Tokens: {tokens['total']} (Prompt: {tokens['prompt']}, Comp: {tokens['completion']})", flush=True)
         # Append token usage footnote in Telegram
         if tokens and tokens.get("total", 0) > 0:
@@ -6992,7 +6996,7 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 rewritten_text = f"{caption} [Document Attached: {temp_path}]"
                 
             print(f"[TG DOCUMENT OK] Rewritten query: '{rewritten_text}'", flush=True)
-            await run_aria(update, rewritten_text, tg_session(update))
+            await run_babu(update, rewritten_text, tg_session(update))
         except Exception as e:
             traceback.print_exc(file=sys.stdout)
             await update.message.reply_text(f"Document processing error: {e}")
@@ -7023,7 +7027,7 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
             print(f"[TG VOICE OK] Transcribed: '{transcribed_text}'", flush=True)
             await update.message.reply_text(f"[Voice Command]: \"{transcribed_text}\"")
-            await run_aria(update, transcribed_text, tg_session(update))
+            await run_babu(update, transcribed_text, tg_session(update))
             
         except Exception as e:
             traceback.print_exc(file=sys.stdout)
@@ -7156,7 +7160,7 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Please reply with your new custom topic (e.g. Epf claims, Gst registration, Income tax returns) to regenerate the post.")
         return
 
-    await run_aria(update, msg, session_id)
+    await run_babu(update, msg, session_id)
 
 
 async def cmd_launch(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -7165,7 +7169,7 @@ async def cmd_launch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Usage: /launch <complex question>")
         return
     await update.message.reply_text("Swarm engaged — planning and executing goal (~30s)...")
-    await run_aria(update, "launch " + text, tg_session(update))
+    await run_babu(update, "launch " + text, tg_session(update))
 
 
 async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):

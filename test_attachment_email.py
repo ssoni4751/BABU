@@ -3,14 +3,14 @@ import re
 import unittest
 from unittest.mock import MagicMock, patch
 
-from aria.bot import extract_text_from_document, resolve_action_params
-from aria.departments import ExecutionHead
-from aria.google_service import send_gmail
+from babu.bot import extract_text_from_document, resolve_action_params
+from babu.departments import ExecutionHead
+from babu.google_service import send_gmail
 
 class TestAttachmentEmail(unittest.TestCase):
     def setUp(self):
         # Create a temp directory and a mock text file
-        self.temp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aria", "temp")
+        self.temp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "babu", "temp")
         os.makedirs(self.temp_dir, exist_ok=True)
         self.mock_txt_path = os.path.join(self.temp_dir, "test_file.txt")
         with open(self.mock_txt_path, "w", encoding="utf-8") as f:
@@ -54,7 +54,7 @@ class TestAttachmentEmail(unittest.TestCase):
         self.assertEqual(resolved["image_path"], self.mock_txt_path)
         self.assertEqual(resolved["file_path"], self.mock_txt_path)
 
-    @patch("aria.google_service.get_google_creds")
+    @patch("babu.google_service.get_google_creds")
     @patch("googleapiclient.discovery.build")
     def test_send_gmail_builds_base64_attachment(self, mock_build, mock_get_creds):
         """Test that send_gmail successfully processes non-image attachments using base64 MIMEBase encoding."""

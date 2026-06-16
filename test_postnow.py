@@ -27,12 +27,12 @@ if not os.environ.get("GEMINI_API_KEY"):
     else:
         raise RuntimeError("GEMINI_API_KEY or GROQ_API_KEY is required in environment for this test.")
 
-# Add aria to path
+# Add babu to path
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(CURRENT_DIR)
-sys.path.append(os.path.join(CURRENT_DIR, "aria"))
+sys.path.append(os.path.join(CURRENT_DIR, "babu"))
 
-from aria.social_media import generate_daily_post, generate_pillow_graphic, generate_flux_graphic
+from babu.social_media import generate_daily_post, generate_pillow_graphic, generate_flux_graphic
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_USER_CHAT_ID")

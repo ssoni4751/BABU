@@ -4,12 +4,12 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 
-# Add aria to python path so we can import from it
+# Add babu to python path so we can import from it
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(CURRENT_DIR)
-sys.path.append(os.path.join(CURRENT_DIR, "aria"))
+sys.path.append(os.path.join(CURRENT_DIR, "babu"))
 
-from aria.bot import get_db_connection, get_telemetry_data, log_execution_ledger_event
+from babu.bot import get_db_connection, get_telemetry_data, log_execution_ledger_event
 
 def test_latency_telemetry_calculation():
     print("="*60)

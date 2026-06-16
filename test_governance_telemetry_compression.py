@@ -4,14 +4,14 @@ import json
 import pytest
 from datetime import datetime, timezone
 
-# Add aria to path
+# Add babu to path
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(CURRENT_DIR)
-sys.path.append(os.path.join(CURRENT_DIR, "aria"))
+sys.path.append(os.path.join(CURRENT_DIR, "babu"))
 
-from aria.bot import get_db_connection, get_telemetry_data, log_execution_ledger_event
-from aria.departments import get_department_head
-from aria.task_engine import TaskDTO, TaskState
+from babu.bot import get_db_connection, get_telemetry_data, log_execution_ledger_event
+from babu.departments import get_department_head
+from babu.task_engine import TaskDTO, TaskState
 
 def test_telemetry_governance_counters():
     """Verify that get_telemetry_data aggregates constraint violations, rejections, and recovery logs correctly."""
@@ -128,7 +128,7 @@ def test_context_compression_methods():
 
 def test_auditor_json_parsing_with_control_characters():
     """Verify that PostExecutionValidator successfully parses JSON responses containing unescaped control characters."""
-    from aria.auditor import PostExecutionValidator
+    from babu.auditor import PostExecutionValidator
     class MockLLM:
         def __init__(self, content):
             self.content = content
@@ -202,11 +202,11 @@ def test_etemp_telemetry_logging():
     assert metadata["template_execution_used"] is True
     assert metadata["template_tokens_saved"] == 2300
 
-def test_personal_query_spelling_variations():
-    """Verify that is_profile_relevant_query and requires_web_search correctly identify misspelled variant queries."""
-    from aria.bot import is_profile_relevant_query, requires_web_search
+def test_personal_query_spelling_vbabutions():
+    """Verify that is_profile_relevant_query and requires_web_search correctly identify misspelled vbabunt queries."""
+    from babu.bot import is_profile_relevant_query, requires_web_search
     
-    # Standard personal query spelling variations
+    # Standard personal query spelling vbabutions
     assert is_profile_relevant_query("What is my bussiness") is True
     assert is_profile_relevant_query("Tell me about my busines") is True
     assert is_profile_relevant_query("What is my business") is True
@@ -218,7 +218,7 @@ def test_personal_query_spelling_variations():
 
 def test_temporal_events_telemetry():
     """Verify that log_temporal_event and get_temporal_events correctly persist and retrieve temporal logs."""
-    from aria.bot import log_temporal_event, get_temporal_events
+    from babu.bot import log_temporal_event, get_temporal_events
     
     session_id = f"test_temporal_session_{int(datetime.now(timezone.utc).timestamp())}"
     

@@ -23,9 +23,9 @@ def restore_env():
     else:
         os.environ.pop("TELEGRAM_BOT_TOKEN", None)
 
-from aria import bot
-from aria.governance import check_constraint_compatibility, micro_audit_dag, E0_B_Rules
-from aria.task_engine import GoalGraph, TaskDTO, TaskState
+from babu import bot
+from babu.governance import check_constraint_compatibility, micro_audit_dag, E0_B_Rules
+from babu.task_engine import GoalGraph, TaskDTO, TaskState
 
 def test_slot_compatibility():
     # Test queries with no negations pass compatibility checks
@@ -157,11 +157,11 @@ def test_promotion_and_demotion_mechanics(monkeypatch):
         },
         "tokens": {"prompt": 100, "completion": 50, "total": 150}
     }
-    monkeypatch.setattr(bot, "aria_brain", mock_brain)
+    monkeypatch.setattr(bot, "babu_brain", mock_brain)
 
     # 1. Run once: template execution fails.
     # It should increment consecutive_failures to 1.
-    bot.invoke_aria("research and analyze topic", session_id="test_sess_1", goal_id="G-456")
+    bot.invoke_babu("research and analyze topic", session_id="test_sess_1", goal_id="G-456")
     
     # Check template metrics
     cursor = conn.cursor()
@@ -178,7 +178,7 @@ def test_promotion_and_demotion_mechanics(monkeypatch):
     # 2. Run twice: template execution fails again.
     # Demotion threshold = 2 consecutive failures. It should transition to DEMOTED.
     mock_brain.invoke.return_value["goal_graph"]["goal_id"] = "G-789"
-    bot.invoke_aria("research and analyze topic", session_id="test_sess_1", goal_id="G-789")
+    bot.invoke_babu("research and analyze topic", session_id="test_sess_1", goal_id="G-789")
     
     cursor = conn.cursor()
     cursor.execute("SELECT execution_count, success_count, consecutive_failures, status FROM trusted_templates WHERE template_signature = ?", (sig,))
@@ -194,7 +194,7 @@ def test_promotion_and_demotion_mechanics(monkeypatch):
     # 3. Test Demoted template to RETIRED transition.
     # If a DEMOTED template fails again, it should move to RETIRED.
     mock_brain.invoke.return_value["goal_graph"]["goal_id"] = "G-101"
-    bot.invoke_aria("research and analyze topic", session_id="test_sess_1", goal_id="G-101")
+    bot.invoke_babu("research and analyze topic", session_id="test_sess_1", goal_id="G-101")
     
     cursor = conn.cursor()
     cursor.execute("SELECT status FROM trusted_templates WHERE template_signature = ?", (sig,))

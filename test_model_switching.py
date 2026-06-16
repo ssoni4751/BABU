@@ -9,9 +9,9 @@ import http.client
 # Setup paths
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(CURRENT_DIR)
-sys.path.append(os.path.join(CURRENT_DIR, "aria"))
+sys.path.append(os.path.join(CURRENT_DIR, "babu"))
 
-from aria.bot import get_telemetry_data, CURRENT_DEPT_MODEL, CURRENT_PA_MODEL
+from babu.bot import get_telemetry_data, CURRENT_DEPT_MODEL, CURRENT_PA_MODEL
 
 class TestModelSwitchingAndTelemetry(unittest.TestCase):
 
@@ -36,7 +36,7 @@ class TestModelSwitchingAndTelemetry(unittest.TestCase):
 
     def test_http_endpoints(self):
         """Test HTTP telemetry and model switching endpoints on a test health server instance."""
-        from aria.bot import HealthHandler, ThreadingHTTPServer, PORT
+        from babu.bot import HealthHandler, ThreadingHTTPServer, PORT
         
         # Start server in a background thread
         test_port = 18089
@@ -71,8 +71,8 @@ class TestModelSwitchingAndTelemetry(unittest.TestCase):
             self.assertEqual(body2["status"], "success")
             self.assertEqual(body2["model"], "llama-3.1-8b-instant")
             
-            # Verify the global variable has switched
-            from aria import bot
+            # Verify the global vbabuble has switched
+            from babu import bot
             self.assertEqual(bot.CURRENT_DEPT_MODEL, "llama-3.1-8b-instant")
             
             # Revert model
