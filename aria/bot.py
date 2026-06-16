@@ -107,6 +107,17 @@ def init_postgres_db():
                 created_at TEXT
             );
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS babu_temporal_timeline (
+                event_id SERIAL PRIMARY KEY,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                event_category VARCHAR(50) NOT NULL,
+                summary TEXT NOT NULL,
+                outcome VARCHAR(20),
+                impact_score REAL DEFAULT 1.0,
+                metadata TEXT
+            );
+        """)
         conn.commit()
         cursor.close()
         conn.close()
@@ -173,8 +184,91 @@ def init_durable_checkpoint_db():
             created_at TEXT
         );
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS babu_temporal_timeline (
+            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            event_category TEXT NOT NULL,
+            summary TEXT NOT NULL,
+            outcome TEXT,
+            impact_score REAL DEFAULT 1.0,
+            metadata TEXT
+        );
+    """)
     conn.commit()
     return conn
+
+
+def log_temporal_event(event_category: str, summary: str, outcome: Optional[str] = None, impact_score: float = 1.0, metadata: Optional[dict] = None):
+    """Log a system chronological event to babu_temporal_timeline."""
+    try:
+        conn, is_pg = get_db_connection()
+        cursor = conn.cursor()
+        meta_str = json.dumps(metadata or {})
+        
+        if is_pg:
+            cursor.execute("""
+                INSERT INTO babu_temporal_timeline (event_category, summary, outcome, impact_score, metadata)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (event_category, summary, outcome, impact_score, meta_str))
+        else:
+            cursor.execute("""
+                INSERT INTO babu_temporal_timeline (event_category, summary, outcome, impact_score, metadata)
+                VALUES (?, ?, ?, ?, ?)
+            """, (event_category, summary, outcome, impact_score, meta_str))
+            
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print(f"[TEMPORAL LOG] [{event_category}] {summary} - {outcome}", flush=True)
+    except Exception as e:
+        print(f"[TEMPORAL ERROR] Failed to log temporal event: {e}", flush=True)
+
+def get_temporal_events(limit: int = 50) -> list[dict]:
+    """Retrieve the latest system chronological events from babu_temporal_timeline."""
+    try:
+        conn, is_pg = get_db_connection()
+        cursor = conn.cursor()
+        
+        if is_pg:
+            cursor.execute("""
+                SELECT event_id, timestamp, event_category, summary, outcome, impact_score, metadata
+                FROM babu_temporal_timeline
+                ORDER BY event_id DESC
+                LIMIT %s
+            """, (limit,))
+        else:
+            cursor.execute("""
+                SELECT event_id, timestamp, event_category, summary, outcome, impact_score, metadata
+                FROM babu_temporal_timeline
+                ORDER BY event_id DESC
+                LIMIT ?
+            """, (limit,))
+            
+        rows = cursor.fetchall()
+        events = []
+        for row in rows:
+            try:
+                meta = json.loads(row[6]) if row[6] else {}
+            except Exception:
+                meta = {}
+            events.append({
+                "event_id": row[0],
+                "timestamp": str(row[1]),
+                "event_category": row[2],
+                "summary": row[3],
+                "outcome": row[4],
+                "impact_score": row[5],
+                "metadata": meta
+            })
+            
+        cursor.close()
+        conn.close()
+        return events
+    except Exception as e:
+        print(f"[TEMPORAL ERROR] Failed to fetch temporal events: {e}", flush=True)
+        return []
+
 
 try:
     db_conn = init_durable_checkpoint_db()
@@ -1535,6 +1629,13 @@ def planner_node(state: AriaState):
     active_goal = state.get("active_goal") or {}
     pre_goal_id = active_goal.get("goal_id")
     
+    log_temporal_event(
+        event_category="GOAL_RECEIVED",
+        summary=f"Received goal: {query[:80]}",
+        outcome="SUCCESS",
+        metadata={"session_id": session_id, "goal_id": pre_goal_id}
+    )
+    
     is_profile = is_profile_relevant_query(query)
     is_system = is_system_aware_query(query)
     profile_text = get_user_profile_text() if is_profile else ""
@@ -1573,6 +1674,12 @@ def planner_node(state: AriaState):
                 "retrieved_tokens": retrieved_tokens,
                 "collections_accessed": list(set(x["collection"] for x in retrieved)) if hit else []
             }
+        )
+        log_temporal_event(
+            event_category="RAG_RETRIEVAL",
+            summary=f"Retrieved self-awareness context for: '{query[:50]}'",
+            outcome="SUCCESS" if hit else "FAIL",
+            metadata={"hits": len(retrieved), "latency_ms": rag_latency}
         )
         
         if hit:
@@ -1862,6 +1969,18 @@ def planner_node(state: AriaState):
             "template_tokens_saved": template_tokens_saved
         }
     )
+    
+    log_temporal_event(
+        event_category="GOAL_PLANNED",
+        summary=f"Goal planned using {graph.planner_status} strategy: {graph.goal[:80]}",
+        outcome="SUCCESS",
+        metadata={
+            "session_id": session_id,
+            "goal_id": graph.goal_id,
+            "planner_status": graph.planner_status,
+            "tasks_count": len(graph.tasks)
+        }
+    )
         
     return {"goal_graph": graph.to_dict(), "execution_tracker": tracker, "tokens": total_planner_tokens}
 
@@ -2036,6 +2155,12 @@ def task_executor_node(state: AriaState):
                         "model": "rules_engine"
                     }
                 )
+                log_temporal_event(
+                    event_category="AUDIT_PRE_FAIL",
+                    summary=f"Pre-execution audit blocked task {task.task_id} [{task.department}]: {reason_pre[:80]}",
+                    outcome="FAIL",
+                    metadata={"session_id": session_id, "goal_id": goal_graph.goal_id, "task_id": task.task_id, "reason": reason_pre}
+                )
                 track_cascading_blocks(engine.mark_failed, task.task_id, f"Pre-execution Audit Blocked: {reason_pre}")
                 execution_log.append({
                     "task_id": task.task_id,
@@ -2184,6 +2309,12 @@ def task_executor_node(state: AriaState):
                     state_after="RUNNING",
                     metadata={"objective": task.objective}
                 )
+                log_temporal_event(
+                    event_category="TASK_DISPATCHED",
+                    summary=f"Dispatched task {task.task_id} [{task.department}] - {task.objective[:80]}",
+                    outcome="SUCCESS",
+                    metadata={"session_id": session_id, "goal_id": goal_graph.goal_id, "task_id": task.task_id, "department": task.department}
+                )
                 
                 t_dispatch_start = time.time()
                 t_dispatch_start_iso = datetime.now(timezone.utc).isoformat()
@@ -2289,6 +2420,12 @@ def task_executor_node(state: AriaState):
                             "latency": post_latency_sec
                         }
                     )
+                    log_temporal_event(
+                        event_category="AUDIT_POST_FAIL",
+                        summary=f"Post-execution audit failed task {task.task_id} [{task.department}]: {audit_result[:80]}",
+                        outcome="FAIL",
+                        metadata={"session_id": session_id, "goal_id": goal_graph.goal_id, "task_id": task.task_id, "reason": audit_result}
+                    )
                     track_cascading_blocks(engine.mark_failed, task.task_id, f"Post-execution Audit Failed: {audit_result}")
                     execution_log.append({
                         "task_id": task.task_id,
@@ -2334,6 +2471,12 @@ def task_executor_node(state: AriaState):
                             "latency_ms": post_latency_ms,
                             "latency": post_latency_sec
                         }
+                    )
+                    log_temporal_event(
+                        event_category="TASK_COMPLETED",
+                        summary=f"Completed task {task.task_id} [{task.department}] - {task.objective[:80]}",
+                        outcome="SUCCESS",
+                        metadata={"session_id": session_id, "goal_id": goal_graph.goal_id, "task_id": task.task_id, "department": task.department}
                     )
                     
                     # Track newly ready tasks unlocked by completing this task
@@ -2554,6 +2697,19 @@ def task_executor_node(state: AriaState):
         node_tokens["completion"] += t.get("completion", 0)
         node_tokens["total"] += t.get("total", 0)
             
+    log_temporal_event(
+        event_category="GOAL_EXECUTED",
+        summary=f"Finished goal execution with status: {'COMPLETED' if engine.is_goal_complete() else 'FAILED'}",
+        outcome="SUCCESS" if engine.is_goal_complete() else "FAIL",
+        metadata={
+            "session_id": session_id,
+            "goal_id": goal_graph.goal_id,
+            "latency_ms": goal_latency_ms,
+            "cost": round(total_goal_cost, 6),
+            "is_goal_complete": engine.is_goal_complete()
+        }
+    )
+             
     return {
         "goal_graph": engine.goal.to_dict(),
         "execution_log": execution_log,
@@ -4417,6 +4573,31 @@ STATUS_HTML = """<!DOCTYPE html>
       </div>
     </div>
     
+    <div class="dashboard-panel timeline-panel" style="grid-column: span 2; margin-bottom: 32px;">
+      <div class="panel-title">
+        <span>Temporal System Chronology Timeline</span>
+        <span class="text-muted" style="font-weight: normal;">Granular trace of bot operations &amp; actions</span>
+      </div>
+      <div class="table-wrapper" style="max-height: 300px; overflow-y: auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Category</th>
+              <th>Summary</th>
+              <th>Outcome</th>
+              <th style="text-align: right;">Impact Score</th>
+            </tr>
+          </thead>
+          <tbody id="timeline-body">
+            <tr>
+              <td colspan="5" style="text-align: center; color: var(--text-secondary); padding: 20px;">No temporal events logged yet.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <div class="dashboard-panel ledger-panel" style="grid-column: span 2;">
       <div class="panel-title">
         <span>Unified Ledger Operations Log</span>
@@ -4922,6 +5103,49 @@ STATUS_HTML = """<!DOCTYPE html>
           <td style="text-align: right; font-weight: 700; color:#e4e4e7;">$${goal.total_cost.toFixed(5)}</td>
         `;
         reasoningBody.appendChild(tr);
+      });
+    }
+    
+    // Update Temporal System Chronology Timeline
+    const timelineBody = document.getElementById('timeline-body');
+    const timeline = telemetryData.temporal_timeline || [];
+    
+    timelineBody.innerHTML = '';
+    if (timeline.length === 0) {
+      timelineBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-secondary); padding: 20px;">No temporal events logged yet.</td></tr>`;
+    } else {
+      timeline.forEach(event => {
+        const tr = document.createElement('tr');
+        const ts = formatIST(event.timestamp);
+        
+        let outcomeBadge = '';
+        if (event.outcome === 'SUCCESS') {
+          outcomeBadge = '<span class="badge-method meth-meas" style="background: rgba(16, 185, 129, 0.2); color: #10b981;">SUCCESS</span>';
+        } else if (event.outcome === 'FAIL') {
+          outcomeBadge = '<span class="badge-method meth-est" style="background: rgba(239, 68, 68, 0.2); color: #ef4444;">FAIL</span>';
+        } else {
+          outcomeBadge = `<span class="badge-method text-muted" style="background: rgba(255, 255, 255, 0.1);">${event.outcome || '-'}</span>`;
+        }
+        
+        let metaHtml = '';
+        if (event.metadata && Object.keys(event.metadata).length > 0) {
+          try {
+            const prettyMeta = JSON.stringify(event.metadata);
+            metaHtml = `<pre style="margin:4px 0 0 0; font-size:0.68rem; color:var(--text-secondary); white-space: pre-wrap; word-break: break-all;">${prettyMeta}</pre>`;
+          } catch(e) {}
+        }
+        
+        tr.innerHTML = `
+          <td class="text-muted">${ts}</td>
+          <td><span class="badge-category badge-governance" style="background: rgba(99, 102, 241, 0.2); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3);">${event.event_category}</span></td>
+          <td>
+            <div class="text-highlight">${event.summary}</div>
+            ${metaHtml}
+          </td>
+          <td>${outcomeBadge}</td>
+          <td style="text-align: right; font-weight: 700; color: #a1a1aa;">${event.impact_score}</td>
+        `;
+        timelineBody.appendChild(tr);
       });
     }
     
@@ -5493,6 +5717,7 @@ def get_telemetry_data(limit=100) -> dict:
         
     return {
         "aggregates": aggregates,
+        "temporal_timeline": get_temporal_events(limit=50),
         "ledger": ledger_rows[:limit],
         "reasoning_efficiency": reasoning_list[:5],
         "current_dept_model": CURRENT_DEPT_MODEL,

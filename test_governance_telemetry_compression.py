@@ -215,3 +215,40 @@ def test_personal_query_spelling_variations():
     assert requires_web_search("What is my bussiness") is False
     assert requires_web_search("Tell me about my busines") is False
     assert requires_web_search("What is my business") is False
+
+def test_temporal_events_telemetry():
+    """Verify that log_temporal_event and get_temporal_events correctly persist and retrieve temporal logs."""
+    from aria.bot import log_temporal_event, get_temporal_events
+    
+    session_id = f"test_temporal_session_{int(datetime.now(timezone.utc).timestamp())}"
+    
+    # Log a few events
+    log_temporal_event(
+        event_category="GOAL_RECEIVED",
+        summary="Received user request for testing",
+        outcome="SUCCESS",
+        metadata={"session_id": session_id, "query": "hello test"}
+    )
+    log_temporal_event(
+        event_category="TASK_DISPATCHED",
+        summary="Dispatched task T1",
+        outcome="SUCCESS",
+        metadata={"session_id": session_id, "task_id": "T1"}
+    )
+    
+    # Retrieve all temporal events
+    events = get_temporal_events(limit=50)
+    assert len(events) >= 2
+    
+    # Check that our events are present
+    matching_events = [e for e in events if e.get("metadata", {}).get("session_id") == session_id]
+    assert len(matching_events) == 2
+    
+    categories = {e["event_category"] for e in matching_events}
+    assert "GOAL_RECEIVED" in categories
+    assert "TASK_DISPATCHED" in categories
+    
+    # Verify order (latest first)
+    assert matching_events[0]["event_category"] == "TASK_DISPATCHED"
+    assert matching_events[1]["event_category"] == "GOAL_RECEIVED"
+
