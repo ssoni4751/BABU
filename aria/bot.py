@@ -1573,14 +1573,31 @@ def is_pure_greeting(text: str) -> bool:
     return t in greetings
 
 
+def is_deterministic_faq_query(query: str) -> bool:
+    t = (query or "").lower().strip()
+    t = t.removeprefix("/").removeprefix("!")
+    for char in "?!.,":
+        t = t.replace(char, "")
+    t = t.strip()
+    
+    faq_keywords = (
+        "current time", "time in ist", "time here in ist", "what is the time", "what time is it",
+        "how old are you", "how old you are", "your age", "what is your age",
+        "who are you", "tell me about yourself", "your identity", "what is your name",
+        "your architecture", "tell me about your architecture", "how are you built", "how do you work",
+        "failures happened", "recent failures", "what are failures", "failures in last", "failures happened in last"
+    )
+    return any(k in t for k in faq_keywords)
+
+
 def route_after_router(state: BabuState) -> str:
     notice = state.get("pending_action_notice", "")
     if notice:
         return "pending"
     
     query = state.get("user_query", "")
-    if is_pure_greeting(query):
-        print(f"[ROUTE AFTER ROUTER] Pure greeting detected for query: '{query}'. Short-circuiting directly to PA node.", flush=True)
+    if is_pure_greeting(query) or is_deterministic_faq_query(query):
+        print(f"[ROUTE AFTER ROUTER] Deterministic FAQ/greeting detected for query: '{query}'. Short-circuiting directly to PA node.", flush=True)
         return "pa"
         
     return "plan"
@@ -1602,6 +1619,55 @@ def requires_workspace_access(query: str) -> bool:
     t = query.lower()
     pattern = r'\b(mail|email|gmail|sheet|sheets|spreadsheet|spreadsheets|calendar|calendars|event|events|meeting|meetings|slack|contact|contacts|photos|drive)\b'
     return bool(re.search(pattern, t))
+
+
+def get_babu_age_string() -> str:
+    from datetime import datetime, timezone
+    dob = datetime(2026, 5, 27, tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc)
+    diff = now - dob
+    days = diff.days
+    if days < 0:
+        return "recently launched"
+    
+    years = days // 365
+    remaining_days = days % 365
+    months = remaining_days // 30
+    remaining_days = remaining_days % 30
+    
+    parts = []
+    if years > 0:
+        parts.append(f"{years} year" + ("s" if years > 1 else ""))
+    if months > 0:
+        parts.append(f"{months} month" + ("s" if months > 1 else ""))
+    if remaining_days > 0 or not parts:
+        parts.append(f"{remaining_days} day" + ("s" if remaining_days > 1 else ""))
+        
+    return " and ".join(parts) if len(parts) == 2 else ", ".join(parts)
+
+
+def get_babu_self_context() -> str:
+    from datetime import datetime, timezone
+    now_utc = datetime.now(timezone.utc)
+    import sys
+    
+    age_str = get_babu_age_string()
+    
+    return f"""=== BABU SELF CONTEXT ===
+- Name: Project BABU (Behavioral Autonomous Bureaucratic Utility)
+- Date of Birth (Creation): May 27, 2026 (Launch epoch)
+- Age: {age_str} (exactly { (now_utc - datetime(2026, 5, 27, tzinfo=timezone.utc)).days } days since creation)
+- Purpose: Next-generation AI agentic assistant designed to automate research, analysis, writing, and Google Workspace execution tasks using a decentralized swarm architecture.
+- Architecture: LangGraph-based decentralized swarm framework.
+  * Router Node: Evaluates query intent and directs requests.
+  * Planner Node: Generates execution DAGs (GoalGraph) topologically sorted.
+  * Task Engine: Orchestrates TaskDTO status states.
+  * Departments: Research, Information, Analysis, Writing, Execution.
+  * Governance: Bipartite Auditor (PreExecutionGatekeeper, PostExecutionValidator) and Epistemic Immune System.
+  * Compiled Cognition: E[Temp] trusted templates for speed-up match caching.
+- Operating Environment: Python {sys.version.split()[0]} on Windows.
+- Authoritative Knowledge: Automated tax, compliance (PF, GST, CSC services), and e-governance assistant.
+"""
 
 
 def is_system_aware_query(query: str) -> bool:
@@ -1800,6 +1866,12 @@ def planner_node(state: BabuState):
     is_profile = is_profile_relevant_query(query)
     is_system = is_system_aware_query(query)
     profile_text = get_user_profile_text() if is_profile else ""
+    
+    # 0. Load BABU Self Context if system query
+    self_ctx = ""
+    if is_system:
+        self_ctx = get_babu_self_context()
+        profile_text = (profile_text + "\n\n" + self_ctx).strip()
     
     # 1. Retrieve system memory context via SQL first if system/self-aware query
     sql_context = ""
@@ -2152,7 +2224,10 @@ def planner_node(state: BabuState):
         }
     )
         
-    return {"goal_graph": graph.to_dict(), "execution_tracker": tracker, "tokens": total_planner_tokens}
+    ret_dict = {"goal_graph": graph.to_dict(), "execution_tracker": tracker, "tokens": total_planner_tokens}
+    if is_system:
+        ret_dict["compressed_research"] = (self_ctx + "\n\n" + sql_context).strip()
+    return ret_dict
 
 
 def task_executor_node(state: BabuState):
@@ -3280,6 +3355,87 @@ def pa_node(state: BabuState):
     for char in "?!.,":
         lowered_query = lowered_query.replace(char, "")
     lowered_query = lowered_query.strip()
+    
+    # Deterministic FAQ short-circuits for high-frequency queries:
+    # 1. Current Time in IST
+    if any(k in lowered_query for k in ("current time", "time in ist", "time here in ist", "what is the time", "what time is it")):
+        from datetime import datetime, timezone, timedelta
+        now_utc = datetime.now(timezone.utc)
+        now_ist = now_utc + timedelta(hours=5, minutes=30)
+        time_response = f"The current time in Indian Standard Time (IST) is **{now_ist.strftime('%I:%M %p (%A, %B %d, %Y)')}**."
+        print(f"[PA NODE] Deterministic short-circuit for time query: '{user_query}'", flush=True)
+        return {"messages": state["messages"] + [AIMessage(content=time_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
+
+    # 2. How old are you? / date of birth of babu
+    if any(k in lowered_query for k in ("how old are you", "how old you are", "your age", "what is your age", "date of birth of babu", "babu birth", "babu creation", "dob of babu")):
+        age_str = get_babu_age_string()
+        age_response = f"I am **Project BABU** (Behavioral Autonomous Bureaucratic Utility). My date of birth is **May 27, 2026**. I have been active for **{age_str}**!"
+        print(f"[PA NODE] Deterministic short-circuit for age query: '{user_query}'", flush=True)
+        return {"messages": state["messages"] + [AIMessage(content=age_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
+
+    # 3. Who are you / Tell me about yourself
+    if any(k in lowered_query for k in ("who are you", "tell me about yourself", "your identity", "what is your name")):
+        identity_response = (
+            "I am **Project BABU** (Behavioral Autonomous Bureaucratic Utility), a next-generation AI agentic assistant "
+            "designed to automate research, analysis, writing, and Google Workspace execution tasks using a decentralized swarm architecture."
+        )
+        print(f"[PA NODE] Deterministic short-circuit for identity query: '{user_query}'", flush=True)
+        return {"messages": state["messages"] + [AIMessage(content=identity_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
+
+    # 4. Tell me about your architecture
+    if any(k in lowered_query for k in ("your architecture", "tell me about your architecture", "how are you built", "how do you work")):
+        arch_response = (
+            "My architecture is a decentralized LangGraph-based swarm framework. It consists of:\n"
+            "1. **Strategic Planner & Intent Classifier**: Decomposes user queries and enforces capability boundaries.\n"
+            "2. **Task Engine**: Orchestrates execution DAGs topologically.\n"
+            "3. **Cognitive Departments**: Five specialized heads (**Research**, **Information**, **Analysis**, **Writing**, and **Execution**).\n"
+            "4. **Bipartite Auditor**: A dual-stage governance gatekeeper (`PreExecutionGatekeeper` and `PostExecutionValidator`) that ensures safety and compliance."
+        )
+        print(f"[PA NODE] Deterministic short-circuit for architecture query: '{user_query}'", flush=True)
+        return {"messages": state["messages"] + [AIMessage(content=arch_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
+
+    # 5. what are failures happened in last 5 days?
+    if any(k in lowered_query for k in ("failures happened", "recent failures", "what are failures", "failures in last", "failures happened in last")):
+        conn, is_pg = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            if is_pg:
+                cursor.execute("""
+                    SELECT timestamp, goal_id, task_id, event_type, metadata
+                    FROM execution_ledger
+                    WHERE event_type IN ('AUDIT_PRE_FAIL', 'AUDIT_POST_FAIL', 'EXECUTION_FAIL', 'PLANNER_CONSTRAINT_VIOLATION')
+                    ORDER BY event_id DESC
+                    LIMIT 5
+                """)
+            else:
+                cursor.execute("""
+                    SELECT timestamp, goal_id, task_id, event_type, metadata
+                    FROM execution_ledger
+                    WHERE event_type IN ('AUDIT_PRE_FAIL', 'AUDIT_POST_FAIL', 'EXECUTION_FAIL', 'PLANNER_CONSTRAINT_VIOLATION')
+                    ORDER BY event_id DESC
+                    LIMIT 5
+                """)
+            rows = cursor.fetchall()
+            if rows:
+                lines = ["Here are the recent system failures recorded in the execution ledger:\n"]
+                for r in rows:
+                    ts = r[0][:19] if r[0] else "Unknown Time"
+                    goal = r[1]
+                    task = r[2] or "N/A"
+                    event = r[3]
+                    details = r[4]
+                    lines.append(f"• **{ts}** | Event: `{event}` | Goal: `{goal}` | Task: `{task}`\n  *Details*: {details}")
+                failures_response = "\n".join(lines)
+            else:
+                failures_response = "No system failures have been recorded in the execution ledger."
+        except Exception as e:
+            failures_response = f"Failed to retrieve failures log from database: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+            
+        print(f"[PA NODE] Deterministic short-circuit for failures query: '{user_query}'", flush=True)
+        return {"messages": state["messages"] + [AIMessage(content=failures_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
     
     greetings = {
         "hi", "hello", "hey", "how are you", "how's it going", "how you doing", 

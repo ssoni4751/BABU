@@ -51,6 +51,7 @@ class IntentPacket:
     confidence: float = 1.0
     tokens: Optional[dict] = None
     model: Optional[str] = None
+    system_query: bool = False
 
     def __init__(
         self,
@@ -60,6 +61,7 @@ class IntentPacket:
         confidence: float = 1.0,
         tokens: Optional[dict] = None,
         model: Optional[str] = None,
+        system_query: bool = False,
         # Legacy keyword args for compatibility
         lookup: Optional[bool] = None,
         research: Optional[bool] = None,
@@ -72,8 +74,7 @@ class IntentPacket:
         self.confidence = confidence
         self.tokens = tokens
         self.model = model
-        self.execution_mode = execution_mode
-        self.confidence = confidence
+        self.system_query = system_query
 
         if allowed_departments is not None:
             self.allowed_departments = allowed_departments
@@ -164,6 +165,7 @@ class IntentPacket:
             "allowed_actions": self.allowed_actions,
             "tokens": self.tokens,
             "model": self.model,
+            "system_query": self.system_query,
         }
 
     @classmethod
@@ -200,7 +202,8 @@ class IntentPacket:
             execution_mode=data.get("execution_mode", "READ_ONLY"),
             confidence=data.get("confidence", 1.0),
             tokens=data.get("tokens"),
-            model=data.get("model")
+            model=data.get("model"),
+            system_query=data.get("system_query", False)
         )
 
 INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
@@ -226,6 +229,9 @@ INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
     "- APPROVAL_REQUIRED: User requested a mutation action (e.g. email, document creation, sheet logging, publishing to facebook) that requires user audit and approval before dispatch.\n"
     "- AUTO_EXECUTE: User requested a highly structured, scheduled, or automated background task (like daily marketing posts) that does not need explicit user approval.\n"
     "\n"
+    "SYSTEM QUERY FLAG DEFINITION:\n"
+    "- Set system_query to true if the query is asking about the system itself, its name, identity, age, creation date, date of birth, architecture, departments, governance system, failures log, templates, or system policies. Set it to false for all general queries.\n"
+    "\n"
     "CRITICAL CLASSIFICATION RULES:\n"
     "- Do not research unless explicitly told to do so. ONLY include 'research' in allowed_departments if the user explicitly uses the word 'research' in their query (e.g. 'research X'). For all standard web searches, lookups, and fact checks (e.g. 'search the web for X', 'look up Y', 'who is Z', 'upcoming matches'), you MUST use 'information' instead of 'research'.\n"
     "- Any research or information query that expects a compiled summary, report, or draft response naturally requires the 'writing' department. You MUST include 'writing' in 'allowed_departments' for all search, lookup, or research queries that require text synthesis/summarization.\n"
@@ -239,7 +245,8 @@ INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
     '  "allowed_departments": ["list", "of", "required", "departments"],\n'
     '  "allowed_actions": ["list", "of", "permitted", "actions"],\n'
     '  "execution_mode": "READ_ONLY | APPROVAL_REQUIRED | AUTO_EXECUTE",\n'
-    '  "confidence": 0.0 to 1.0\n'
+    '  "confidence": 0.0 to 1.0,\n'
+    '  "system_query": true | false\n'
     "}\n"
     "\n"
     "CRITICAL: Output ONLY valid raw JSON. No explanation, no markdown fences."
@@ -344,19 +351,36 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
             from bot import extract_tokens
         packet.tokens = extract_tokens(response)
         packet.model = model_name
-        print(f"[INTENT CLASSIFIER] Classified: allowed_depts={packet.allowed_departments}, allowed_actions={packet.allowed_actions}, mode={packet.execution_mode}, conf={packet.confidence}", flush=True)
+        
+        # Programmatic check for system query keyword matches
+        system_keywords = {
+            "failures", "fail", "why did task", "why did my task", "error", "violation", "governance", "auditor", "immune", 
+            "architecture", "codebase", "template", "etemp", "how old are you", "your age", "who are you", "what is your name",
+            "date of birth", "dob of babu", "babu birth", "babu creation", "self-awareness", "self-rag"
+        }
+        if any(kw in query.lower() for kw in system_keywords):
+            packet.system_query = True
+            
+        print(f"[INTENT CLASSIFIER] Classified: allowed_depts={packet.allowed_departments}, allowed_actions={packet.allowed_actions}, mode={packet.execution_mode}, conf={packet.confidence}, sys_query={packet.system_query}", flush=True)
         return packet
     except Exception as e:
         print(f"[INTENT CLASSIFIER] Failed to classify intent: {e}. Defaulting to READ_ONLY fallback.", flush=True)
         default_depts = ["information", "pa"] if _force_lookup else ["pa"]
         default_actions = ["search_sheet", "search_gmail"] if _force_lookup else []
+        system_keywords = {
+            "failures", "fail", "why did task", "why did my task", "error", "violation", "governance", "auditor", "immune", 
+            "architecture", "codebase", "template", "etemp", "how old are you", "your age", "who are you", "what is your name",
+            "date of birth", "dob of babu", "babu birth", "babu creation", "self-awareness", "self-rag"
+        }
+        is_sys = any(kw in query.lower() for kw in system_keywords)
         return IntentPacket(
             allowed_departments=default_depts,
             allowed_actions=default_actions,
             execution_mode="READ_ONLY",
             confidence=0.5,
             tokens={"prompt": 0, "completion": 0, "total": 0},
-            model=model_name
+            model=model_name,
+            system_query=is_sys
         )
 
 # ---------------------------------------------------------------------------
