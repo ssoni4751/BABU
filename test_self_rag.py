@@ -2,7 +2,7 @@ import os
 import sys
 import json
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 # Ensure aria is in python path
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -162,3 +162,29 @@ class TestSelfRAG(unittest.TestCase):
         self.assertEqual(telemetry["retrieval_misses"], 1)
         self.assertAlmostEqual(telemetry["retrieval_latency_ms"], 10.25, places=1)
         self.assertEqual(telemetry["retrieved_tokens"], 350)
+
+    def test_05_postgres_branch_mocked(self):
+        """Mock is_pg as True to test the SQL queries in the Postgres code branch."""
+        conn_mock = MagicMock()
+        cursor_mock = MagicMock()
+        conn_mock.cursor.return_value = cursor_mock
+        
+        # Setup mock fetchall returning a valid tuple of length 7
+        cursor_mock.fetchall.return_value = [
+            (1, "templates", "test_source", "etemp", "aria uses etemp templates.", json.dumps({"key": "val"}), 0.85)
+        ]
+        
+        with patch("aria.bot.get_db_connection") as mock_conn:
+            mock_conn.return_value = (conn_mock, True)
+            
+            # 1. Test retrieve_knowledge with collections
+            results = retrieve_knowledge("tell me about aria templates", collections=["templates"], top_k=3)
+            self.assertEqual(len(results), 1)
+            self.assertEqual(results[0]["title"], "etemp")
+            
+            # Check cursor execution parameters
+            cursor_mock.execute.assert_called()
+            
+            # 2. Test retrieve_knowledge without collections
+            results_all = retrieve_knowledge("tell me about aria templates", top_k=3)
+            self.assertEqual(len(results_all), 1)

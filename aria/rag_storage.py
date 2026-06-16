@@ -219,7 +219,7 @@ def retrieve_knowledge(query: str, collections: Optional[list[str]] = None, top_
                     WHERE (1 - (embedding <=> %s::vector)) >= %s
                     ORDER BY similarity DESC
                     LIMIT %s
-                """, (query_vector, similarity_threshold, top_k * 2))
+                """, (query_vector, query_vector, similarity_threshold, top_k * 2))
             
             rows = cursor.fetchall()
             for r in rows:
