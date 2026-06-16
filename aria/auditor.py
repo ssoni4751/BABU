@@ -190,22 +190,27 @@ class PostExecutionValidator:
                 checklist_str = "- [ ] Verify that the worker actually answered/accomplished the objective.\n- [ ] Check for factual truthfulness and style alignment."
 
             system_prompt = (
-                "You are ARIA's Post-Execution Auditor. Your ONLY job is to audit a worker's output "
-                "for structural validity, factual truthfulness, and compliance with the checklist below.\n"
-                "You must verify each checklist item individually. Provide a green signal (passed: true) only if ALL compliance criteria are fully satisfied.\n\n"
+                "You are ARIA's Post-Execution Auditor and Risk Assessor. Your job is to audit a worker's output "
+                "for structural validity, factual truthfulness, compliance with the checklist, and overall operational risk.\n"
+                "You must verify each checklist item individually. Rather than simply blocking, assess the risk.\n"
+                "Do NOT fail entire workflows because a research or information retrieval task has low confidence or lacks detailed academic citations, as long as it has retrieved some correct and relevant details.\n"
+                "If the task belongs to 'research' or 'information' departments, assign a lower confidence score and flag uncertainty, but set passed to true when it is safe to continue.\n\n"
                 "COMPLIANCE CHECKLIST:\n"
                 f"{checklist_str}\n\n"
                 "CRITICAL AUDITING GATES:\n"
                 "- Verify that the worker actually answered/accomplished the objective.\n"
                 "- Check for hallucinated success markers (e.g. claiming an action was executed when it was not).\n"
-                "- Check if the output claims the model is 'flawless', 'perfect', or '100% correct' (unrealistic AI claims).\n"
+                "- Check if the output claims the model is 'flawless', 'perfect', or '100% correct'.\n"
                 "- Be fair, realistic, and constructive. Do NOT reject or block valid responses simply because they are concise, summarizing, or convey upstream results clearly, as long as they address the objective.\n"
                 "- For local profile searches, personal details lookup, or simple information retrievals, do NOT penalize the worker for lacking academic web citations or complex external evidence. The local user profile or local context is the authoritative source. If the worker presents the correct information retrieved from the local profile, treat it as fully compliant and verified.\n"
                 "- For the 'information' department (designed for general information retrieval, simple web search, and Wikipedia-style lookups), do NOT penalize the worker for lacking academic-level citations, sources, or strict evidence links, unless the task objective or checklist explicitly demands them. The 'information' department only requires retrieving accurate facts or answers concisely and factually.\n"
                 "- Output ONLY a JSON payload matching this format:\n"
                 "{\n"
                 '  "passed": true/false,\n'
-                '  "reason": "explanation of fail or pass. If failed, detail exactly which checklist items were violated."\n'
+                '  "confidence": 0.0 to 1.0,\n'
+                '  "uncertainty_flag": true/false,\n'
+                '  "risk_assessment": "your assessment of risk (low/medium/high) and any open gaps",\n'
+                '  "reason": "explanation of verdict. If failed, detail exactly which checklist items were violated."\n'
                 "}"
             )
             
@@ -246,9 +251,28 @@ class PostExecutionValidator:
                 if match:
                     data = json.loads(match.group(), strict=False)
                     passed = bool(data.get("passed", False))
+                    confidence = float(data.get("confidence", 1.0))
+                    uncertainty_flag = bool(data.get("uncertainty_flag", False))
+                    risk_assessment = str(data.get("risk_assessment", ""))
                     reason = str(data.get("reason", "Unknown audit verdict"))
                     
+                    # Store audit metrics in task context
+                    task.context["audit_metrics"] = {
+                        "confidence": confidence,
+                        "uncertainty_flag": uncertainty_flag,
+                        "risk_assessment": risk_assessment,
+                        "reason": reason
+                    }
+                    
                     if not passed:
+                        # Priority Directive: Do not fail entire workflows because a research/information task has low confidence.
+                        if task.department.lower() in ("research", "information") and (confidence < 0.5 or uncertainty_flag):
+                            print(f"[AUDITOR:POST] Warning: Research/Information task '{task.task_id}' failed audit checklist with low confidence ({reason}). Overriding failure under Priority Directive. Proceeding with confidence score {confidence}.", flush=True)
+                            task.context["audit_metrics"]["uncertainty_flag"] = True
+                            task.context["audit_metrics"]["override_applied"] = True
+                            # Continue execution by returning (True, result)
+                            return True, result
+                            
                         print(f"[AUDITOR:POST] Task '{task.task_id}' FAILED post-audit checklist verification: {reason}", flush=True)
                         return False, reason
                 else:
@@ -256,6 +280,14 @@ class PostExecutionValidator:
             except Exception as e:
                 print(f"[AUDITOR:POST] Semantic audit invocation failed: {e}. Defaulting to deterministic check.", flush=True)
 
+        # Ensure audit_metrics exist
+        if "audit_metrics" not in task.context:
+            task.context["audit_metrics"] = {
+                "confidence": 1.0,
+                "uncertainty_flag": False,
+                "risk_assessment": "Deterministic verification pass",
+                "reason": "Audit bypassed or completed deterministically"
+            }
         print(f"[AUDITOR:POST] Post-execution audit PASSED for task '{task.task_id}'", flush=True)
         return True, result
 

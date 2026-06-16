@@ -27,6 +27,9 @@ class TestSelfRAG(unittest.TestCase):
         try:
             cursor.execute("DELETE FROM aria_knowledge;")
             cursor.execute("DELETE FROM execution_ledger;")
+            cursor.execute("DELETE FROM babu_temporal_timeline;")
+            cursor.execute("DELETE FROM system_memory;")
+            cursor.execute("DELETE FROM trusted_templates;")
             conn.commit()
         except Exception:
             pass
@@ -41,6 +44,9 @@ class TestSelfRAG(unittest.TestCase):
         try:
             cursor.execute("DELETE FROM aria_knowledge;")
             cursor.execute("DELETE FROM execution_ledger;")
+            cursor.execute("DELETE FROM babu_temporal_timeline;")
+            cursor.execute("DELETE FROM system_memory;")
+            cursor.execute("DELETE FROM trusted_templates;")
             conn.commit()
         except Exception:
             pass
@@ -188,3 +194,125 @@ class TestSelfRAG(unittest.TestCase):
             # 2. Test retrieve_knowledge without collections
             results_all = retrieve_knowledge("tell me about aria templates", top_k=3)
             self.assertEqual(len(results_all), 1)
+
+    def test_06_retrieve_system_memory_via_sql(self):
+        """Test retrieve_system_memory_via_sql retrieves profile, goals, failures, timeline, rules, templates."""
+        from aria.bot import retrieve_system_memory_via_sql
+        
+        # Insert test records
+        conn, is_pg = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            # Log a goal received event
+            cursor.execute(
+                "INSERT INTO execution_ledger (session_id, goal_id, task_id, department, event_type, state_before, state_after, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                ("test-session", "G-TEST-GOAL", None, None, "GOAL_RECEIVED", None, None, json.dumps({"query": "my test goal"}))
+            )
+            
+            # Log a failure event
+            cursor.execute(
+                "INSERT INTO execution_ledger (session_id, goal_id, task_id, department, event_type, state_before, state_after, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                ("test-session", "G-TEST-GOAL", "T1", "research", "PLANNER_CONSTRAINT_VIOLATION", None, None, json.dumps({"error": "unallowed dept"}))
+            )
+            
+            # Log a temporal timeline event
+            cursor.execute(
+                "INSERT INTO babu_temporal_timeline (event_category, summary, outcome, cause, effect, resolution, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ("TASK_COMPLETED", "Completed T1", "SUCCESS", "Finished", "Downstream ready", "None", 0.95)
+            )
+            
+            # Log system memory anti-pattern rule
+            cursor.execute(
+                "INSERT INTO system_memory (key, data) VALUES (?, ?)",
+                ("anti_pattern_test", "do not repeat queries")
+            )
+            
+            # Log trusted template
+            cursor.execute(
+                "INSERT INTO trusted_templates (template_id, template_signature, status, execution_count, success_count) VALUES (?, ?, ?, ?, ?)",
+                ("temp_123", "lookup_sig", "PROMOTED", 5, 5)
+            )
+            conn.commit()
+        finally:
+            cursor.close()
+            conn.close()
+        
+        # Verify retrieve_system_memory_via_sql returns goals
+        res_goals = retrieve_system_memory_via_sql("what are my recent goals?")
+        self.assertIn("G-TEST-GOAL", res_goals)
+        
+        # Verify retrieve_system_memory_via_sql returns failures
+        res_fails = retrieve_system_memory_via_sql("why did the system fail?")
+        self.assertIn("PLANNER_CONSTRAINT_VIOLATION", res_fails)
+        
+        # Verify retrieve_system_memory_via_sql returns timeline
+        res_timeline = retrieve_system_memory_via_sql("what is the temporal timeline?")
+        self.assertIn("Completed T1", res_timeline)
+        
+        # Verify retrieve_system_memory_via_sql returns rules
+        res_rules = retrieve_system_memory_via_sql("tell me the anti-pattern rules")
+        self.assertIn("do not repeat queries", res_rules)
+        
+        # Verify retrieve_system_memory_via_sql returns templates
+        res_temps = retrieve_system_memory_via_sql("what are the trusted templates?")
+        self.assertIn("temp_123", res_temps)
+
+    def test_07_rag_text_search_fallback(self):
+        """Test RAG text search fallback when vector similarity yields no matches."""
+        # Insert a chunk manually
+        conn, is_pg = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "INSERT INTO aria_knowledge (collection, source, title, chunk_text, embedding, metadata) VALUES (?, ?, ?, ?, ?, ?)",
+                ("aria_docs", "test_source", "codebase doc", "this document explains the backend architecture of the aria scheduler.", "[]", "{}")
+            )
+            conn.commit()
+        finally:
+            cursor.close()
+            conn.close()
+        
+        # We query for 'backend architecture' using retrieve_knowledge.
+        # Since we put embedding '[]', its cosine similarity with the query's MockEmbeddings will be 0.0 or fail.
+        # The text search fallback should match 'architecture' in the chunk_text and return it!
+        results = retrieve_knowledge("tell me about the backend architecture", collections=["aria_docs"], top_k=3)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["title"], "codebase doc")
+        self.assertIn("backend architecture", results[0]["chunk_text"])
+
+    def test_08_auditor_risk_assessor_override(self):
+        """Test that for research/information departments, post-execution auditor failure is overridden."""
+        from aria.auditor import PostExecutionValidator
+        from aria.task_engine import TaskDTO, TaskState
+        
+        # Construct research task
+        task = TaskDTO(
+            task_id="T2",
+            objective="research competitors",
+            department="research",
+            depends_on=[],
+            priority=1,
+            state=TaskState.RUNNING
+        )
+        
+        # Mock LLM to return passed: false
+        mock_llm = MagicMock()
+        mock_res = MagicMock()
+        mock_res.content = json.dumps({
+            "passed": False,
+            "confidence": 0.4,
+            "uncertainty_flag": True,
+            "risk_assessment": "low citation density",
+            "reason": "Missing secondary sources link"
+        })
+        mock_llm.invoke.return_value = mock_res
+        
+        validator = PostExecutionValidator(llm=mock_llm)
+        passed, result = validator.audit(task, "Found 3 competitors.")
+        
+        # Verify passed is True (failure overridden under Priority Directive!)
+        self.assertTrue(passed)
+        self.assertEqual(result, "Found 3 competitors.")
+        self.assertTrue(task.context["audit_metrics"]["uncertainty_flag"])
+        self.assertTrue(task.context["audit_metrics"]["override_applied"])
+        self.assertEqual(task.context["audit_metrics"]["confidence"], 0.4)

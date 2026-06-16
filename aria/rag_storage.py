@@ -274,6 +274,77 @@ def retrieve_knowledge(query: str, collections: Optional[list[str]] = None, top_
         conn.close()
     except Exception as e:
         print(f"[RAG ERROR] retrieve_knowledge failed: {e}", flush=True)
+        
+    # 3. Fallback to simple keyword/substring search if vector similarity yields no matches or low match score.
+    # This acts as a bulletproof fallback when embedding API rate limits or quota errors occur.
+    import re
+    if not results or max(x["similarity"] for x in results) < 0.25:
+        print("[RAG] Vector search produced low similarity or no matches. Running text search fallback.", flush=True)
+        # Tokenize query into alphanumeric keywords of length > 3
+        keywords = [w.strip() for w in re.split(r'\W+', query) if len(w.strip()) > 3]
+        if keywords:
+            try:
+                conn, is_pg = get_db_connection()
+                cursor = conn.cursor()
+                if is_pg:
+                    like_clauses = " OR ".join(["chunk_text ILIKE %s" for _ in keywords])
+                    if collections:
+                        cursor.execute(f"""
+                            SELECT id, collection, source, title, chunk_text, metadata, 0.49 AS similarity
+                            FROM aria_knowledge
+                            WHERE collection = ANY(%s) AND ({like_clauses})
+                            LIMIT %s
+                        """, (collections, *[f"%{kw}%" for kw in keywords], top_k * 2))
+                    else:
+                        cursor.execute(f"""
+                            SELECT id, collection, source, title, chunk_text, metadata, 0.49 AS similarity
+                            FROM aria_knowledge
+                            WHERE {like_clauses}
+                            LIMIT %s
+                        """, (*[f"%{kw}%" for kw in keywords], top_k * 2))
+                    rows = cursor.fetchall()
+                    for r in rows:
+                        results.append({
+                            "id": r[0],
+                            "collection": r[1],
+                            "source": r[2],
+                            "title": r[3],
+                            "chunk_text": r[4],
+                            "metadata": r[5] if isinstance(r[5], dict) else json.loads(r[5] or '{}'),
+                            "similarity": 0.49
+                        })
+                else:
+                    like_clauses = " OR ".join(["chunk_text LIKE ?" for _ in keywords])
+                    if collections:
+                        placeholders = ",".join("?" for _ in collections)
+                        cursor.execute(f"""
+                            SELECT id, collection, source, title, chunk_text, metadata, 0.49 AS similarity
+                            FROM aria_knowledge
+                            WHERE collection IN ({placeholders}) AND ({like_clauses})
+                            LIMIT ?
+                        """, (*collections, *[f"%{kw}%" for kw in keywords], top_k * 2))
+                    else:
+                        cursor.execute(f"""
+                            SELECT id, collection, source, title, chunk_text, metadata, 0.49 AS similarity
+                            FROM aria_knowledge
+                            WHERE {like_clauses}
+                            LIMIT ?
+                        """, (*[f"%{kw}%" for kw in keywords], top_k * 2))
+                    rows = cursor.fetchall()
+                    for r in rows:
+                        results.append({
+                            "id": r[0],
+                            "collection": r[1],
+                            "source": r[2],
+                            "title": r[3],
+                            "chunk_text": r[4],
+                            "metadata": json.loads(r[5] or '{}'),
+                            "similarity": 0.49
+                        })
+                cursor.close()
+                conn.close()
+            except Exception as fe:
+                print(f"[RAG WARNING] Text search fallback failed: {fe}", flush=True)
 
     # 4. Enforce strict budget: MAX_RESULTS = 3, MAX_RETRIEVED_TOKENS = 1200
     final_results = []

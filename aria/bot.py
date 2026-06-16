@@ -115,9 +115,18 @@ def init_postgres_db():
                 summary TEXT NOT NULL,
                 outcome VARCHAR(20),
                 impact_score REAL DEFAULT 1.0,
+                cause TEXT,
+                effect TEXT,
+                resolution TEXT,
+                confidence DOUBLE PRECISION,
                 metadata TEXT
             );
         """)
+        for col, col_type in [("cause", "TEXT"), ("effect", "TEXT"), ("resolution", "TEXT"), ("confidence", "DOUBLE PRECISION")]:
+            try:
+                cursor.execute(f"ALTER TABLE babu_temporal_timeline ADD COLUMN {col} {col_type};")
+            except Exception:
+                pass
         conn.commit()
         cursor.close()
         conn.close()
@@ -192,14 +201,33 @@ def init_durable_checkpoint_db():
             summary TEXT NOT NULL,
             outcome TEXT,
             impact_score REAL DEFAULT 1.0,
+            cause TEXT,
+            effect TEXT,
+            resolution TEXT,
+            confidence REAL,
             metadata TEXT
         );
     """)
+    for col, col_type in [("cause", "TEXT"), ("effect", "TEXT"), ("resolution", "TEXT"), ("confidence", "REAL")]:
+        try:
+            cursor.execute(f"ALTER TABLE babu_temporal_timeline ADD COLUMN {col} {col_type};")
+        except Exception:
+            pass
     conn.commit()
     return conn
 
 
-def log_temporal_event(event_category: str, summary: str, outcome: Optional[str] = None, impact_score: float = 1.0, metadata: Optional[dict] = None):
+def log_temporal_event(
+    event_category: str,
+    summary: str,
+    outcome: Optional[str] = None,
+    impact_score: float = 1.0,
+    metadata: Optional[dict] = None,
+    cause: Optional[str] = None,
+    effect: Optional[str] = None,
+    resolution: Optional[str] = None,
+    confidence: Optional[float] = None
+):
     """Log a system chronological event to babu_temporal_timeline."""
     try:
         conn, is_pg = get_db_connection()
@@ -208,19 +236,19 @@ def log_temporal_event(event_category: str, summary: str, outcome: Optional[str]
         
         if is_pg:
             cursor.execute("""
-                INSERT INTO babu_temporal_timeline (event_category, summary, outcome, impact_score, metadata)
-                VALUES (%s, %s, %s, %s, %s)
-            """, (event_category, summary, outcome, impact_score, meta_str))
+                INSERT INTO babu_temporal_timeline (event_category, summary, outcome, impact_score, cause, effect, resolution, confidence, metadata)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (event_category, summary, outcome, impact_score, cause, effect, resolution, confidence, meta_str))
         else:
             cursor.execute("""
-                INSERT INTO babu_temporal_timeline (event_category, summary, outcome, impact_score, metadata)
-                VALUES (?, ?, ?, ?, ?)
-            """, (event_category, summary, outcome, impact_score, meta_str))
+                INSERT INTO babu_temporal_timeline (event_category, summary, outcome, impact_score, cause, effect, resolution, confidence, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (event_category, summary, outcome, impact_score, cause, effect, resolution, confidence, meta_str))
             
         conn.commit()
         cursor.close()
         conn.close()
-        print(f"[TEMPORAL LOG] [{event_category}] {summary} - {outcome}", flush=True)
+        print(f"[TEMPORAL LOG] [{event_category}] {summary} - {outcome} (Cause: {cause}, Effect: {effect}, Resolution: {resolution}, Conf: {confidence})", flush=True)
     except Exception as e:
         print(f"[TEMPORAL ERROR] Failed to log temporal event: {e}", flush=True)
 
@@ -232,14 +260,14 @@ def get_temporal_events(limit: int = 50) -> list[dict]:
         
         if is_pg:
             cursor.execute("""
-                SELECT event_id, timestamp, event_category, summary, outcome, impact_score, metadata
+                SELECT event_id, timestamp, event_category, summary, outcome, impact_score, cause, effect, resolution, confidence, metadata
                 FROM babu_temporal_timeline
                 ORDER BY event_id DESC
                 LIMIT %s
             """, (limit,))
         else:
             cursor.execute("""
-                SELECT event_id, timestamp, event_category, summary, outcome, impact_score, metadata
+                SELECT event_id, timestamp, event_category, summary, outcome, impact_score, cause, effect, resolution, confidence, metadata
                 FROM babu_temporal_timeline
                 ORDER BY event_id DESC
                 LIMIT ?
@@ -249,7 +277,7 @@ def get_temporal_events(limit: int = 50) -> list[dict]:
         events = []
         for row in rows:
             try:
-                meta = json.loads(row[6]) if row[6] else {}
+                meta = json.loads(row[10]) if row[10] else {}
             except Exception:
                 meta = {}
             events.append({
@@ -259,6 +287,10 @@ def get_temporal_events(limit: int = 50) -> list[dict]:
                 "summary": row[3],
                 "outcome": row[4],
                 "impact_score": row[5],
+                "cause": row[6],
+                "effect": row[7],
+                "resolution": row[8],
+                "confidence": row[9],
                 "metadata": meta
             })
             
@@ -1613,6 +1645,135 @@ def requires_web_search(query: str) -> bool:
     return any(re.search(pat, t) for pat in web_patterns)
 
 
+def retrieve_system_memory_via_sql(query: str) -> str:
+    """Retrieve system memory context directly from database tables using SQL instead of RAG."""
+    conn, is_pg = get_db_connection()
+    cursor = conn.cursor()
+    context_parts = []
+    q_lower = query.lower()
+    
+    # 1. User Identity & Profiles
+    if any(k in q_lower for k in ("who is", "profile", "identity", "about me", "preferences", "interest")):
+        try:
+            profile_text = get_user_profile_text("FULL")
+            if profile_text:
+                context_parts.append(f"=== SQL USER PROFILE & IDENTITY ===\n{profile_text}")
+        except Exception as e:
+            print(f"[SQL MEMORY ERROR] Failed to fetch profile: {e}", flush=True)
+
+    # 2. Goals
+    if any(k in q_lower for k in ("goal", "query", "run", "request", "task list", "dag")):
+        try:
+            if is_pg:
+                cursor.execute("""
+                    SELECT timestamp, goal_id, event_type, metadata
+                    FROM execution_ledger
+                    WHERE event_type = 'GOAL_RECEIVED'
+                    ORDER BY event_id DESC
+                    LIMIT 5
+                """)
+            else:
+                cursor.execute("""
+                    SELECT timestamp, goal_id, event_type, metadata
+                    FROM execution_ledger
+                    WHERE event_type = 'GOAL_RECEIVED'
+                    ORDER BY event_id DESC
+                    LIMIT 5
+                """)
+            rows = cursor.fetchall()
+            if rows:
+                part = "=== SQL RECENT GOALS ===\n"
+                for r in rows:
+                    part += f"[{r[0]}] Goal ID: {r[1]} | Details: {r[3]}\n"
+                context_parts.append(part)
+        except Exception as e:
+            print(f"[SQL MEMORY ERROR] Failed to fetch goals: {e}", flush=True)
+            
+    # 3. Failures / Rejections / Errors / Warnings
+    if any(k in q_lower for k in ("fail", "error", "reject", "violation", "why did", "problem", "warn")):
+        try:
+            if is_pg:
+                cursor.execute("""
+                    SELECT timestamp, goal_id, task_id, event_type, metadata
+                    FROM execution_ledger
+                    WHERE event_type IN ('AUDIT_PRE_FAIL', 'AUDIT_POST_FAIL', 'EXECUTION_FAIL', 'PLANNER_CONSTRAINT_VIOLATION')
+                    ORDER BY event_id DESC
+                    LIMIT 5
+                """)
+            else:
+                cursor.execute("""
+                    SELECT timestamp, goal_id, task_id, event_type, metadata
+                    FROM execution_ledger
+                    WHERE event_type IN ('AUDIT_PRE_FAIL', 'AUDIT_POST_FAIL', 'EXECUTION_FAIL', 'PLANNER_CONSTRAINT_VIOLATION')
+                    ORDER BY event_id DESC
+                    LIMIT 5
+                """)
+            rows = cursor.fetchall()
+            if rows:
+                part = "=== SQL SYSTEM FAILURES LOGS ===\n"
+                for r in rows:
+                    part += f"[{r[0]}] Goal: {r[1]} | Task: {r[2] or '-'} | Event: {r[3]} | Details: {r[4]}\n"
+                context_parts.append(part)
+        except Exception as e:
+            print(f"[SQL MEMORY ERROR] Failed to fetch failures: {e}", flush=True)
+            
+    # 4. Timeline / Chronology / What happened / What changed / What is unresolved
+    if any(k in q_lower for k in ("timeline", "happen", "change", "unresolved", "recent", "chronology", "status", "history")):
+        try:
+            if is_pg:
+                cursor.execute("""
+                    SELECT timestamp, event_category, summary, outcome, cause, effect, resolution, confidence
+                    FROM babu_temporal_timeline
+                    ORDER BY event_id DESC
+                    LIMIT 10
+                """)
+            else:
+                cursor.execute("""
+                    SELECT timestamp, event_category, summary, outcome, cause, effect, resolution, confidence
+                    FROM babu_temporal_timeline
+                    ORDER BY event_id DESC
+                    LIMIT 10
+                """)
+            rows = cursor.fetchall()
+            if rows:
+                part = "=== SQL TEMPORAL TIMELINE EVENTS ===\n"
+                for r in rows:
+                    part += f"[{r[0]}] [{r[1]}] {r[2]} | Outcome: {r[3] or '-'} | Cause: {r[4] or '-'} | Effect: {r[5] or '-'} | Resolution: {r[6] or '-'} | Confidence: {r[7] or '-'}\n"
+                context_parts.append(part)
+        except Exception as e:
+            print(f"[SQL MEMORY ERROR] Failed to fetch timeline: {e}", flush=True)
+            
+    # 5. Rules / Anti-patterns / Immune rules
+    if any(k in q_lower for k in ("rule", "anti-pattern", "immune", "lesson", "pattern", "governance")):
+        try:
+            cursor.execute("SELECT key, data FROM system_memory WHERE key LIKE 'anti_pattern_%' OR key = 'immune_rules'")
+            rows = cursor.fetchall()
+            if rows:
+                part = "=== SQL IMMUNE SYSTEM ANTI-PATTERNS ===\n"
+                for r in rows:
+                    part += f"[{r[0]}]: {r[1]}\n"
+                context_parts.append(part)
+        except Exception as e:
+            print(f"[SQL MEMORY ERROR] Failed to fetch rules: {e}", flush=True)
+            
+    # 6. Templates
+    if any(k in q_lower for k in ("template", "etemp", "promoted", "compiled")):
+        try:
+            cursor.execute("SELECT template_id, template_signature, status, execution_count, success_count FROM trusted_templates")
+            rows = cursor.fetchall()
+            if rows:
+                part = "=== SQL TRUSTED TEMPLATES ===\n"
+                for r in rows:
+                    part += f"Template ID: {r[0]} | Sig: {r[1]} | Status: {r[2]} | Execs: {r[3]} | Successes: {r[4]}\n"
+                context_parts.append(part)
+        except Exception as e:
+            print(f"[SQL MEMORY ERROR] Failed to fetch templates: {e}", flush=True)
+            
+    cursor.close()
+    conn.close()
+    return "\n\n".join(context_parts)
+
+
 def planner_node(state: AriaState):
     """Decompose user goal into a structured GoalGraph."""
     import time
@@ -1640,54 +1801,63 @@ def planner_node(state: AriaState):
     is_system = is_system_aware_query(query)
     profile_text = get_user_profile_text() if is_profile else ""
     
-    # Retrieve RAG context if system/self-aware query
+    # 1. Retrieve system memory context via SQL first if system/self-aware query
+    sql_context = ""
+    if is_system:
+        sql_context = retrieve_system_memory_via_sql(query)
+        if sql_context:
+            profile_text = (profile_text + "\n\n" + sql_context).strip()
+            
+    # 2. Retrieve RAG context if query relates to codebase, architecture, or documents
     retrieved = []
     if is_system:
-        try:
-            from .rag_storage import retrieve_knowledge
-        except ImportError:
-            from rag_storage import retrieve_knowledge
+        doc_keywords = ("architecture", "codebase", "how do you work", "how does aria work", "docs", "walkthrough", "implementation", "design", "blueprint")
+        if any(kw in query.lower() for kw in doc_keywords) or not sql_context:
+            try:
+                from .rag_storage import retrieve_knowledge
+            except ImportError:
+                from rag_storage import retrieve_knowledge
+                
+            rag_start = time.time()
+            retrieved = retrieve_knowledge(query, collections=["aria_docs", "engineering_history"])
+            rag_end = time.time()
+            rag_latency = round((rag_end - rag_start) * 1000, 2)
             
-        rag_start = time.time()
-        retrieved = retrieve_knowledge(query)
-        rag_end = time.time()
-        rag_latency = round((rag_end - rag_start) * 1000, 2)
-        
-        hit = len(retrieved) > 0
-        retrieved_tokens = sum(len(x["chunk_text"]) // 4 for x in retrieved) if hit else 0
-        
-        # Log RAG_RETRIEVAL event
-        log_execution_ledger_event(
-            session_id=session_id,
-            goal_id=pre_goal_id or "G-PLAN",
-            task_id=None,
-            department=None,
-            event_type="RAG_RETRIEVAL",
-            state_before=None,
-            state_after=None,
-            metadata={
-                "query": query,
-                "retrieval_requests": 1,
-                "retrieval_hits": 1 if hit else 0,
-                "retrieval_misses": 0 if hit else 1,
-                "retrieval_latency_ms": rag_latency,
-                "retrieved_tokens": retrieved_tokens,
-                "collections_accessed": list(set(x["collection"] for x in retrieved)) if hit else []
-            }
-        )
-        log_temporal_event(
-            event_category="RAG_RETRIEVAL",
-            summary=f"Retrieved self-awareness context for: '{query[:50]}'",
-            outcome="SUCCESS" if hit else "FAIL",
-            metadata={"hits": len(retrieved), "latency_ms": rag_latency}
-        )
-        
-        if hit:
-            context_str = "\n\n=== SELF_AWARENESS_CONTEXT ===\n"
-            for item in retrieved:
-                context_str += f"[{item['collection']} - {item['title']}]:\n{item['chunk_text']}\n\n"
-            context_str += "=== END OF SELF_AWARENESS_CONTEXT ===\n"
-            profile_text = (profile_text + "\n" + context_str).strip()
+            hit = len(retrieved) > 0
+            retrieved_tokens = sum(len(x["chunk_text"]) // 4 for x in retrieved) if hit else 0
+            
+            # Log RAG_RETRIEVAL event
+            log_execution_ledger_event(
+                session_id=session_id,
+                goal_id=pre_goal_id or "G-PLAN",
+                task_id=None,
+                department=None,
+                event_type="RAG_RETRIEVAL",
+                state_before=None,
+                state_after=None,
+                metadata={
+                    "query": query,
+                    "retrieval_requests": 1,
+                    "retrieval_hits": 1 if hit else 0,
+                    "retrieval_misses": 0 if hit else 1,
+                    "retrieval_latency_ms": rag_latency,
+                    "retrieved_tokens": retrieved_tokens,
+                    "collections_accessed": list(set(x["collection"] for x in retrieved)) if hit else []
+                }
+            )
+            log_temporal_event(
+                event_category="RAG_RETRIEVAL",
+                summary=f"Retrieved self-awareness document context for: '{query[:50]}'",
+                outcome="SUCCESS" if hit else "FAIL",
+                metadata={"hits": len(retrieved), "latency_ms": rag_latency}
+            )
+            
+            if hit:
+                context_str = "\n\n=== SELF_AWARENESS_DOCUMENT_CONTEXT ===\n"
+                for item in retrieved:
+                    context_str += f"[{item['collection']} - {item['title']}]:\n{item['chunk_text']}\n\n"
+                context_str += "=== END OF SELF_AWARENESS_DOCUMENT_CONTEXT ===\n"
+                profile_text = (profile_text + "\n" + context_str).strip()
             
     print(f"[PLANNER NODE] Planning goal for query: '{query[:50]}' (goal_id: {pre_goal_id})", flush=True)
     
@@ -2159,7 +2329,11 @@ def task_executor_node(state: AriaState):
                     event_category="AUDIT_PRE_FAIL",
                     summary=f"Pre-execution audit blocked task {task.task_id} [{task.department}]: {reason_pre[:80]}",
                     outcome="FAIL",
-                    metadata={"session_id": session_id, "goal_id": goal_graph.goal_id, "task_id": task.task_id, "reason": reason_pre}
+                    metadata={"session_id": session_id, "goal_id": goal_graph.goal_id, "task_id": task.task_id, "reason": reason_pre},
+                    cause=reason_pre,
+                    effect=f"Task {task.task_id} execution aborted; cascading blocks triggered for downstream tasks.",
+                    resolution="Align planner constraints with the intent classifier capability boundaries.",
+                    confidence=0.0
                 )
                 track_cascading_blocks(engine.mark_failed, task.task_id, f"Pre-execution Audit Blocked: {reason_pre}")
                 execution_log.append({
@@ -2424,7 +2598,11 @@ def task_executor_node(state: AriaState):
                         event_category="AUDIT_POST_FAIL",
                         summary=f"Post-execution audit failed task {task.task_id} [{task.department}]: {audit_result[:80]}",
                         outcome="FAIL",
-                        metadata={"session_id": session_id, "goal_id": goal_graph.goal_id, "task_id": task.task_id, "reason": audit_result}
+                        metadata={"session_id": session_id, "goal_id": goal_graph.goal_id, "task_id": task.task_id, "reason": audit_result},
+                        cause=f"Post-audit checklist failure: {audit_result}",
+                        effect=f"Task {task.task_id} marked as failed; cascading blocks triggered for downstream tasks.",
+                        resolution="Refine worker result format or checklist requirements.",
+                        confidence=0.0
                     )
                     track_cascading_blocks(engine.mark_failed, task.task_id, f"Post-execution Audit Failed: {audit_result}")
                     execution_log.append({
@@ -2472,11 +2650,16 @@ def task_executor_node(state: AriaState):
                             "latency": post_latency_sec
                         }
                     )
+                    audit_metrics = task.context.get("audit_metrics") or {}
                     log_temporal_event(
                         event_category="TASK_COMPLETED",
                         summary=f"Completed task {task.task_id} [{task.department}] - {task.objective[:80]}",
                         outcome="SUCCESS",
-                        metadata={"session_id": session_id, "goal_id": goal_graph.goal_id, "task_id": task.task_id, "department": task.department}
+                        metadata={"session_id": session_id, "goal_id": goal_graph.goal_id, "task_id": task.task_id, "department": task.department},
+                        cause="Task completed worker dispatch successfully with post-audit pass.",
+                        effect="Engine marking task completed and checking downstream dependencies.",
+                        resolution="Task resolved successfully.",
+                        confidence=audit_metrics.get("confidence", 1.0)
                     )
                     
                     # Track newly ready tasks unlocked by completing this task
