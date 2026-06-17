@@ -143,3 +143,125 @@ def test_highest_impact_query_short_circuit():
     assert tokens["prompt"] == 0
 
 
+def test_migration_safe_babu_adr_to_architecture_knowledge():
+    """Verify that migration-safe logic copies babu_adr data and renames it to babu_adr_backup."""
+    import sqlite3
+    import tempfile
+    
+    # Create a temporary database with a legacy babu_adr table
+    tmp_db = tempfile.mktemp(suffix=".db")
+    conn = sqlite3.connect(tmp_db)
+    cursor = conn.cursor()
+    
+    # Create legacy babu_adr table with matching columns
+    cursor.execute("""
+        CREATE TABLE babu_adr (
+            record_id TEXT PRIMARY KEY,
+            record_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            phase TEXT,
+            problem TEXT,
+            decision TEXT,
+            reason TEXT,
+            outcome TEXT,
+            tradeoff TEXT,
+            impact_score INTEGER,
+            supersedes TEXT,
+            status TEXT DEFAULT 'Active',
+            timestamp TEXT
+        );
+    """)
+    # Insert legacy test data
+    cursor.execute("""
+        INSERT INTO babu_adr (record_id, record_type, title, phase, problem, decision, reason, outcome, tradeoff, impact_score, supersedes, status, timestamp)
+        VALUES ('LEGACY-001', 'ADR', 'Legacy Migration Test', 'Phase 0', 'Testing migration', 'Test decision', 'Test reason', 'Test outcome', 'Test tradeoff', 5, NULL, 'Active', '2026-01-01T00:00:00Z');
+    """)
+    conn.commit()
+    
+    # Now create architecture_knowledge table and run migration logic (same as init_durable_checkpoint_db)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS architecture_knowledge (
+            record_id TEXT PRIMARY KEY,
+            record_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            phase TEXT,
+            problem TEXT,
+            decision TEXT,
+            reason TEXT,
+            outcome TEXT,
+            tradeoff TEXT,
+            impact_score INTEGER,
+            supersedes TEXT,
+            status TEXT DEFAULT 'Active',
+            timestamp TEXT
+        );
+    """)
+    
+    # Migration logic
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='babu_adr';")
+    has_legacy = cursor.fetchone() is not None
+    assert has_legacy, "Legacy table should exist before migration"
+    
+    cursor.execute("PRAGMA table_info(babu_adr);")
+    legacy_cols = [c[1] for c in cursor.fetchall()]
+    target_cols = [
+        "record_id", "record_type", "title", "phase", "problem", "decision",
+        "reason", "outcome", "tradeoff", "impact_score", "supersedes", "status", "timestamp"
+    ]
+    common_cols = [c for c in target_cols if c in legacy_cols]
+    
+    if "record_id" in common_cols and "title" in common_cols:
+        cols_str = ", ".join(common_cols)
+        placeholders = ", ".join(["?"] * len(common_cols))
+        cursor.execute(f"SELECT {cols_str} FROM babu_adr")
+        for row in cursor.fetchall():
+            rec_id = row[common_cols.index("record_id")]
+            cursor.execute("SELECT COUNT(*) FROM architecture_knowledge WHERE record_id = ?", (rec_id,))
+            if cursor.fetchone()[0] == 0:
+                cursor.execute(f"""
+                    INSERT INTO architecture_knowledge ({cols_str})
+                    VALUES ({placeholders})
+                """, row)
+    cursor.execute("ALTER TABLE babu_adr RENAME TO babu_adr_backup;")
+    conn.commit()
+    
+    # Verify: architecture_knowledge has migrated data
+    cursor.execute("SELECT COUNT(*) FROM architecture_knowledge WHERE record_id = 'LEGACY-001'")
+    assert cursor.fetchone()[0] == 1, "Legacy record should be migrated to architecture_knowledge"
+    
+    # Verify: babu_adr_backup exists
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='babu_adr_backup';")
+    assert cursor.fetchone() is not None, "babu_adr_backup table should exist after migration"
+    
+    # Verify: babu_adr no longer exists
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='babu_adr';")
+    assert cursor.fetchone() is None, "babu_adr table should no longer exist after migration"
+    
+    # Verify: backup still has data
+    cursor.execute("SELECT COUNT(*) FROM babu_adr_backup WHERE record_id = 'LEGACY-001'")
+    assert cursor.fetchone()[0] == 1, "Backup table should still contain original data"
+    
+    cursor.close()
+    conn.close()
+    os.unlink(tmp_db)
+
+
+def test_k_class_headers_in_sql_retriever():
+    """Verify that retrieve_system_memory_via_sql uses K-class headers."""
+    from babu.bot import retrieve_system_memory_via_sql
+    
+    # Query that should trigger K5 architecture context
+    result = retrieve_system_memory_via_sql("what are the architecture tradeoffs?")
+    assert "K5 - ARCHITECTURE KNOWLEDGE SYSTEM (AKS)" in result
+    assert "ADR-001" in result or "Dynamic Imports" in result
+
+
+def test_no_drop_table_in_init():
+    """Verify that init functions do NOT contain DROP TABLE for architecture tables."""
+    import inspect
+    from babu.bot import init_durable_checkpoint_db
+    source = inspect.getsource(init_durable_checkpoint_db)
+    assert "DROP TABLE IF EXISTS babu_adr" not in source, "init_durable_checkpoint_db must not drop babu_adr"
+    assert "DROP TABLE IF EXISTS architecture_knowledge" not in source, "init_durable_checkpoint_db must not drop architecture_knowledge"
+
+

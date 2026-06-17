@@ -133,7 +133,6 @@ def init_postgres_db():
                 cursor.execute(f"ALTER TABLE babu_temporal_timeline ADD COLUMN {col} {col_type};")
             except Exception:
                 pass
-        cursor.execute("DROP TABLE IF EXISTS babu_adr;")
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS architecture_knowledge (
                 record_id TEXT PRIMARY KEY,
@@ -151,6 +150,45 @@ def init_postgres_db():
                 timestamp TEXT
             );
         """)
+        
+        # Safe migration from babu_adr if exists
+        try:
+            cursor.execute("SELECT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'babu_adr');")
+            has_legacy = cursor.fetchone()[0]
+        except Exception:
+            has_legacy = False
+            
+        if has_legacy:
+            try:
+                cursor.execute("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'babu_adr'
+                """)
+                legacy_cols = [r[0] for r in cursor.fetchall()]
+                target_cols = [
+                    "record_id", "record_type", "title", "phase", "problem", "decision",
+                    "reason", "outcome", "tradeoff", "impact_score", "supersedes", "status", "timestamp"
+                ]
+                common_cols = [c for c in target_cols if c in legacy_cols]
+                
+                if "record_id" in common_cols and "title" in common_cols:
+                    cols_str = ", ".join(common_cols)
+                    placeholders = ", ".join(["%s"] * len(common_cols))
+                    cursor.execute(f"SELECT {cols_str} FROM babu_adr")
+                    for row in cursor.fetchall():
+                        rec_id = row[common_cols.index("record_id")]
+                        cursor.execute("SELECT COUNT(*) FROM architecture_knowledge WHERE record_id = %s", (rec_id,))
+                        if cursor.fetchone()[0] == 0:
+                            cursor.execute(f"""
+                                INSERT INTO architecture_knowledge ({cols_str})
+                                VALUES ({placeholders})
+                            """, row)
+                cursor.execute("ALTER TABLE babu_adr RENAME TO babu_adr_backup;")
+                print("[POSTGRES MIGRATION] Migrated babu_adr to architecture_knowledge and backed up old table.", flush=True)
+            except Exception as e:
+                print(f"[POSTGRES MIGRATION WARNING] Legacy migration failed: {e}", flush=True)
+                
         cursor.execute("SELECT COUNT(*) FROM architecture_knowledge;")
         if cursor.fetchone()[0] == 0:
             seed_records = [
@@ -251,7 +289,6 @@ def init_durable_checkpoint_db():
             cursor.execute(f"ALTER TABLE babu_temporal_timeline ADD COLUMN {col} {col_type};")
         except Exception:
             pass
-    cursor.execute("DROP TABLE IF EXISTS babu_adr;")
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS architecture_knowledge (
             record_id TEXT PRIMARY KEY,
@@ -269,6 +306,41 @@ def init_durable_checkpoint_db():
             timestamp TEXT
         );
     """)
+    
+    # Safe migration from babu_adr if exists
+    try:
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='babu_adr';")
+        has_legacy = cursor.fetchone() is not None
+    except Exception:
+        has_legacy = False
+        
+    if has_legacy:
+        try:
+            cursor.execute("PRAGMA table_info(babu_adr);")
+            legacy_cols = [c[1] for c in cursor.fetchall()]
+            target_cols = [
+                "record_id", "record_type", "title", "phase", "problem", "decision",
+                "reason", "outcome", "tradeoff", "impact_score", "supersedes", "status", "timestamp"
+            ]
+            common_cols = [c for c in target_cols if c in legacy_cols]
+            
+            if "record_id" in common_cols and "title" in common_cols:
+                cols_str = ", ".join(common_cols)
+                placeholders = ", ".join(["?"] * len(common_cols))
+                cursor.execute(f"SELECT {cols_str} FROM babu_adr")
+                for row in cursor.fetchall():
+                    rec_id = row[common_cols.index("record_id")]
+                    cursor.execute("SELECT COUNT(*) FROM architecture_knowledge WHERE record_id = ?", (rec_id,))
+                    if cursor.fetchone()[0] == 0:
+                        cursor.execute(f"""
+                            INSERT INTO architecture_knowledge ({cols_str})
+                            VALUES ({placeholders})
+                        """, row)
+            cursor.execute("ALTER TABLE babu_adr RENAME TO babu_adr_backup;")
+            print("[SQLITE MIGRATION] Migrated babu_adr to architecture_knowledge and backed up old table.", flush=True)
+        except Exception as e:
+            print(f"[SQLITE MIGRATION WARNING] Legacy migration failed: {e}", flush=True)
+
     cursor.execute("SELECT COUNT(*) FROM architecture_knowledge;")
     if cursor.fetchone()[0] == 0:
         seed_records = [
@@ -2242,7 +2314,7 @@ def retrieve_system_memory_via_sql(query: str) -> str:
         try:
             profile_text = get_user_profile_text("FULL")
             if profile_text:
-                context_parts.append(f"=== SQL USER PROFILE & IDENTITY ===\n{profile_text}")
+                context_parts.append(f"=== K3 - USER IDENTITY & PROFILES ===\n{profile_text}")
         except Exception as e:
             print(f"[SQL MEMORY ERROR] Failed to fetch profile: {e}", flush=True)
 
@@ -2267,7 +2339,7 @@ def retrieve_system_memory_via_sql(query: str) -> str:
                 """)
             rows = cursor.fetchall()
             if rows:
-                part = "=== SQL RECENT GOALS ===\n"
+                part = "=== K2 - SYSTEM RUNTIME GOALS ===\n"
                 for r in rows:
                     part += f"[{r[0]}] Goal ID: {r[1]} | Details: {r[3]}\n"
                 context_parts.append(part)
@@ -2295,7 +2367,7 @@ def retrieve_system_memory_via_sql(query: str) -> str:
                 """)
             rows = cursor.fetchall()
             if rows:
-                part = "=== SQL SYSTEM FAILURES LOGS ===\n"
+                part = "=== K2 - SYSTEM RUNTIME FAILURES ===\n"
                 for r in rows:
                     part += f"[{r[0]}] Goal: {r[1]} | Task: {r[2] or '-'} | Event: {r[3]} | Details: {r[4]}\n"
                 context_parts.append(part)
@@ -2321,7 +2393,7 @@ def retrieve_system_memory_via_sql(query: str) -> str:
                 """)
             rows = cursor.fetchall()
             if rows:
-                part = "=== SQL TEMPORAL TIMELINE EVENTS ===\n"
+                part = "=== K2 - SYSTEM RUNTIME TIMELINE ===\n"
                 for r in rows:
                     part += f"[{r[0]}] [{r[1]}] {r[2]} | Outcome: {r[3] or '-'} | Cause: {r[4] or '-'} | Effect: {r[5] or '-'} | Resolution: {r[6] or '-'} | Confidence: {r[7] or '-'}\n"
                 context_parts.append(part)
@@ -2334,7 +2406,7 @@ def retrieve_system_memory_via_sql(query: str) -> str:
             cursor.execute("SELECT key, data FROM system_memory WHERE key LIKE 'anti_pattern_%' OR key = 'immune_rules'")
             rows = cursor.fetchall()
             if rows:
-                part = "=== SQL IMMUNE SYSTEM ANTI-PATTERNS ===\n"
+                part = "=== K5 - SYSTEM ARCHITECTURE ANTI-PATTERNS ===\n"
                 for r in rows:
                     part += f"[{r[0]}]: {r[1]}\n"
                 context_parts.append(part)
@@ -2347,7 +2419,7 @@ def retrieve_system_memory_via_sql(query: str) -> str:
             cursor.execute("SELECT template_id, template_signature, status, execution_count, success_count FROM trusted_templates")
             rows = cursor.fetchall()
             if rows:
-                part = "=== SQL TRUSTED TEMPLATES ===\n"
+                part = "=== K4 - SYSTEM EXECUTION TEMPLATES ===\n"
                 for r in rows:
                     part += f"Template ID: {r[0]} | Sig: {r[1]} | Status: {r[2]} | Execs: {r[3]} | Successes: {r[4]}\n"
                 context_parts.append(part)
