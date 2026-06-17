@@ -1647,12 +1647,36 @@ def get_babu_age_string() -> str:
     return " and ".join(parts) if len(parts) == 2 else ", ".join(parts)
 
 
+def get_dynamic_self_identity() -> str:
+    """Retrieve real-time introspection stats about the system's operational identity."""
+    try:
+        telemetry = get_telemetry_data(limit=1)
+        aggs = telemetry.get("aggregates", {})
+        total_tokens = aggs.get("total_tokens", 0)
+        total_cost = aggs.get("total_cost", 0.0)
+        rejections = telemetry.get("governance_rejections", 0)
+        violations = telemetry.get("planner_constraint_violations", 0)
+        
+        dynamic_stats = (
+            f"**Real-Time Status & Identity:**\n"
+            f"- **Compute Lifetime:** {total_tokens:,} tokens processed.\n"
+            f"- **Total Operating Cost:** ${total_cost:,.5f} USD.\n"
+            f"- **Current Primary Engine (PA):** `{CURRENT_PA_MODEL}`\n"
+            f"- **Current Deep Engine (Depts):** `{CURRENT_DEPT_MODEL}`\n"
+            f"- **Governance Health:** {rejections} post-execution rejections, {violations} pre-execution planner violations caught.\n"
+        )
+        return dynamic_stats
+    except Exception as e:
+        print(f"[DYNAMIC IDENTITY ERROR] {e}", flush=True)
+        return "**Real-Time Status:** Unavailable at the moment due to telemetry error."
+
 def get_babu_self_context() -> str:
     from datetime import datetime, timezone
     now_utc = datetime.now(timezone.utc)
     import sys
     
     age_str = get_babu_age_string()
+    dynamic_identity = get_dynamic_self_identity()
     
     return f"""=== BABU SELF CONTEXT ===
 - Name: Project BABU (Behavioral Autonomous Bureaucratic Utility)
@@ -1668,6 +1692,8 @@ def get_babu_self_context() -> str:
   * Compiled Cognition: E[Temp] trusted templates for speed-up match caching.
 - Operating Environment: Python {sys.version.split()[0]} on Windows.
 - Authoritative Knowledge: Automated tax, compliance (PF, GST, CSC services), and e-governance assistant.
+
+{dynamic_identity}
 """
 
 
@@ -3379,9 +3405,11 @@ def pa_node(state: BabuState):
 
     # 3. Who are you / Tell me about yourself
     if any(k in lowered_query for k in ("who are you", "tell me about yourself", "about yourself", "know about yourself", "describe yourself", "introduce yourself", "your identity", "what is your name")):
+        dynamic_stats = get_dynamic_self_identity()
         identity_response = (
             "I am **Project BABU** (Behavioral Autonomous Bureaucratic Utility), a next-generation AI agentic assistant "
-            "designed to automate research, analysis, writing, and Google Workspace execution tasks using a decentralized swarm architecture."
+            "designed to automate research, analysis, writing, and Google Workspace execution tasks using a decentralized swarm architecture.\n\n"
+            f"{dynamic_stats}"
         )
         print(f"[PA NODE] Deterministic short-circuit for identity query: '{user_query}'", flush=True)
         return {"messages": state["messages"] + [AIMessage(content=identity_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
