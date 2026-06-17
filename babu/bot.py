@@ -6,6 +6,11 @@ import sys
 import threading
 import time
 BOT_START_TIME = time.time()
+tg_application = None
+LAST_TELEGRAM_SUCCESS_TIME = None
+LAST_FB_SUCCESS_TIME = None
+LAST_GOOGLE_SUCCESS_TIME = None
+LAST_WEB_SUCCESS_TIME = None
 import traceback
 import urllib.request
 from collections import defaultdict, deque
@@ -1589,6 +1594,7 @@ def is_deterministic_faq_query(query: str) -> bool:
         "your architecture", "tell me about your architecture", "how are you built", "how do you work",
         "failures happened", "recent failures", "what are failures", "failures in last", "failures happened in last",
         "system health", "status dashboard", "how are you doing", "what is your status", "health dashboard",
+        "current state", "your current state", "what is your current state", "system status", "system status dashboard",
         "upgrades received", "recent upgrades", "what upgrades", "upgrades did you receive", "upgrades did you recieve", "upgrades in last"
     )
     return any(k in t for k in faq_keywords)
@@ -1688,11 +1694,14 @@ def get_dynamic_self_identity() -> str:
         print(f"[DYNAMIC IDENTITY ERROR] {e}", flush=True)
         return "I am **Project BABU**, a governed multi-agent assistant. (Identity details currently unavailable)."
 
+
 def get_system_health_dashboard() -> str:
     """Generate a comprehensive real-time System Health & Self-Audit Dashboard."""
     import os
     import json
     import time
+    from datetime import datetime, timezone
+    import requests
     
     PRICING_TABLE = {
         "gemini-2.5-pro": (1.25, 5.00),
@@ -1717,6 +1726,43 @@ def get_system_health_dashboard() -> str:
             if key in m_lower:
                 return rates[0] / 1_000_000, rates[1] / 1_000_000
         return 0.15 / 1_000_000, 0.60 / 1_000_000
+
+    def parse_db_timestamp(ts_str):
+        if not ts_str:
+            return None
+        try:
+            cleaned = ts_str.strip()
+            if "." in cleaned:
+                parts = cleaned.split(".")
+                sec_part = parts[1]
+                suffix = ""
+                if sec_part.endswith("Z"):
+                    suffix = "Z"
+                    sec_part = sec_part[:-1]
+                elif "+" in sec_part:
+                    sec_part, suffix = sec_part.split("+", 1)
+                    suffix = "+" + suffix
+                sec_part = sec_part[:6] # microsecond limit
+                cleaned = parts[0] + "." + sec_part + suffix
+            if cleaned.endswith("Z"):
+                cleaned = cleaned[:-1] + "+00:00"
+            return datetime.fromisoformat(cleaned)
+        except Exception:
+            return None
+
+    def format_last_success(last_time):
+        if not last_time:
+            return "Never"
+        diff = time.time() - last_time
+        if diff < 60:
+            return "<1 min ago"
+        mins = int(diff // 60)
+        if mins < 60:
+            return f"{mins} min ago"
+        hours = int(mins // 60)
+        if hours < 24:
+            return f"{hours} hours ago"
+        return f"{int(hours // 24)} days ago"
 
     try:
         conn, is_pg = get_db_connection()
@@ -1773,6 +1819,91 @@ def get_system_health_dashboard() -> str:
                 except Exception:
                     pass
 
+        # Rolling success rates (Last 100 goals and Last 24 hours)
+        cursor.execute("""
+            SELECT timestamp, goal_id, event_type 
+            FROM execution_ledger 
+            WHERE event_type IN ('GOAL_COMPLETED', 'GOAL_FAILED') 
+            ORDER BY event_id DESC
+        """)
+        goal_rows = cursor.fetchall()
+        
+        goals_seen = {}
+        for ts_str, gid, ev_type in goal_rows:
+            if gid not in goals_seen:
+                goals_seen[gid] = (ts_str, ev_type == "GOAL_COMPLETED")
+                
+        parsed_goals = []
+        for gid, (ts_str, succ) in goals_seen.items():
+            dt = parse_db_timestamp(ts_str)
+            parsed_goals.append((dt, succ))
+            
+        parsed_goals.sort(key=lambda x: x[0] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+        
+        # Last 100
+        last_100 = parsed_goals[:100]
+        completed_100 = sum(1 for dt, succ in last_100 if succ)
+        total_100 = len(last_100)
+        success_rate_100 = (completed_100 / total_100 * 100) if total_100 > 0 else 100.0
+        
+        # Last 24h
+        now_utc = datetime.now(timezone.utc)
+        last_24h = [g for g in parsed_goals if g[0] and (now_utc - g[0]).total_seconds() <= 86400]
+        completed_24h = sum(1 for dt, succ in last_24h if succ)
+        total_24h = len(last_24h)
+        success_rate_24h = (completed_24h / total_24h * 100) if total_24h > 0 else 100.0
+
+        # Unresolved Failures Check
+        cursor.execute("""
+            SELECT event_type, timestamp, metadata 
+            FROM execution_ledger 
+            WHERE event_type IN ('EXECUTION_FAIL', 'AUDIT_PRE_FAIL', 'AUDIT_POST_FAIL', 'PLANNER_CONSTRAINT_VIOLATION') 
+            ORDER BY event_id DESC LIMIT 1
+        """)
+        last_fail_row = cursor.fetchone()
+        
+        cursor.execute("""
+            SELECT timestamp 
+            FROM execution_ledger 
+            WHERE event_type = 'GOAL_COMPLETED' 
+            ORDER BY event_id DESC LIMIT 1
+        """)
+        last_comp_row = cursor.fetchone()
+        
+        last_failure_type = None
+        last_failure_ts = None
+        last_failure_reason = ""
+        
+        if last_fail_row:
+            last_failure_type = last_fail_row[0]
+            last_failure_ts = parse_db_timestamp(last_fail_row[1])
+            if last_fail_row[2]:
+                try:
+                    meta = json.loads(last_fail_row[2])
+                    last_failure_reason = meta.get("reason") or meta.get("error") or meta.get("details") or ""
+                except Exception:
+                    pass
+        
+        last_comp_ts = parse_db_timestamp(last_comp_row[0]) if last_comp_row else None
+        
+        is_unresolved = False
+        if last_failure_ts:
+            if not last_comp_ts or last_failure_ts > last_comp_ts:
+                is_unresolved = True
+
+        if is_unresolved:
+            failures_status_str = "DEGRADED (Active issues detected)"
+            failures_nodes_str = (
+                f"- {last_failure_type or 'System Error'}: {last_failure_reason or 'No details'}\n"
+                f"  * Status: Active (Unresolved)\n"
+                f"  * Timestamp: {last_fail_row[1] if last_fail_row else 'Unknown'}"
+            )
+        else:
+            failures_status_str = "All systems operational"
+            failures_nodes_str = "- No active issues detected"
+            if last_fail_row:
+                failures_nodes_str += f"\n- Last failure: {last_failure_type} ({last_failure_reason})\n  * Status: Resolved (Subsequent goals succeeded)"
+
         # Last goal query
         cursor.execute("SELECT metadata FROM execution_ledger WHERE event_type = 'GOAL_RECEIVED' ORDER BY event_id DESC LIMIT 1")
         last_goal_row = cursor.fetchone()
@@ -1797,101 +1928,159 @@ def get_system_health_dashboard() -> str:
 
         cursor.close()
         conn.close()
-
-        # Check Transport/Services status
-        telegram_status = "ONLINE" if os.environ.get("TELEGRAM_BOT_TOKEN") else "OFFLINE"
-        fb_status = "ONLINE" if os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN") else "OFFLINE"
-        db_status = "ONLINE" # DB is checked since queries completed successfully
-        google_status = "ONLINE" if is_google_configured() else "OFFLINE"
-        
-        scheduler_status = "OFFLINE"
-        for th in threading.enumerate():
-            if th.name == "autonomous_scheduler" and th.is_alive():
-                scheduler_status = "ONLINE"
-                break
-                
-        web_dashboard_status = "OFFLINE"
-        for th in threading.enumerate():
-            if th.name == "web_dashboard_health_server" and th.is_alive():
-                web_dashboard_status = "ONLINE"
-                break
-
-        # Calculate uptime
-        uptime_sec = time.time() - BOT_START_TIME
-        days = int(uptime_sec // 86400)
-        hours = int((uptime_sec % 86400) // 3600)
-        mins = int((uptime_sec % 3600) // 60)
-        secs = int(uptime_sec % 60)
-        uptime_parts = []
-        if days > 0:
-            uptime_parts.append(f"{days}d")
-        if hours > 0:
-            uptime_parts.append(f"{hours}h")
-        if mins > 0:
-            uptime_parts.append(f"{mins}m")
-        uptime_parts.append(f"{secs}s")
-        uptime_str = " ".join(uptime_parts)
-
-        # Determine degraded services/failure nodes
-        degraded = []
-        if db_status == "OFFLINE":
-            degraded.append("Database")
-        if scheduler_status == "OFFLINE" and os.environ.get("TELEGRAM_BOT_TOKEN"):
-            degraded.append("Scheduler")
-        if web_dashboard_status == "OFFLINE":
-            degraded.append("Web Dashboard")
-            
-        degraded_str = ", ".join(degraded) if degraded else "All systems operational"
-
-        enabled_services = []
-        if telegram_status == "ONLINE":
-            enabled_services.append("Telegram Interface")
-        if fb_status == "ONLINE":
-            enabled_services.append("Facebook Publishing")
-        if google_status == "ONLINE":
-            enabled_services.append("Google Workspace")
-        if web_dashboard_status == "ONLINE":
-            enabled_services.append("Web Dashboard")
-        services_str = ", ".join(enabled_services) if enabled_services else "None"
-
-        age_str = get_babu_age_string()
-
-        dashboard = (
-            f"=== 📊 SYSTEM HEALTH & SELF-AUDIT DASHBOARD ===\n\n"
-            f"**Identity**\n"
-            f"- Name: Project BABU\n"
-            f"- Version: 3.5.0\n"
-            f"- Age/Uptime: {age_str} / {uptime_str}\n\n"
-            f"**Capabilities**\n"
-            f"- Active PA Model: `{CURRENT_PA_MODEL}`\n"
-            f"- Active Department Model: `{CURRENT_DEPT_MODEL}`\n"
-            f"- Enabled Services: {services_str}\n\n"
-            f"**Health**\n"
-            f"- Database: {db_status}\n"
-            f"- Scheduler: {scheduler_status}\n"
-            f"- Telegram: {telegram_status}\n"
-            f"- Facebook Publishing: {fb_status}\n"
-            f"- Google Workspace: {google_status}\n"
-            f"- Web Dashboard: {web_dashboard_status}\n\n"
-            f"**Telemetry**\n"
-            f"- Total Goals: {total_goals}\n"
-            f"- Completed Goals: {completed_goals}\n"
-            f"- Failed Goals: {failed_goals}\n"
-            f"- Success Rate: {success_rate:.1f}%\n"
-            f"- Tokens Processed: {total_tokens:,}\n"
-            f"- Cost Incurred: ${total_cost:,.4f}\n"
-            f"- Governance Blocks: {gov_blocks}\n\n"
-            f"**Recent Activity**\n"
-            f"- Last Goal: {last_goal}\n"
-            f"- Last Completed Goal: {last_completed}\n"
-            f"- Last Failure: {last_failure}\n\n"
-            f"**Failure Nodes**\n"
-            f"- {degraded_str}"
-        )
-        return dashboard
+        db_status = "ONLINE"
     except Exception as e:
-        print(f"[DASHBOARD ERROR] {e}", flush=True)
-        return "System Health Dashboard currently unavailable."
+        db_status = f"OFFLINE ({str(e)[:40]})"
+        total_goals = completed_goals = failed_goals = gov_blocks = 0
+        success_rate = success_rate_100 = success_rate_24h = 100.0
+        total_tokens = 0
+        total_cost = 0.0
+        last_goal = last_completed = "Unknown (DB Offline)"
+        last_failure = "Unknown (DB Offline)"
+        failures_status_str = f"DB Connection Failure: {str(e)[:40]}"
+        failures_nodes_str = f"- Error connecting to database: {str(e)}"
+
+    # Check Transport/Services status
+    global LAST_TELEGRAM_SUCCESS_TIME, LAST_FB_SUCCESS_TIME, LAST_GOOGLE_SUCCESS_TIME, LAST_WEB_SUCCESS_TIME
+
+    # Telegram
+    telegram_configured = bool(os.environ.get("TELEGRAM_BOT_TOKEN"))
+    telegram_operational = False
+    telegram_reason = "Not configured"
+    if telegram_configured:
+        if tg_application and getattr(tg_application, "running", False):
+            try:
+                token = os.environ.get("TELEGRAM_BOT_TOKEN")
+                r = requests.get(f"https://api.telegram.org/bot{token}/getMe", timeout=1.5)
+                if r.status_code == 200:
+                    telegram_operational = True
+                    telegram_reason = "Running & connected"
+                    LAST_TELEGRAM_SUCCESS_TIME = time.time()
+                else:
+                    telegram_reason = f"API error (HTTP {r.status_code})"
+            except Exception as e:
+                telegram_reason = f"API unreachable: {str(e)[:25]}"
+        else:
+            telegram_reason = "Polling not active"
+
+    # Facebook
+    fb_configured = bool(os.environ.get("FACEBOOK_PAGE_ID") and os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN"))
+    fb_operational = False
+    fb_reason = "Not configured"
+    if fb_configured:
+        try:
+            page_id = os.environ.get("FACEBOOK_PAGE_ID")
+            page_token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN")
+            r = requests.get(f"https://graph.facebook.com/v19.0/{page_id}?access_token={page_token}", timeout=1.5)
+            if r.status_code == 200:
+                fb_operational = True
+                fb_reason = "API authorized"
+                LAST_FB_SUCCESS_TIME = time.time()
+            else:
+                fb_reason = f"API error (HTTP {r.status_code})"
+        except Exception as e:
+            fb_reason = f"API unreachable: {str(e)[:25]}"
+
+    # Google Workspace
+    google_configured = is_google_configured()
+    google_operational = False
+    google_reason = "Not configured"
+    if google_configured:
+        try:
+            from google_service import get_google_creds
+            creds = get_google_creds()
+            if creds and (creds.valid or creds.refresh_token):
+                google_operational = True
+                google_reason = "OAuth Authorized"
+                LAST_GOOGLE_SUCCESS_TIME = time.time()
+            else:
+                google_reason = "Token expired/invalid"
+        except Exception as e:
+            google_reason = f"Auth check failed: {str(e)[:25]}"
+
+    # Web Dashboard
+    web_configured = True
+    web_operational = False
+    web_reason = "Server thread not active"
+    for th in threading.enumerate():
+        if th.name == "web_dashboard_health_server" and th.is_alive():
+            web_operational = True
+            web_reason = "Running"
+            LAST_WEB_SUCCESS_TIME = time.time()
+            break
+
+    # Calculate uptime
+    uptime_sec = time.time() - BOT_START_TIME
+    days = int(uptime_sec // 86400)
+    hours = int((uptime_sec % 86400) // 3600)
+    mins = int((uptime_sec % 3600) // 60)
+    secs = int(uptime_sec % 60)
+    uptime_parts = []
+    if days > 0:
+        uptime_parts.append(f"{days}d")
+    if hours > 0:
+        uptime_parts.append(f"{hours}h")
+    if mins > 0:
+        uptime_parts.append(f"{mins}m")
+    uptime_parts.append(f"{secs}s")
+    uptime_str = " ".join(uptime_parts)
+
+    block_rate = (gov_blocks / total_goals * 100) if total_goals > 0 else 0.0
+    age_str = get_babu_age_string()
+
+    dashboard = (
+        f"=== 📊 SYSTEM HEALTH & SELF-AUDIT DASHBOARD ===\n\n"
+        f"**System Health Status**\n"
+        f"- Overall Health: {failures_status_str}\n\n"
+        f"**Identity**\n"
+        f"- Name: Project BABU\n"
+        f"- Version: 3.5.0\n"
+        f"- System Age: {age_str}\n"
+        f"- Current Process Uptime: {uptime_str}\n\n"
+        f"**Capabilities**\n"
+        f"- Active PA Model: `{CURRENT_PA_MODEL}`\n"
+        f"- Active Department Model: `{CURRENT_DEPT_MODEL}`\n\n"
+        f"**Services & Transport Layers**\n"
+        f"- Telegram:\n"
+        f"  * Configured: {'Yes' if telegram_configured else 'No'}\n"
+        f"  * Operational: {'Yes' if telegram_operational else 'No'}\n"
+        f"  * Reason: {telegram_reason}\n"
+        f"  * Last Success: {format_last_success(LAST_TELEGRAM_SUCCESS_TIME)}\n"
+        f"- Facebook Publishing:\n"
+        f"  * Configured: {'Yes' if fb_configured else 'No'}\n"
+        f"  * Operational: {'Yes' if fb_operational else 'No'}\n"
+        f"  * Reason: {fb_reason}\n"
+        f"  * Last Success: {format_last_success(LAST_FB_SUCCESS_TIME)}\n"
+        f"- Google Workspace:\n"
+        f"  * Configured: {'Yes' if google_configured else 'No'}\n"
+        f"  * Operational: {'Yes' if google_operational else 'No'}\n"
+        f"  * Reason: {google_reason}\n"
+        f"  * Last Success: {format_last_success(LAST_GOOGLE_SUCCESS_TIME)}\n"
+        f"- Web Dashboard:\n"
+        f"  * Configured: Yes\n"
+        f"  * Operational: {'Yes' if web_operational else 'No'}\n"
+        f"  * Reason: {web_reason}\n"
+        f"  * Last Success: {format_last_success(LAST_WEB_SUCCESS_TIME)}\n\n"
+        f"**Telemetry & Goals**\n"
+        f"- Goals Received: {total_goals}\n"
+        f"- Completed Goals: {completed_goals}\n"
+        f"- Failed Goals: {failed_goals}\n"
+        f"- Governance Blocks: {gov_blocks}\n"
+        f"- Block Rate: {block_rate:.1f}%\n"
+        f"- Lifetime Success Rate: {success_rate:.1f}%\n"
+        f"- Last 100 Goals Success Rate: {success_rate_100:.1f}%\n"
+        f"- Last 24h Success Rate: {success_rate_24h:.1f}%\n"
+        f"- Tokens Processed: {total_tokens:,}\n"
+        f"- Cost Incurred: ${total_cost:,.4f}\n\n"
+        f"**Recent Activity**\n"
+        f"- Last Goal: {last_goal}\n"
+        f"- Last Completed Goal: {last_completed}\n"
+        f"- Last Failure: {last_failure}\n\n"
+        f"**Failure Nodes**\n"
+        f"- Status: {failures_status_str}\n"
+        f"{failures_nodes_str}"
+    )
+    return dashboard
 
 def get_babu_self_context() -> str:
     from datetime import datetime, timezone
@@ -3639,7 +3828,7 @@ def pa_node(state: BabuState):
         return {"messages": state["messages"] + [AIMessage(content=identity_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
         
     # 3.5 System Health Dashboard
-    if any(k in lowered_query for k in ("system health", "status dashboard", "how are you doing", "what is your status", "health dashboard")):
+    if any(k in lowered_query for k in ("system health", "status dashboard", "how are you doing", "what is your status", "health dashboard", "current state", "your current state", "what is your current state", "system status", "system status dashboard")):
         dashboard_response = get_system_health_dashboard()
         print(f"[PA NODE] Deterministic short-circuit for health dashboard query: '{user_query}'", flush=True)
         return {"messages": state["messages"] + [AIMessage(content=dashboard_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
@@ -7350,6 +7539,8 @@ def extract_text_from_document(file_path: str, max_chars: int = 15000) -> str:
 
 
 async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global LAST_TELEGRAM_SUCCESS_TIME
+    LAST_TELEGRAM_SUCCESS_TIME = time.time()
     chat_id = update.effective_chat.id
     if WAITING_FOR_TOPIC.get(chat_id):
         topic = update.message.text.strip() if update.message.text else ""
@@ -8010,6 +8201,7 @@ if __name__ == "__main__":
     google_status = f"Google Workspace ({'active' if is_google_configured() else 'NOT configured'})"
     print(f"--- ARIA IS LIVE | Memory | Web Search | Knowledge Base | {google_status} | Unified Swarm ---", flush=True)
     bot = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    tg_application = bot
     
     # Start autonomous social media manager scheduler
     start_social_scheduler(bot)
