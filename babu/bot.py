@@ -1773,7 +1773,16 @@ def is_system_aware_query(query: str) -> bool:
         "introduce yourself", "who are you", "what is your name", "your identity",
         "how old are you", "your age", "date of birth", "dob of babu"
     }
-    return any(kw in q for kw in keywords)
+    if any(kw in q for kw in keywords):
+        return True
+        
+    # Heuristics for implicit system queries
+    if "you " in q or "your " in q or "you've" in q or "did you" in q:
+        system_terms = ["upgrade", "update", "code", "system", "feature", "recieve", "receive", "new capability"]
+        if any(term in q for term in system_terms):
+            return True
+            
+    return False
 
 
 def requires_web_search(query: str) -> bool:
