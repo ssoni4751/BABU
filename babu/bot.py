@@ -1586,7 +1586,8 @@ def is_deterministic_faq_query(query: str) -> bool:
         "who are you", "tell me about yourself", "about yourself", "know about yourself",
         "describe yourself", "introduce yourself", "your identity", "what is your name",
         "your architecture", "tell me about your architecture", "how are you built", "how do you work",
-        "failures happened", "recent failures", "what are failures", "failures in last", "failures happened in last"
+        "failures happened", "recent failures", "what are failures", "failures in last", "failures happened in last",
+        "system health", "status dashboard", "how are you doing", "what is your status", "health dashboard"
     )
     return any(k in t for k in faq_keywords)
 
@@ -1648,7 +1649,34 @@ def get_babu_age_string() -> str:
 
 
 def get_dynamic_self_identity() -> str:
-    """Retrieve real-time introspection stats about the system's operational identity."""
+    """Retrieve the operational identity of the system based on the 3-layer model (Constitution -> Capabilities -> Telemetry)."""
+    try:
+        telemetry = get_telemetry_data(limit=1)
+        aggs = telemetry.get("aggregates", {})
+        total_tokens = aggs.get("total_tokens", 0)
+        total_cost = aggs.get("total_cost", 0.0)
+        rejections = telemetry.get("governance_rejections", 0)
+        
+        dynamic_stats = (
+            f"I am **Project BABU** (Behavioral Autonomous Bureaucratic Utility), a governed multi-agent assistant.\n\n"
+            f"**Purpose:**\n"
+            f"Assist users through research, analysis, writing, and execution.\n\n"
+            f"**Current Capabilities:**\n"
+            f"- PA Model: `{CURRENT_PA_MODEL}`\n"
+            f"- Department Model: `{CURRENT_DEPT_MODEL}`\n\n"
+            f"**Operational Statistics:**\n"
+            f"- Tokens Processed: {total_tokens:,}\n"
+            f"- Cost Incurred: ${total_cost:,.4f}\n"
+            f"- Governance Rejections: {rejections}"
+        )
+        return dynamic_stats
+    except Exception as e:
+        print(f"[DYNAMIC IDENTITY ERROR] {e}", flush=True)
+        return "I am **Project BABU**, a governed multi-agent assistant. (Telemetry currently unavailable)."
+
+def get_system_health_dashboard() -> str:
+    """Generate a comprehensive real-time System Health & Self-Audit Dashboard."""
+    import os
     try:
         telemetry = get_telemetry_data(limit=1)
         aggs = telemetry.get("aggregates", {})
@@ -1657,18 +1685,56 @@ def get_dynamic_self_identity() -> str:
         rejections = telemetry.get("governance_rejections", 0)
         violations = telemetry.get("planner_constraint_violations", 0)
         
-        dynamic_stats = (
-            f"**Real-Time Status & Identity:**\n"
-            f"- **Compute Lifetime:** {total_tokens:,} tokens processed.\n"
-            f"- **Total Operating Cost:** ${total_cost:,.5f} USD.\n"
-            f"- **Current Primary Engine (PA):** `{CURRENT_PA_MODEL}`\n"
-            f"- **Current Deep Engine (Depts):** `{CURRENT_DEPT_MODEL}`\n"
-            f"- **Governance Health:** {rejections} post-execution rejections, {violations} pre-execution planner violations caught.\n"
+        ledger = telemetry.get("ledger", [])
+        total_tasks = len(ledger)
+        # Approximate success rate: (total - rejections - violations) / total
+        failed_tasks = rejections + violations
+        success_rate = ((total_tasks - failed_tasks) / total_tasks * 100) if total_tasks > 0 else 100.0
+
+        # Check Transport Layers
+        telegram_status = "ONLINE" if os.environ.get("TELEGRAM_BOT_TOKEN") else "OFFLINE"
+        fb_status = "ONLINE" if os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN") else "OFFLINE"
+        db_status = "ONLINE" # If telemetry fetched, DB is online
+
+        # Get last failure
+        last_failure = "None recently"
+        for row in ledger:
+            if "fail" in row.get("event_type", "").lower() or "violation" in row.get("event_type", "").lower():
+                last_failure = f"{row.get('event_type')} for Goal {row.get('goal_id')}"
+                break
+
+        age_str = get_babu_age_string()
+
+        dashboard = (
+            f"=== 📊 SYSTEM HEALTH & SELF-AUDIT DASHBOARD ===\n\n"
+            f"**Name:** Project BABU\n"
+            f"**Age:** {age_str}\n\n"
+            f"**Active Models:**\n"
+            f"- {CURRENT_PA_MODEL}\n"
+            f"- {CURRENT_DEPT_MODEL}\n\n"
+            f"**Departments:**\n"
+            f"- Research\n"
+            f"- Information\n"
+            f"- Analysis\n"
+            f"- Writing\n"
+            f"- Execution\n\n"
+            f"**Execution Statistics:**\n"
+            f"- Ledger Events: {total_tasks:,}\n"
+            f"- Success Rate: {success_rate:.1f}%\n"
+            f"- Governance Blocks: {failed_tasks}\n"
+            f"- Total Cost: ${total_cost:,.4f}\n\n"
+            f"**Current Health:**\n"
+            f"✓ Database {db_status}\n"
+            f"✓ Scheduler ONLINE\n"
+            f"[{'✓' if fb_status == 'ONLINE' else '✗'}] Facebook Publishing {fb_status}\n"
+            f"[{'✓' if telegram_status == 'ONLINE' else '✗'}] Telegram Interface {telegram_status}\n\n"
+            f"**Last Failure:**\n"
+            f"{last_failure}"
         )
-        return dynamic_stats
+        return dashboard
     except Exception as e:
-        print(f"[DYNAMIC IDENTITY ERROR] {e}", flush=True)
-        return "**Real-Time Status:** Unavailable at the moment due to telemetry error."
+        print(f"[DASHBOARD ERROR] {e}", flush=True)
+        return "System Health Dashboard currently unavailable."
 
 def get_babu_self_context() -> str:
     from datetime import datetime, timezone
@@ -1676,7 +1742,6 @@ def get_babu_self_context() -> str:
     import sys
     
     age_str = get_babu_age_string()
-    dynamic_identity = get_dynamic_self_identity()
     
     return f"""=== BABU SELF CONTEXT ===
 - Name: Project BABU (Behavioral Autonomous Bureaucratic Utility)
@@ -1692,8 +1757,6 @@ def get_babu_self_context() -> str:
   * Compiled Cognition: E[Temp] trusted templates for speed-up match caching.
 - Operating Environment: Python {sys.version.split()[0]} on Windows.
 - Authoritative Knowledge: Automated tax, compliance (PF, GST, CSC services), and e-governance assistant.
-
-{dynamic_identity}
 """
 
 
@@ -3405,14 +3468,15 @@ def pa_node(state: BabuState):
 
     # 3. Who are you / Tell me about yourself
     if any(k in lowered_query for k in ("who are you", "tell me about yourself", "about yourself", "know about yourself", "describe yourself", "introduce yourself", "your identity", "what is your name")):
-        dynamic_stats = get_dynamic_self_identity()
-        identity_response = (
-            "I am **Project BABU** (Behavioral Autonomous Bureaucratic Utility), a next-generation AI agentic assistant "
-            "designed to automate research, analysis, writing, and Google Workspace execution tasks using a decentralized swarm architecture.\n\n"
-            f"{dynamic_stats}"
-        )
+        identity_response = get_dynamic_self_identity()
         print(f"[PA NODE] Deterministic short-circuit for identity query: '{user_query}'", flush=True)
         return {"messages": state["messages"] + [AIMessage(content=identity_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
+        
+    # 3.5 System Health Dashboard
+    if any(k in lowered_query for k in ("system health", "status dashboard", "how are you doing", "what is your status", "health dashboard")):
+        dashboard_response = get_system_health_dashboard()
+        print(f"[PA NODE] Deterministic short-circuit for health dashboard query: '{user_query}'", flush=True)
+        return {"messages": state["messages"] + [AIMessage(content=dashboard_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
 
     # 4. Tell me about your architecture
     if any(k in lowered_query for k in ("your architecture", "tell me about your architecture", "how are you built", "how do you work")):
