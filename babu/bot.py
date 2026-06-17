@@ -1583,7 +1583,7 @@ def is_deterministic_faq_query(query: str) -> bool:
     faq_keywords = (
         "current time", "time in ist", "time here in ist", "what is the time", "what time is it",
         "how old are you", "how old you are", "your age", "what is your age",
-        "who are you", "tell me about yourself", "about yourself", "know about yourself",
+        "who are you", "tell me about yourself", "about yourself", "know about yourself", "about you", "tell me about you", "know about you",
         "describe yourself", "introduce yourself", "your identity", "what is your name",
         "your architecture", "tell me about your architecture", "how are you built", "how do you work",
         "failures happened", "recent failures", "what are failures", "failures in last", "failures happened in last",
@@ -1769,7 +1769,7 @@ def is_system_aware_query(query: str) -> bool:
         "why did this task fail", "why did my task fail", "why did task fail",
         "how does babu work", "how do you work", "bipartite auditor", "what governance rule",
         "what recurring problems", "what fixes were previously applied",
-        "about yourself", "know about yourself", "describe yourself",
+        "about yourself", "know about yourself", "describe yourself", "about you", "tell me about you", "know about you",
         "introduce yourself", "who are you", "what is your name", "your identity",
         "how old are you", "your age", "date of birth", "dob of babu"
     }
@@ -6334,7 +6334,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 self.wfile.write(body)
             elif self.path in ("/api/telemetry", "/api/telemetry/"):
                 try:
-                    data = get_telemetry_data(limit=100)
+                    data = get_telemetry_data(limit=1000)
                     body = json.dumps(data).encode("utf-8")
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
