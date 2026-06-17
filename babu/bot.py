@@ -133,6 +133,38 @@ def init_postgres_db():
                 cursor.execute(f"ALTER TABLE babu_temporal_timeline ADD COLUMN {col} {col_type};")
             except Exception:
                 pass
+        cursor.execute("DROP TABLE IF EXISTS babu_adr;")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS architecture_knowledge (
+                record_id TEXT PRIMARY KEY,
+                record_type TEXT NOT NULL,
+                title TEXT NOT NULL,
+                phase TEXT,
+                problem TEXT,
+                decision TEXT,
+                reason TEXT,
+                outcome TEXT,
+                tradeoff TEXT,
+                impact_score INTEGER,
+                supersedes TEXT,
+                status TEXT DEFAULT 'Active',
+                timestamp TEXT
+            );
+        """)
+        cursor.execute("SELECT COUNT(*) FROM architecture_knowledge;")
+        if cursor.fetchone()[0] == 0:
+            seed_records = [
+                ("ADR-001", "ADR", "Dynamic Imports", "Phase 1", "Render memory pressure (512MB RAM cap limits worker capacity)", "Move heavy imports to local runtime scope", "Reduce startup memory usage by ~100MB+, avoiding OOM kills on startup", "Successfully kept startup memory footprint at ~310MB", "Slightly slower first invocation/execution latency for target tasks due to on-demand loading, but achieves high system stability", 8, None, "Active", "2026-05-27T08:00:00Z"),
+                ("ADR-002", "ADR", "Runtime Index", "Phase 2", "System-state queries (identity, health, telemetry) incorrectly routed through planner and web search, causing high token costs and latency", "Introduce runtime_index.md and deterministic query routing", "Prevent LLMs from planning external web search/research for internal system awareness", "Zero-token system introspection and deterministic response within milliseconds", "Static/manual mapping of system-aware queries requires maintainers to register keywords in bot code", 9, None, "Active", "2026-06-11T12:00:00Z"),
+                ("ADR-003", "ADR", "Gemini Embeddings", "Phase 3", "OpenAI dependency and embedding API cost quota limits causing RAG failures", "Migrate to Gemini embedding-001 model", "Switch to a free, highly capable embedding API with LangChain integration", "Free embedding pipeline restoring search functionality", "Strict rate limits on free-tier Gemini API, handled via staged rate-limiting fallback gateways", 7, None, "Active", "2026-06-17T06:00:00Z"),
+                ("POSTMORTEM-001", "POSTMORTEM", "Telegram Outage Incident", "Phase 3", "Transport layer unavailable (webhook timeouts and network blocks)", "Implement async polling failsafe and local console simulation", "Ensure core execution and debugging is not blocked by third-party API availability", "Core loop decoupled from messaging network state", "Console simulator does not test webhooks/network edge cases directly", 6, None, "Active", "2026-06-17T08:00:00Z"),
+                ("LESSON-001", "LESSON", "Self-Awareness Hierarchy (K1-K7)", "Phase 3", "Lack of semantic boundary organization leading to retrieval confusion", "Formally register Knowledge Classes (K1-K7) inside runtime routing", "Organize self-awareness data: K1 Identity, K2 Runtime, K3 User, K4 Execution, K5 Architecture, K6 Domain, K7 External", "High-precision intent routing and scoped RAG retrieval", "Requires categorizing user queries into explicit knowledge classes", 8, None, "Active", "2026-06-17T09:00:00Z")
+            ]
+            for rec in seed_records:
+                cursor.execute("""
+                    INSERT INTO architecture_knowledge (record_id, record_type, title, phase, problem, decision, reason, outcome, tradeoff, impact_score, supersedes, status, timestamp)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                """, rec)
         conn.commit()
         cursor.close()
         conn.close()
@@ -219,6 +251,38 @@ def init_durable_checkpoint_db():
             cursor.execute(f"ALTER TABLE babu_temporal_timeline ADD COLUMN {col} {col_type};")
         except Exception:
             pass
+    cursor.execute("DROP TABLE IF EXISTS babu_adr;")
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS architecture_knowledge (
+            record_id TEXT PRIMARY KEY,
+            record_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            phase TEXT,
+            problem TEXT,
+            decision TEXT,
+            reason TEXT,
+            outcome TEXT,
+            tradeoff TEXT,
+            impact_score INTEGER,
+            supersedes TEXT,
+            status TEXT DEFAULT 'Active',
+            timestamp TEXT
+        );
+    """)
+    cursor.execute("SELECT COUNT(*) FROM architecture_knowledge;")
+    if cursor.fetchone()[0] == 0:
+        seed_records = [
+            ("ADR-001", "ADR", "Dynamic Imports", "Phase 1", "Render memory pressure (512MB RAM cap limits worker capacity)", "Move heavy imports to local runtime scope", "Reduce startup memory usage by ~100MB+, avoiding OOM kills on startup", "Successfully kept startup memory footprint at ~310MB", "Slightly slower first invocation/execution latency for target tasks due to on-demand loading, but achieves high system stability", 8, None, "Active", "2026-05-27T08:00:00Z"),
+            ("ADR-002", "ADR", "Runtime Index", "Phase 2", "System-state queries (identity, health, telemetry) incorrectly routed through planner and web search, causing high token costs and latency", "Introduce runtime_index.md and deterministic query routing", "Prevent LLMs from planning external web search/research for internal system awareness", "Zero-token system introspection and deterministic response within milliseconds", "Static/manual mapping of system-aware queries requires maintainers to register keywords in bot code", 9, None, "Active", "2026-06-11T12:00:00Z"),
+            ("ADR-003", "ADR", "Gemini Embeddings", "Phase 3", "OpenAI dependency and embedding API cost quota limits causing RAG failures", "Migrate to Gemini embedding-001 model", "Switch to a free, highly capable embedding API with LangChain integration", "Free embedding pipeline restoring search functionality", "Strict rate limits on free-tier Gemini API, handled via staged rate-limiting fallback gateways", 7, None, "Active", "2026-06-17T06:00:00Z"),
+            ("POSTMORTEM-001", "POSTMORTEM", "Telegram Outage Incident", "Phase 3", "Transport layer unavailable (webhook timeouts and network blocks)", "Implement async polling failsafe and local console simulation", "Ensure core execution and debugging is not blocked by third-party API availability", "Core loop decoupled from messaging network state", "Console simulator does not test webhooks/network edge cases directly", 6, None, "Active", "2026-06-17T08:00:00Z"),
+            ("LESSON-001", "LESSON", "Self-Awareness Hierarchy (K1-K7)", "Phase 3", "Lack of semantic boundary organization leading to retrieval confusion", "Formally register Knowledge Classes (K1-K7) inside runtime routing", "Organize self-awareness data: K1 Identity, K2 Runtime, K3 User, K4 Execution, K5 Architecture, K6 Domain, K7 External", "High-precision intent routing and scoped RAG retrieval", "Requires categorizing user queries into explicit knowledge classes", 8, None, "Active", "2026-06-17T09:00:00Z")
+        ]
+        for rec in seed_records:
+            cursor.execute("""
+                INSERT INTO architecture_knowledge (record_id, record_type, title, phase, problem, decision, reason, outcome, tradeoff, impact_score, supersedes, status, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """, rec)
     conn.commit()
     return conn
 
@@ -1595,7 +1659,12 @@ def is_deterministic_faq_query(query: str) -> bool:
         "failures happened", "recent failures", "what are failures", "failures in last", "failures happened in last",
         "system health", "status dashboard", "how are you doing", "what is your status", "health dashboard",
         "current state", "your current state", "what is your current state", "system status", "system status dashboard",
-        "upgrades received", "recent upgrades", "what upgrades", "upgrades did you receive", "upgrades did you recieve", "upgrades in last"
+        "upgrades received", "recent upgrades", "what upgrades", "upgrades did you receive", "upgrades did you recieve", "upgrades in last",
+        "upgrade received", "recent upgrade", "what upgrade", "upgrade did you receive", "upgrade did you recieve", "upgrade in last",
+        "tradeoff", "tradeoffs", "architectural tradeoffs", "architectural tradeoff",
+        "highest impact", "largest impact", "biggest impact", "most impact",
+        "evolution", "evolve", "history", "timeline", "adr", "architecture decision",
+        "solve", "incident", "postmortem", "lesson", "milestone"
     )
     return any(k in t for k in faq_keywords)
 
@@ -2117,7 +2186,9 @@ def is_system_aware_query(query: str) -> bool:
         "what recurring problems", "what fixes were previously applied",
         "about yourself", "know about yourself", "describe yourself", "about you", "tell me about you", "know about you",
         "introduce yourself", "who are you", "what is your name", "your identity",
-        "how old are you", "your age", "date of birth", "dob of babu"
+        "how old are you", "your age", "date of birth", "dob of babu",
+        "adr", "architecture decision", "tradeoff", "lessons learned", "evolution",
+        "architecture report", "system upgrades", "gemini chosen", "dynamic imports", "runtime_index"
     }
     if any(kw in q for kw in keywords):
         return True
@@ -2282,6 +2353,31 @@ def retrieve_system_memory_via_sql(query: str) -> str:
                 context_parts.append(part)
         except Exception as e:
             print(f"[SQL MEMORY ERROR] Failed to fetch templates: {e}", flush=True)
+            
+    # 7. Architecture Decisions & Knowledge (AKS)
+    if any(k in q_lower for k in ("adr", "architecture", "tradeoff", "postmortem", "lesson", "evolution", "upgrades", "gemini", "dynamic import", "runtime index", "supersede", "impact_score", "milestone", "hierarchy")):
+        try:
+            cursor.execute("""
+                SELECT record_id, record_type, title, phase, problem, decision, reason, outcome, tradeoff, impact_score, supersedes, status, timestamp 
+                FROM architecture_knowledge ORDER BY record_id ASC
+            """)
+            rows = cursor.fetchall()
+            if rows:
+                part = "=== K5 - ARCHITECTURE KNOWLEDGE SYSTEM (AKS) ===\n"
+                for r in rows:
+                    part += (
+                        f"[{r[1]}] ID: {r[0]} | Title: {r[2]} | Phase: {r[3]} | Status: {r[11]} | Impact Score: {r[9]}\n"
+                        f"- Problem: {r[4]}\n"
+                        f"- Decision: {r[5]}\n"
+                        f"- Reason: {r[6]}\n"
+                        f"- Outcome: {r[7]}\n"
+                        f"- Trade-off: {r[8] or 'None'}\n"
+                        f"- Supersedes: {r[10] or 'None'}\n"
+                        f"- Date: {r[12]}\n\n"
+                    )
+                context_parts.append(part.strip())
+        except Exception as e:
+            print(f"[SQL MEMORY ERROR] Failed to fetch architecture knowledge: {e}", flush=True)
             
     cursor.close()
     conn.close()
@@ -3833,24 +3929,110 @@ def pa_node(state: BabuState):
         print(f"[PA NODE] Deterministic short-circuit for health dashboard query: '{user_query}'", flush=True)
         return {"messages": state["messages"] + [AIMessage(content=dashboard_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
 
-    # 3.6 Upgrades Received / Recent Upgrades
-    if any(k in lowered_query for k in ("upgrades received", "recent upgrades", "what upgrades", "upgrades did you receive", "upgrades did you recieve", "upgrades in last")):
-        upgrades_response = (
-            "=== 🚀 RECENT SYSTEM UPGRADES ===\n\n"
-            "Project BABU has recently received key upgrades across three distinct developmental phases:\n\n"
-            "**Phase 1: Render Stability & Memory Insulation**\n"
-            "- **Dynamic Imports:** Moved large modules (e.g. googleapiclient) to dynamic, local imports, reducing startup memory usage by ~100MB+.\n"
-            "- **Proactive Swarm GC:** Integrated manual `gc.collect()` garbage collection at worker boundary zones, capping memory footprint at ~310MB on Render's 512MB RAM cap.\n\n"
-            "**Phase 2: Swarm Distillation & Embedding Modernization**\n"
-            "- **Google Gemini Embeddings:** Modernized the vector database ingestion layer to use free Google Gemini (`models/embedding-001`) instead of paid OpenAI APIs.\n"
-            "- **Staged Compression Gateways:** Added rate-limiting failover logic to bypass text compression and use raw context when facing model quota limits.\n\n"
-            "**Phase 3: Real-time Telemetry & Deterministic Guardrails**\n"
-            "- **Telemetry Ledger Expansion:** Increased `/api/telemetry` operation log cap from 100 to 1000 items.\n"
-            "- **Runtime Introspection Index:** Created `runtime_index.md` to map internal knowledge routing, avoiding unnecessary web searches.\n"
-            "- **Deterministic Routing:** Added high-performance detours to bypass LLM planning for self-identity, time, status, health dashboard, and upgrades queries.\n"
-            "- **Real-time Health Dashboard:** Built a goal-level success/rate dashboard showing execution statistics, cost tracking, token metrics, and active background threads."
-        )
-        print(f"[PA NODE] Deterministic short-circuit for upgrades query: '{user_query}'", flush=True)
+    # 3.6 Upgrades / ADR / Architecture Decisions / System Evolution / AKS
+    if any(k in lowered_query for k in ("upgrades received", "recent upgrades", "what upgrades", "upgrades did you receive", "upgrades did you recieve", "upgrades in last", "upgrade received", "recent upgrade", "what upgrade", "upgrade did you receive", "upgrade did you recieve", "upgrade in last", "adr", "architecture decision", "tradeoff", "tradeoffs", "lessons learned", "evolution", "upgrades", "upgrade", "gemini", "dynamic imports", "runtime_index", "postmortem", "lesson", "incident", "impact_score", "highest impact", "largest impact", "biggest impact", "most impact", "supersedes", "solve", "evolve", "hierarchy")):
+        conn, is_pg = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT record_id, record_type, title, phase, problem, decision, reason, outcome, tradeoff, impact_score, supersedes, status, timestamp 
+                FROM architecture_knowledge ORDER BY record_id ASC
+            """)
+            rows = cursor.fetchall()
+            if rows:
+                # Case 1: Comparative / Highest Impact
+                if any(k in lowered_query for k in ("largest impact", "biggest impact", "highest impact", "most impact", "largest architectural impact")):
+                    sorted_by_impact = sorted(rows, key=lambda x: x[9] or 0, reverse=True)
+                    highest = sorted_by_impact[0]
+                    upgrades_response = (
+                        f"### 📈 Highest Architectural Impact Upgrade\n"
+                        f"The upgrade with the highest architectural impact score is **{highest[2]}** ({highest[0]}) with an **Impact Score of {highest[9]}**.\n\n"
+                        f"- **Type:** {highest[1]}\n"
+                        f"- **Problem:** {highest[4]}\n"
+                        f"- **Decision:** {highest[5]}\n"
+                        f"- **Reason:** {highest[6]}\n"
+                        f"- **Outcome:** {highest[7]}\n"
+                        f"- **Trade-off:** {highest[8]}"
+                    )
+                # Case 2: Tradeoffs
+                elif "tradeoff" in lowered_query:
+                    specific_row = None
+                    for r in rows:
+                        # check if query specifies imports or index
+                        if r[0].lower() in lowered_query or any(w in r[2].lower().split() for w in lowered_query.split() if len(w) > 3):
+                            specific_row = r
+                            break
+                    if specific_row:
+                        upgrades_response = (
+                            f"### ⚖️ Tradeoffs for {specific_row[2]} ({specific_row[0]})\n"
+                            f"For the decision to **{specific_row[5]}**, the tradeoffs are:\n"
+                            f"- **Memory savings:** {specific_row[7]}\n"
+                            f"- **vs:** {specific_row[8]}"
+                        )
+                    else:
+                        lines = ["### ⚖️ Architectural Tradeoffs\nHere are the tradeoffs for BABU's major decisions:\n"]
+                        for r in rows:
+                            lines.append(f"- **{r[2]}** ({r[0]}): {r[8] or 'None'}")
+                        upgrades_response = "\n".join(lines)
+                # Case 3: Evolution timeline
+                elif any(k in lowered_query for k in ("evolve", "evolution", "timeline", "history")):
+                    phases = {}
+                    for r in rows:
+                        ph = r[3] or "General"
+                        if ph not in phases:
+                            phases[ph] = []
+                        phases[ph].append(f"  * **{r[2]}** ({r[0]} - {r[1]}): {r[4]} -> Decision: {r[5]}")
+                    
+                    lines = ["### 🚀 BABU ARCHITECTURAL EVOLUTION"]
+                    for ph in sorted(phases.keys()):
+                        lines.append(f"\n#### 📍 {ph}")
+                        lines.extend(phases[ph])
+                    upgrades_response = "\n".join(lines)
+                # Case 4: Specific problem / why query matching
+                else:
+                    specific_row = None
+                    for r in rows:
+                        # match record ID or title keywords
+                        title_words = [w.lower() for w in r[2].lower().split() if len(w) > 3]
+                        if r[0].lower() in lowered_query or any(w in lowered_query for w in title_words):
+                            specific_row = r
+                            break
+                    
+                    if specific_row:
+                        upgrades_response = (
+                            f"### 📑 {specific_row[1]}: {specific_row[2]} ({specific_row[0]})\n"
+                            f"- **Problem Solved:** {specific_row[4]}\n"
+                            f"- **Decision:** {specific_row[5]}\n"
+                            f"- **Reason:** {specific_row[6]}\n"
+                            f"- **Outcome:** {specific_row[7]}\n"
+                            f"- **Tradeoff:** {specific_row[8] or 'None'}\n"
+                            f"- **Impact Score:** {specific_row[9]}"
+                        )
+                    else:
+                        # Fallback: List everything
+                        lines = [
+                            "### 🚀 BABU ARCHITECTURE KNOWLEDGE SYSTEM (AKS) & EVOLUTION",
+                            "Here are the documented records tracking the system's key upgrades, trade-offs, and design evolutions:\n"
+                        ]
+                        for r in rows:
+                            lines.append(
+                                f"#### 📑 **{r[0]}: {r[2]}** ({r[3]}) - *{r[11]}* [Type: {r[1]}, Impact: {r[9]}]\n"
+                                f"- **Problem:** {r[4]}\n"
+                                f"- **Decision:** {r[5]}\n"
+                                f"- **Reason:** {r[6]}\n"
+                                f"- **Outcome:** {r[7]}\n"
+                                f"- **Tradeoff:** {r[8]}\n"
+                                f"- **Date:** {r[12]}\n"
+                            )
+                        upgrades_response = "\n".join(lines)
+            else:
+                upgrades_response = "No architecture knowledge records have been recorded in the database."
+        except Exception as e:
+            upgrades_response = f"Failed to retrieve upgrades from database: {e}"
+        finally:
+            cursor.close()
+            conn.close()
+        print(f"[PA NODE] Dynamic short-circuit for upgrades/ADR query: '{user_query}'", flush=True)
         return {"messages": state["messages"] + [AIMessage(content=upgrades_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
 
     # 4. Tell me about your architecture

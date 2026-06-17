@@ -230,7 +230,7 @@ INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
     "- AUTO_EXECUTE: User requested a highly structured, scheduled, or automated background task (like daily marketing posts) that does not need explicit user approval.\n"
     "\n"
     "SYSTEM QUERY FLAG DEFINITION:\n"
-    "- Set system_query to true if the query is asking about the system itself, its name, identity, age, creation date, date of birth, architecture, departments, governance system, failures log, templates, system policies, or recent upgrades/updates to your codebase. Set it to false for all general queries.\n"
+    "- Set system_query to true if the query is asking about the system itself, its name, identity, age, creation date, date of birth, architecture, departments, governance system, failures log, templates, system policies, architectural decisions (ADRs), tradeoffs, or recent upgrades/updates/evolution to your codebase (e.g., Gemini migration, dynamic imports, etc.). Set it to false for all general queries.\n"
     "\n"
     "CRITICAL CLASSIFICATION RULES:\n"
     "- Do not research unless explicitly told to do so. ONLY include 'research' in allowed_departments if the user explicitly uses the word 'research' in their query (e.g. 'research X'). For all standard web searches, lookups, and fact checks (e.g. 'search the web for X', 'look up Y', 'who is Z', 'upcoming matches'), you MUST use 'information' instead of 'research'.\n"
@@ -328,6 +328,7 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
                 allowed_actions=allowed_actions,
                 execution_mode=packet.execution_mode,
                 confidence=packet.confidence,
+                system_query=packet.system_query
             )
         
         # Programmatic cleanup: if execution_mode is READ_ONLY and the query does not ask to search workspace (sheets/gmail/doc),
@@ -344,6 +345,7 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
                 allowed_actions=[],
                 execution_mode="READ_ONLY",
                 confidence=packet.confidence,
+                system_query=packet.system_query
             )
         try:
             from babu.bot import extract_tokens

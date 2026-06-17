@@ -103,10 +103,43 @@ def test_deterministic_health_and_upgrades_short_circuits():
 
     # Test Upgrades Query (with typo)
     res_upgrades, mode, tokens = invoke_babu("what upgrades did you recieve in last 20 days", session_id="test_system_session")
-    assert "RECENT SYSTEM UPGRADES" in res_upgrades
-    assert "Phase 1: Render Stability" in res_upgrades
-    assert "Phase 2: Swarm Distillation" in res_upgrades
-    assert "Phase 3: Real-time Telemetry" in res_upgrades
+    assert "ARCHITECTURE KNOWLEDGE SYSTEM" in res_upgrades
+    assert "Dynamic Imports" in res_upgrades
+    assert "Runtime Index" in res_upgrades
+    assert "Gemini Embeddings" in res_upgrades
     assert tokens["prompt"] == 0
     assert tokens["completion"] == 0
+
+def test_adr_database_directly():
+    """Verify that architecture_knowledge database table exists and contains seed data."""
+    from babu.bot import get_db_connection
+    conn, is_pg = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT COUNT(*) FROM architecture_knowledge")
+        count = cursor.fetchone()[0]
+        assert count >= 5
+    finally:
+        cursor.close()
+        conn.close()
+
+def test_classify_intent_adr_queries():
+    """Verify that queries about tradeoffs or ADRs are classified as system queries."""
+    packet = classify_intent("what are the architectural tradeoffs in BABU?")
+    assert packet.system_query is True
+
+def test_tradeoffs_query_short_circuit():
+    """Verify that tradeoff queries return architectural tradeoffs with 0 tokens."""
+    res_trade, mode, tokens = invoke_babu("what are the tradeoffs in BABU?", session_id="test_system_session")
+    assert "Architectural Tradeoffs" in res_trade
+    assert "Dynamic Imports" in res_trade
+    assert tokens["prompt"] == 0
+
+def test_highest_impact_query_short_circuit():
+    """Verify that highest impact query returns the upgrade with the highest impact score."""
+    res_impact, mode, tokens = invoke_babu("which upgrade had the highest impact?", session_id="test_system_session")
+    assert "Highest Architectural Impact Upgrade" in res_impact
+    assert "Runtime Index" in res_impact
+    assert tokens["prompt"] == 0
+
 
