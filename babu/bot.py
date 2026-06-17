@@ -7849,12 +7849,12 @@ if __name__ == "__main__":
     bot.add_handler(MessageHandler((filters.TEXT | filters.VOICE | filters.Document.ALL) & (~filters.COMMAND), on_message))
     bot.add_handler(CallbackQueryHandler(on_post_callback))
     bot.add_error_handler(telegram_error_handler)
-    try:
-        bot.run_polling(drop_pending_updates=True)
-    except Exception as e:
-        print(f"[TELEGRAM ERROR] Failed to run polling. Telegram might be banned or offline. Web UI remains active. Error: {e}", flush=True)
-        # Keep the main thread alive so the daemon health server stays up for the Web UI
-        while True:
-            time.sleep(3600)
+    while True:
+        try:
+            bot.run_polling(drop_pending_updates=True)
+            break
+        except Exception as e:
+            print(f"[TELEGRAM ERROR] Polling failed or conflicted: {e}. Retrying in 15 seconds...", flush=True)
+            time.sleep(15)
 
 
