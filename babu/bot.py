@@ -5662,6 +5662,127 @@ STATUS_HTML = """<!DOCTYPE html>
 </body>
 </html>"""
 
+CHAT_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARIA Web Chat</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  * { box-sizing: border-box; font-family: 'Plus Jakarta Sans', sans-serif; margin: 0; padding: 0; }
+  body { background: #07070e; color: #f4f4f5; display: flex; flex-direction: column; height: 100vh; }
+  #header { background: rgba(18, 18, 35, 0.8); padding: 15px 20px; border-bottom: 1px solid rgba(255,255,255,0.1); font-weight: 600; font-size: 18px; display: flex; justify-content: space-between; align-items: center; }
+  #header-status { font-size: 12px; color: #10b981; background: rgba(16, 185, 129, 0.1); padding: 4px 8px; border-radius: 12px; }
+  #chat { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
+  .msg { max-width: 80%; padding: 12px 16px; border-radius: 12px; line-height: 1.5; font-size: 15px; animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  .msg.user { background: #6366f1; margin-left: auto; border-bottom-right-radius: 4px; }
+  .msg.bot { background: rgba(255,255,255,0.05); margin-right: auto; border-bottom-left-radius: 4px; border: 1px solid rgba(255,255,255,0.1); }
+  .msg.bot p { margin-bottom: 10px; }
+  .msg.bot p:last-child { margin-bottom: 0; }
+  .msg.bot pre { background: #000; padding: 12px; border-radius: 8px; overflow-x: auto; margin: 10px 0; border: 1px solid rgba(255,255,255,0.1); }
+  .msg.bot code { font-family: monospace; font-size: 13px; color: #e2e8f0; }
+  .msg.bot a { color: #60a5fa; }
+  #input-area { display: flex; padding: 15px 20px; background: rgba(18, 18, 35, 0.8); border-top: 1px solid rgba(255,255,255,0.1); gap: 10px; }
+  #input { flex: 1; padding: 12px 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.2); color: #fff; font-size: 15px; outline: none; transition: border 0.3s; }
+  #input:focus { border-color: #6366f1; }
+  #send { padding: 12px 24px; border: none; background: #6366f1; color: white; border-radius: 8px; font-weight: 600; cursor: pointer; transition: background 0.3s; }
+  #send:hover { background: #4f46e5; }
+  #send:disabled { background: #475569; cursor: not-allowed; }
+  .typing { display: flex; gap: 5px; align-items: center; padding: 10px; }
+  .dot { width: 6px; height: 6px; background: #a1a1aa; border-radius: 50%; animation: bounce 1.4s infinite ease-in-out both; }
+  .dot:nth-child(1) { animation-delay: -0.32s; }
+  .dot:nth-child(2) { animation-delay: -0.16s; }
+  @keyframes bounce { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
+</style>
+</head>
+<body>
+  <div id="header">
+    <div>ARIA Web Interface</div>
+    <div id="header-status">● Online</div>
+  </div>
+  <div id="chat">
+    <div class="msg bot">Hello! I am ARIA. How can I help you today?</div>
+  </div>
+  <div id="input-area">
+    <input type="text" id="input" placeholder="Message ARIA..." autocomplete="off">
+    <button id="send">Send</button>
+  </div>
+  <script>
+    const chat = document.getElementById('chat');
+    const input = document.getElementById('input');
+    const sendBtn = document.getElementById('send');
+    
+    const renderer = new marked.Renderer();
+    const linkRenderer = renderer.link;
+    renderer.link = function(href, title, text) {
+      const html = linkRenderer.call(renderer, href, title, text);
+      return html.replace(/^<a /, '<a target="_blank" rel="noopener noreferrer" ');
+    };
+    marked.setOptions({ renderer: renderer, breaks: true });
+
+    function appendMsg(text, sender) {
+      const d = document.createElement('div');
+      d.className = 'msg ' + sender;
+      if(sender === 'bot') {
+        d.innerHTML = marked.parse(text);
+      } else {
+        d.textContent = text;
+      }
+      chat.appendChild(d);
+      chat.scrollTo({ top: chat.scrollHeight, behavior: 'smooth' });
+    }
+
+    async function sendMessage() {
+      const text = input.value.trim();
+      if(!text) return;
+      
+      appendMsg(text, 'user');
+      input.value = '';
+      sendBtn.disabled = true;
+      input.disabled = true;
+      
+      const typingId = 'typing-' + Date.now();
+      const typing = document.createElement('div');
+      typing.id = typingId;
+      typing.className = 'msg bot typing';
+      typing.innerHTML = '<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
+      chat.appendChild(typing);
+      chat.scrollTo({ top: chat.scrollHeight, behavior: 'smooth' });
+
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({message: text, session_id: 'web_session_' + Date.now()})
+        });
+        const data = await res.json();
+        document.getElementById(typingId).remove();
+        if(data.reply) {
+          appendMsg(data.reply, 'bot');
+        } else {
+          appendMsg('⚠️ Error: ' + JSON.stringify(data), 'bot');
+        }
+      } catch(e) {
+        document.getElementById(typingId).remove();
+        appendMsg('⚠️ Connection error to ARIA backend.', 'bot');
+      } finally {
+        sendBtn.disabled = false;
+        input.disabled = false;
+        input.focus();
+      }
+    }
+
+    sendBtn.addEventListener('click', sendMessage);
+    input.addEventListener('keypress', (e) => {
+      if(e.key === 'Enter') sendMessage();
+    });
+    input.focus();
+  </script>
+</body>
+</html>"""
 
 
 def get_telemetry_data(limit=100) -> dict:
@@ -6232,6 +6353,11 @@ class HealthHandler(BaseHTTPRequestHandler):
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
                 self.wfile.write(STATUS_HTML.encode())
+            elif self.path in ("/chat", "/chat/"):
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(CHAT_HTML.encode())
             else:
                 self.send_response(404)
                 self.end_headers()
@@ -7714,6 +7840,12 @@ if __name__ == "__main__":
     bot.add_handler(MessageHandler((filters.TEXT | filters.VOICE | filters.Document.ALL) & (~filters.COMMAND), on_message))
     bot.add_handler(CallbackQueryHandler(on_post_callback))
     bot.add_error_handler(telegram_error_handler)
-    bot.run_polling(drop_pending_updates=True)
+    try:
+        bot.run_polling(drop_pending_updates=True)
+    except Exception as e:
+        print(f"[TELEGRAM ERROR] Failed to run polling. Telegram might be banned or offline. Web UI remains active. Error: {e}", flush=True)
+        # Keep the main thread alive so the daemon health server stays up for the Web UI
+        while True:
+            time.sleep(3600)
 
 
