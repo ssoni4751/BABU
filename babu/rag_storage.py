@@ -2,7 +2,7 @@
 rag_storage.py — BABU Self-Awareness Knowledge Layer Vector Database Storage Engine
 
 This module implements:
-1. Resilient embedding generation factory (Gemini -> OpenAI -> Mock/Fake fallback).
+1. Resilient embedding generation factory (Gemini -> Mock/Fake fallback).
 2. Multi-backend schema setup (Supabase pgvector -> Local SQLite).
 3. Hybrid semantic search (SQL vector matching on Postgres, Python Cosine Similarity on SQLite).
 4. Strict retrieval limits (MAX_RESULTS = 3, MAX_RETRIEVED_TOKENS = 1200).
@@ -51,26 +51,34 @@ class MockEmbeddings:
         return [self.embed_query(doc) for doc in documents]
 
 
+class ResilientEmbeddings:
+    """A wrapper embedding model that dynamically falls back across models and defaults to Mock."""
+    def embed_query(self, text: str) -> list[float]:
+        # 1. Try Gemini
+        if os.environ.get("GEMINI_API_KEY"):
+            try:
+                from langchain_google_genai import GoogleGenerativeAIEmbeddings
+                # Try primary model
+                try:
+                    model = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001", output_dimensionality=768)
+                    return model.embed_query(text)
+                except Exception as gemini_err1:
+                    print(f"[RAG] Gemini model gemini-embedding-001 failed: {gemini_err1}. Trying models/text-embedding-004...", flush=True)
+                    model = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", output_dimensionality=768)
+                    return model.embed_query(text)
+            except Exception as e:
+                print(f"[RAG ERROR] Gemini embedding initialization or generation failed: {e}. Falling back to MockEmbeddings.", flush=True)
+
+        # 2. Fallback to Mock
+        return MockEmbeddings().embed_query(text)
+
+    def embed_documents(self, documents: list[str]) -> list[list[float]]:
+        return [self.embed_query(doc) for doc in documents]
+
+
 def get_embeddings_model() -> Any:
     """Resilient factory returning an embedding model."""
-    # 1. Check Gemini
-    if os.environ.get("GEMINI_API_KEY"):
-        try:
-            from langchain_google_genai import GoogleGenerativeAIEmbeddings
-            return GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
-        except Exception as e:
-            print(f"[RAG] Failed to load GoogleGenerativeAIEmbeddings: {e}. Trying OpenAI fallback.", flush=True)
-
-    # 2. Check OpenAI
-    if os.environ.get("OPENAI_API_KEY"):
-        try:
-            from langchain_openai import OpenAIEmbeddings
-            return OpenAIEmbeddings(model="text-embedding-3-small")
-        except Exception as e:
-            print(f"[RAG] Failed to load OpenAIEmbeddings: {e}. Falling back to Mock.", flush=True)
-
-    # 3. Fallback to Mock
-    return MockEmbeddings()
+    return ResilientEmbeddings()
 
 
 def get_embedding(text: str) -> list[float]:

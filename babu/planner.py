@@ -352,14 +352,13 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
         packet.tokens = extract_tokens(response)
         packet.model = model_name
         
-        # Programmatic check for system query keyword matches
-        system_keywords = {
-            "failures", "fail", "why did task", "why did my task", "error", "violation", "governance", "auditor", "immune", 
-            "architecture", "codebase", "template", "etemp", "how old are you", "your age", "who are you", "what is your name",
-            "date of birth", "dob of babu", "babu birth", "babu creation", "self-awareness", "self-rag",
-            "about yourself", "know about yourself", "describe yourself", "introduce yourself", "your identity"
-        }
-        if any(kw in query.lower() for kw in system_keywords):
+        # Programmatic check for system query keyword matches using unified check
+        try:
+            from babu.bot import is_system_aware_query
+        except ImportError:
+            from bot import is_system_aware_query
+            
+        if is_system_aware_query(query):
             packet.system_query = True
             
         print(f"[INTENT CLASSIFIER] Classified: allowed_depts={packet.allowed_departments}, allowed_actions={packet.allowed_actions}, mode={packet.execution_mode}, conf={packet.confidence}, sys_query={packet.system_query}", flush=True)
@@ -368,13 +367,11 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
         print(f"[INTENT CLASSIFIER] Failed to classify intent: {e}. Defaulting to READ_ONLY fallback.", flush=True)
         default_depts = ["information", "pa"] if _force_lookup else ["pa"]
         default_actions = ["search_sheet", "search_gmail"] if _force_lookup else []
-        system_keywords = {
-            "failures", "fail", "why did task", "why did my task", "error", "violation", "governance", "auditor", "immune", 
-            "architecture", "codebase", "template", "etemp", "how old are you", "your age", "who are you", "what is your name",
-            "date of birth", "dob of babu", "babu birth", "babu creation", "self-awareness", "self-rag",
-            "about yourself", "know about yourself", "describe yourself", "introduce yourself", "your identity"
-        }
-        is_sys = any(kw in query.lower() for kw in system_keywords)
+        try:
+            from babu.bot import is_system_aware_query
+        except ImportError:
+            from bot import is_system_aware_query
+        is_sys = is_system_aware_query(query)
         return IntentPacket(
             allowed_departments=default_depts,
             allowed_actions=default_actions,
