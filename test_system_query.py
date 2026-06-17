@@ -88,3 +88,25 @@ def test_deterministic_short_circuits():
     assert "failures" in res_fail or "No system failures" in res_fail
     assert tokens["prompt"] == 0
     assert tokens["completion"] == 0
+
+def test_deterministic_health_and_upgrades_short_circuits():
+    """Verify that system health dashboard and upgrades queries short-circuit and consume 0 tokens."""
+    # Test Health Dashboard Query
+    res_health, mode, tokens = invoke_babu("system health dashboard", session_id="test_system_session")
+    assert "SYSTEM HEALTH & SELF-AUDIT DASHBOARD" in res_health
+    assert "Identity" in res_health
+    assert "Capabilities" in res_health
+    assert "Health" in res_health
+    assert "Telemetry" in res_health
+    assert tokens["prompt"] == 0
+    assert tokens["completion"] == 0
+
+    # Test Upgrades Query (with typo)
+    res_upgrades, mode, tokens = invoke_babu("what upgrades did you recieve in last 20 days", session_id="test_system_session")
+    assert "RECENT SYSTEM UPGRADES" in res_upgrades
+    assert "Phase 1: Render Stability" in res_upgrades
+    assert "Phase 2: Swarm Distillation" in res_upgrades
+    assert "Phase 3: Real-time Telemetry" in res_upgrades
+    assert tokens["prompt"] == 0
+    assert tokens["completion"] == 0
+

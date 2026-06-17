@@ -392,6 +392,7 @@ PLANNER_SYSTEM_PROMPT: str = (
     "\n"
     "RULES:\n"
     "- Output ONLY valid JSON. No markdown, no explanation.\n"
+    "- Consult Runtime Index before selecting information source. Under no circumstances should you plan external web search/research for identity, system state, telemetry, configuration, or health. Use only internal/local resources.\n"
     "- GOAL CORRECTIONS: If the user query is a correction, typo fix, or modification of a previous goal in the recent conversation history (e.g. 'I meant monitoring, not monetary' or 'correct the topic to X'), you must identify the corrected goal topic and plan the task DAG for the corrected goal, not the incorrect one.\n"
     "- INTENT CONSTRAINTS: The system has pre-classified the user's intent boundaries. You must strictly obey these constraints:\n"
     "  * allowed_departments: You are ONLY allowed to create tasks for the departments listed in 'allowed_departments'. Any other department is strictly prohibited.\n"

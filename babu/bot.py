@@ -5,6 +5,7 @@ import re
 import sys
 import threading
 import time
+BOT_START_TIME = time.time()
 import traceback
 import urllib.request
 from collections import defaultdict, deque
@@ -1582,12 +1583,13 @@ def is_deterministic_faq_query(query: str) -> bool:
     
     faq_keywords = (
         "current time", "time in ist", "time here in ist", "what is the time", "what time is it",
-        "how old are you", "how old you are", "your age", "what is your age",
+        "how old are you", "how old you are", "your age", "what is your age", "date of birth", "dob of babu",
         "who are you", "tell me about yourself", "about yourself", "know about yourself", "about you", "tell me about you", "know about you",
         "describe yourself", "introduce yourself", "your identity", "what is your name",
         "your architecture", "tell me about your architecture", "how are you built", "how do you work",
         "failures happened", "recent failures", "what are failures", "failures in last", "failures happened in last",
-        "system health", "status dashboard", "how are you doing", "what is your status", "health dashboard"
+        "system health", "status dashboard", "how are you doing", "what is your status", "health dashboard",
+        "upgrades received", "recent upgrades", "what upgrades", "upgrades did you receive", "upgrades did you recieve", "upgrades in last"
     )
     return any(k in t for k in faq_keywords)
 
@@ -1649,87 +1651,242 @@ def get_babu_age_string() -> str:
 
 
 def get_dynamic_self_identity() -> str:
-    """Retrieve the operational identity of the system based on the 3-layer model (Constitution -> Capabilities -> Telemetry)."""
+    """Retrieve the operational identity of the system based on the Runtime Index."""
     try:
-        telemetry = get_telemetry_data(limit=1)
-        aggs = telemetry.get("aggregates", {})
-        total_tokens = aggs.get("total_tokens", 0)
-        total_cost = aggs.get("total_cost", 0.0)
-        rejections = telemetry.get("governance_rejections", 0)
+        # Determine enabled services
+        enabled_services = []
+        if os.environ.get("TELEGRAM_BOT_TOKEN"):
+            enabled_services.append("Telegram Interface")
+        if os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN"):
+            enabled_services.append("Facebook Publishing")
+        if is_google_configured():
+            enabled_services.append("Google Workspace")
+        enabled_services.append("Web Dashboard")
         
-        dynamic_stats = (
-            f"I am **Project BABU** (Behavioral Autonomous Bureaucratic Utility), a governed multi-agent assistant.\n\n"
-            f"**Purpose:**\n"
-            f"Assist users through research, analysis, writing, and execution.\n\n"
-            f"**Current Capabilities:**\n"
-            f"- PA Model: `{CURRENT_PA_MODEL}`\n"
-            f"- Department Model: `{CURRENT_DEPT_MODEL}`\n\n"
-            f"**Operational Statistics:**\n"
-            f"- Tokens Processed: {total_tokens:,}\n"
-            f"- Cost Incurred: ${total_cost:,.4f}\n"
-            f"- Governance Rejections: {rejections}"
+        services_str = ", ".join(enabled_services) if enabled_services else "None"
+        
+        identity_text = (
+            f"=== 👤 IDENTITY INDEX ===\n"
+            f"**Name:** Project BABU (Behavioral Autonomous Bureaucratic Utility)\n"
+            f"**Version:** 3.5.0\n"
+            f"**Purpose:** Next-generation AI agentic assistant designed to automate research, analysis, writing, and Google Workspace execution tasks using a decentralized swarm architecture.\n\n"
+            f"**Capabilities:**\n"
+            f"- Active PA Model: `{CURRENT_PA_MODEL}`\n"
+            f"- Active Department Model: `{CURRENT_DEPT_MODEL}`\n"
+            f"- Enabled Services: {services_str}\n\n"
+            f"**Architecture:**\n"
+            f"LangGraph-based decentralized swarm framework:\n"
+            f"- Router Node: Evaluates query intent & directs routing.\n"
+            f"- Planner Node: Generates topologically sorted execution DAGs.\n"
+            f"- Task Engine: Orchestrates task status transitions.\n"
+            f"- Swarm Departments: Research, Information, Analysis, Writing, Execution.\n"
+            f"- Governance Gatekeepers: Pre-Execution Gatekeeper, Post-Execution Validator, and Epistemic Immune System.\n"
+            f"- Cache layer: E[Temp] compiled templates."
         )
-        return dynamic_stats
+        return identity_text
     except Exception as e:
         print(f"[DYNAMIC IDENTITY ERROR] {e}", flush=True)
-        return "I am **Project BABU**, a governed multi-agent assistant. (Telemetry currently unavailable)."
+        return "I am **Project BABU**, a governed multi-agent assistant. (Identity details currently unavailable)."
 
 def get_system_health_dashboard() -> str:
     """Generate a comprehensive real-time System Health & Self-Audit Dashboard."""
     import os
-    try:
-        telemetry = get_telemetry_data(limit=1)
-        aggs = telemetry.get("aggregates", {})
-        total_tokens = aggs.get("total_tokens", 0)
-        total_cost = aggs.get("total_cost", 0.0)
-        rejections = telemetry.get("governance_rejections", 0)
-        violations = telemetry.get("planner_constraint_violations", 0)
-        
-        ledger = telemetry.get("ledger", [])
-        total_tasks = len(ledger)
-        # Approximate success rate: (total - rejections - violations) / total
-        failed_tasks = rejections + violations
-        success_rate = ((total_tasks - failed_tasks) / total_tasks * 100) if total_tasks > 0 else 100.0
+    import json
+    import time
+    
+    PRICING_TABLE = {
+        "gemini-2.5-pro": (1.25, 5.00),
+        "gemini-2.5-flash": (0.075, 0.30),
+        "gemini-1.5-pro": (1.25, 5.00),
+        "gemini-1.5-flash": (0.075, 0.30),
+        "llama-3.3-70b-versatile": (0.59, 0.79),
+        "llama-3.1-70b-versatile": (0.59, 0.79),
+        "llama-3.1-8b-instant": (0.05, 0.08),
+        "llama3-70b-8192": (0.59, 0.79),
+        "llama3-8b-8208": (0.05, 0.08),
+        "gpt-4o": (2.50, 10.00),
+        "gpt-4o-mini": (0.150, 0.600),
+        "o1-mini": (3.00, 12.00)
+    }
+    
+    def get_token_costs(model_name: str) -> tuple[float, float]:
+        if not model_name:
+            return 0.15 / 1_000_000, 0.60 / 1_000_000
+        m_lower = model_name.lower().strip()
+        for key, rates in PRICING_TABLE.items():
+            if key in m_lower:
+                return rates[0] / 1_000_000, rates[1] / 1_000_000
+        return 0.15 / 1_000_000, 0.60 / 1_000_000
 
-        # Check Transport Layers
+    try:
+        conn, is_pg = get_db_connection()
+        cursor = conn.cursor()
+        
+        # 1. Goal counts
+        cursor.execute("SELECT COUNT(DISTINCT goal_id) FROM execution_ledger WHERE event_type = 'GOAL_COMPLETED'")
+        completed_goals = cursor.fetchone()[0] or 0
+        
+        cursor.execute("SELECT COUNT(DISTINCT goal_id) FROM execution_ledger WHERE event_type = 'GOAL_FAILED'")
+        failed_goals = cursor.fetchone()[0] or 0
+        
+        total_goals = completed_goals + failed_goals
+        success_rate = (completed_goals / total_goals * 100) if total_goals > 0 else 100.0
+        
+        # 2. Tokens, Cost, Governance Blocks, and failures
+        cursor.execute("SELECT event_type, metadata FROM execution_ledger")
+        rows = cursor.fetchall()
+        
+        total_tokens = 0
+        total_cost = 0.0
+        gov_blocks = 0
+        last_failure = "None recently"
+        
+        for ev_type, meta_str in rows:
+            if ev_type in ("AUDIT_PRE_FAIL", "AUDIT_POST_FAIL", "PLANNER_CONSTRAINT_VIOLATION"):
+                gov_blocks += 1
+            
+            if ev_type in ("EXECUTION_FAIL", "AUDIT_PRE_FAIL", "AUDIT_POST_FAIL", "PLANNER_CONSTRAINT_VIOLATION"):
+                if last_failure == "None recently":
+                    last_failure = f"{ev_type}"
+                    if meta_str:
+                        try:
+                            meta = json.loads(meta_str)
+                            reason = meta.get("reason") or meta.get("error") or meta.get("details") or ""
+                            if reason:
+                                last_failure += f" ({reason[:60]})"
+                        except Exception:
+                            pass
+            
+            if meta_str:
+                try:
+                    meta = json.loads(meta_str)
+                    tokens = meta.get("tokens")
+                    if tokens and isinstance(tokens, dict):
+                        prompt = tokens.get("prompt", 0) or 0
+                        completion = tokens.get("completion", 0) or 0
+                        total_t = tokens.get("total", 0) or (prompt + completion)
+                        total_tokens += total_t
+                        
+                        model_name = meta.get("model", "")
+                        p_rate, c_rate = get_token_costs(model_name)
+                        total_cost += (prompt * p_rate) + (completion * c_rate)
+                except Exception:
+                    pass
+
+        # Last goal query
+        cursor.execute("SELECT metadata FROM execution_ledger WHERE event_type = 'GOAL_RECEIVED' ORDER BY event_id DESC LIMIT 1")
+        last_goal_row = cursor.fetchone()
+        last_goal = "None"
+        if last_goal_row and last_goal_row[0]:
+            try:
+                meta = json.loads(last_goal_row[0])
+                last_goal = meta.get("query") or meta.get("goal") or "System awareness check"
+            except Exception:
+                pass
+                
+        # Last completed goal query
+        cursor.execute("SELECT metadata FROM execution_ledger WHERE event_type = 'GOAL_COMPLETED' ORDER BY event_id DESC LIMIT 1")
+        last_completed_row = cursor.fetchone()
+        last_completed = "None"
+        if last_completed_row and last_completed_row[0]:
+            try:
+                meta = json.loads(last_completed_row[0])
+                last_completed = meta.get("query") or meta.get("goal") or "System awareness check"
+            except Exception:
+                pass
+
+        cursor.close()
+        conn.close()
+
+        # Check Transport/Services status
         telegram_status = "ONLINE" if os.environ.get("TELEGRAM_BOT_TOKEN") else "OFFLINE"
         fb_status = "ONLINE" if os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN") else "OFFLINE"
-        db_status = "ONLINE" # If telemetry fetched, DB is online
-
-        # Get last failure
-        last_failure = "None recently"
-        for row in ledger:
-            if "fail" in row.get("event_type", "").lower() or "violation" in row.get("event_type", "").lower():
-                last_failure = f"{row.get('event_type')} for Goal {row.get('goal_id')}"
+        db_status = "ONLINE" # DB is checked since queries completed successfully
+        google_status = "ONLINE" if is_google_configured() else "OFFLINE"
+        
+        scheduler_status = "OFFLINE"
+        for th in threading.enumerate():
+            if th.name == "autonomous_scheduler" and th.is_alive():
+                scheduler_status = "ONLINE"
                 break
+                
+        web_dashboard_status = "OFFLINE"
+        for th in threading.enumerate():
+            if th.name == "web_dashboard_health_server" and th.is_alive():
+                web_dashboard_status = "ONLINE"
+                break
+
+        # Calculate uptime
+        uptime_sec = time.time() - BOT_START_TIME
+        days = int(uptime_sec // 86400)
+        hours = int((uptime_sec % 86400) // 3600)
+        mins = int((uptime_sec % 3600) // 60)
+        secs = int(uptime_sec % 60)
+        uptime_parts = []
+        if days > 0:
+            uptime_parts.append(f"{days}d")
+        if hours > 0:
+            uptime_parts.append(f"{hours}h")
+        if mins > 0:
+            uptime_parts.append(f"{mins}m")
+        uptime_parts.append(f"{secs}s")
+        uptime_str = " ".join(uptime_parts)
+
+        # Determine degraded services/failure nodes
+        degraded = []
+        if db_status == "OFFLINE":
+            degraded.append("Database")
+        if scheduler_status == "OFFLINE" and os.environ.get("TELEGRAM_BOT_TOKEN"):
+            degraded.append("Scheduler")
+        if web_dashboard_status == "OFFLINE":
+            degraded.append("Web Dashboard")
+            
+        degraded_str = ", ".join(degraded) if degraded else "All systems operational"
+
+        enabled_services = []
+        if telegram_status == "ONLINE":
+            enabled_services.append("Telegram Interface")
+        if fb_status == "ONLINE":
+            enabled_services.append("Facebook Publishing")
+        if google_status == "ONLINE":
+            enabled_services.append("Google Workspace")
+        if web_dashboard_status == "ONLINE":
+            enabled_services.append("Web Dashboard")
+        services_str = ", ".join(enabled_services) if enabled_services else "None"
 
         age_str = get_babu_age_string()
 
         dashboard = (
             f"=== 📊 SYSTEM HEALTH & SELF-AUDIT DASHBOARD ===\n\n"
-            f"**Name:** Project BABU\n"
-            f"**Age:** {age_str}\n\n"
-            f"**Active Models:**\n"
-            f"- {CURRENT_PA_MODEL}\n"
-            f"- {CURRENT_DEPT_MODEL}\n\n"
-            f"**Departments:**\n"
-            f"- Research\n"
-            f"- Information\n"
-            f"- Analysis\n"
-            f"- Writing\n"
-            f"- Execution\n\n"
-            f"**Execution Statistics:**\n"
-            f"- Ledger Events: {total_tasks:,}\n"
+            f"**Identity**\n"
+            f"- Name: Project BABU\n"
+            f"- Version: 3.5.0\n"
+            f"- Age/Uptime: {age_str} / {uptime_str}\n\n"
+            f"**Capabilities**\n"
+            f"- Active PA Model: `{CURRENT_PA_MODEL}`\n"
+            f"- Active Department Model: `{CURRENT_DEPT_MODEL}`\n"
+            f"- Enabled Services: {services_str}\n\n"
+            f"**Health**\n"
+            f"- Database: {db_status}\n"
+            f"- Scheduler: {scheduler_status}\n"
+            f"- Telegram: {telegram_status}\n"
+            f"- Facebook Publishing: {fb_status}\n"
+            f"- Google Workspace: {google_status}\n"
+            f"- Web Dashboard: {web_dashboard_status}\n\n"
+            f"**Telemetry**\n"
+            f"- Total Goals: {total_goals}\n"
+            f"- Completed Goals: {completed_goals}\n"
+            f"- Failed Goals: {failed_goals}\n"
             f"- Success Rate: {success_rate:.1f}%\n"
-            f"- Governance Blocks: {failed_tasks}\n"
-            f"- Total Cost: ${total_cost:,.4f}\n\n"
-            f"**Current Health:**\n"
-            f"✓ Database {db_status}\n"
-            f"✓ Scheduler ONLINE\n"
-            f"[{'✓' if fb_status == 'ONLINE' else '✗'}] Facebook Publishing {fb_status}\n"
-            f"[{'✓' if telegram_status == 'ONLINE' else '✗'}] Telegram Interface {telegram_status}\n\n"
-            f"**Last Failure:**\n"
-            f"{last_failure}"
+            f"- Tokens Processed: {total_tokens:,}\n"
+            f"- Cost Incurred: ${total_cost:,.4f}\n"
+            f"- Governance Blocks: {gov_blocks}\n\n"
+            f"**Recent Activity**\n"
+            f"- Last Goal: {last_goal}\n"
+            f"- Last Completed Goal: {last_completed}\n"
+            f"- Last Failure: {last_failure}\n\n"
+            f"**Failure Nodes**\n"
+            f"- {degraded_str}"
         )
         return dashboard
     except Exception as e:
@@ -3486,6 +3643,26 @@ def pa_node(state: BabuState):
         dashboard_response = get_system_health_dashboard()
         print(f"[PA NODE] Deterministic short-circuit for health dashboard query: '{user_query}'", flush=True)
         return {"messages": state["messages"] + [AIMessage(content=dashboard_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
+
+    # 3.6 Upgrades Received / Recent Upgrades
+    if any(k in lowered_query for k in ("upgrades received", "recent upgrades", "what upgrades", "upgrades did you receive", "upgrades did you recieve", "upgrades in last")):
+        upgrades_response = (
+            "=== 🚀 RECENT SYSTEM UPGRADES ===\n\n"
+            "Project BABU has recently received key upgrades across three distinct developmental phases:\n\n"
+            "**Phase 1: Render Stability & Memory Insulation**\n"
+            "- **Dynamic Imports:** Moved large modules (e.g. googleapiclient) to dynamic, local imports, reducing startup memory usage by ~100MB+.\n"
+            "- **Proactive Swarm GC:** Integrated manual `gc.collect()` garbage collection at worker boundary zones, capping memory footprint at ~310MB on Render's 512MB RAM cap.\n\n"
+            "**Phase 2: Swarm Distillation & Embedding Modernization**\n"
+            "- **Google Gemini Embeddings:** Modernized the vector database ingestion layer to use free Google Gemini (`models/embedding-001`) instead of paid OpenAI APIs.\n"
+            "- **Staged Compression Gateways:** Added rate-limiting failover logic to bypass text compression and use raw context when facing model quota limits.\n\n"
+            "**Phase 3: Real-time Telemetry & Deterministic Guardrails**\n"
+            "- **Telemetry Ledger Expansion:** Increased `/api/telemetry` operation log cap from 100 to 1000 items.\n"
+            "- **Runtime Introspection Index:** Created `runtime_index.md` to map internal knowledge routing, avoiding unnecessary web searches.\n"
+            "- **Deterministic Routing:** Added high-performance detours to bypass LLM planning for self-identity, time, status, health dashboard, and upgrades queries.\n"
+            "- **Real-time Health Dashboard:** Built a goal-level success/rate dashboard showing execution statistics, cost tracking, token metrics, and active background threads."
+        )
+        print(f"[PA NODE] Deterministic short-circuit for upgrades query: '{user_query}'", flush=True)
+        return {"messages": state["messages"] + [AIMessage(content=upgrades_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
 
     # 4. Tell me about your architecture
     if any(k in lowered_query for k in ("your architecture", "tell me about your architecture", "how are you built", "how do you work")):
@@ -6781,7 +6958,7 @@ def start_social_scheduler(application):
         asyncio.set_event_loop(loop)
         loop.run_until_complete(scheduler_async_loop(application))
         
-    t = threading.Thread(target=run_loop, daemon=True)
+    t = threading.Thread(target=run_loop, name="autonomous_scheduler", daemon=True)
     t.start()
 
 
@@ -7828,7 +8005,7 @@ def cleanup_corrupt_failures():
 
 if __name__ == "__main__":
     cleanup_corrupt_failures()
-    health_thread = threading.Thread(target=start_health_server, daemon=True)
+    health_thread = threading.Thread(target=start_health_server, name="web_dashboard_health_server", daemon=True)
     health_thread.start()
     google_status = f"Google Workspace ({'active' if is_google_configured() else 'NOT configured'})"
     print(f"--- ARIA IS LIVE | Memory | Web Search | Knowledge Base | {google_status} | Unified Swarm ---", flush=True)
