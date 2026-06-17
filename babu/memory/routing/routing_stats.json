@@ -977,5 +977,104 @@
     "has_action": false,
     "ttl_days": 10,
     "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-17T10:25:34.272469+00:00",
+    "last_used": "2026-06-17T10:25:34.272469+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "what is the current time in IST",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-17T10:25:35.040692+00:00",
+    "last_used": "2026-06-17T10:25:35.040692+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "how old are you",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-17T10:25:35.414562+00:00",
+    "last_used": "2026-06-17T10:25:35.414562+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "who are you",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-17T10:25:35.451914+00:00",
+    "last_used": "2026-06-17T10:25:35.451914+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "tell me about your architecture",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-17T10:25:35.485514+00:00",
+    "last_used": "2026-06-17T10:25:35.485514+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "what are failures happened in last 5 days",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-17T10:25:35.531134+00:00",
+    "last_used": "2026-06-17T10:25:35.531134+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "system health dashboard",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-17T10:25:39.199279+00:00",
+    "last_used": "2026-06-17T10:25:39.199279+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "what upgrades did you recieve in last 20 days",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-17T10:25:41.461612+00:00",
+    "last_used": "2026-06-17T10:25:41.461612+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "what are the tradeoffs in BABU?",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-17T10:25:41.508941+00:00",
+    "last_used": "2026-06-17T10:25:41.508941+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "which upgrade had the highest impact?",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
   }
 ]

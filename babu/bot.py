@@ -129,10 +129,7 @@ def init_postgres_db():
             );
         """)
         for col, col_type in [("cause", "TEXT"), ("effect", "TEXT"), ("resolution", "TEXT"), ("confidence", "DOUBLE PRECISION")]:
-            try:
-                cursor.execute(f"ALTER TABLE babu_temporal_timeline ADD COLUMN {col} {col_type};")
-            except Exception:
-                pass
+            cursor.execute(f"ALTER TABLE babu_temporal_timeline ADD COLUMN IF NOT EXISTS {col} {col_type};")
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS architecture_knowledge (
                 record_id TEXT PRIMARY KEY,
