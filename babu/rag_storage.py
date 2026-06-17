@@ -56,10 +56,10 @@ def get_embeddings_model() -> Any:
     # 1. Check Gemini
     if os.environ.get("GEMINI_API_KEY"):
         try:
-            from langchain_google_genai import GoogleGenAIEmbeddings
-            return GoogleGenAIEmbeddings(model="models/text-embedding-004")
+            from langchain_google_genai import GoogleGenerativeAIEmbeddings
+            return GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
         except Exception as e:
-            print(f"[RAG] Failed to load GoogleGenAIEmbeddings: {e}. Trying OpenAI fallback.", flush=True)
+            print(f"[RAG] Failed to load GoogleGenerativeAIEmbeddings: {e}. Trying OpenAI fallback.", flush=True)
 
     # 2. Check OpenAI
     if os.environ.get("OPENAI_API_KEY"):
