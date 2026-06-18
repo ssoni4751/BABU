@@ -55,6 +55,25 @@ def run_worker(task: TaskDTO, scoped_context: dict, llm: Any) -> tuple[str, dict
     if intent_packet and isinstance(intent_packet, dict):
         category = intent_packet.get("query_category")
 
+    # Programmatic hard-refusal check: if category is BUSINESS_INFORMATION and local source count is 0
+    if category == "BUSINESS_INFORMATION":
+        sources = scoped_context.get("sources", {})
+        allowed_keys = ["AUTHORITY_MEMORY", "AUTHORITY_DATABASE", "AUTHORITY_LEDGER"]
+        has_local_source = False
+        for k in allowed_keys:
+            if sources.get(k):
+                has_local_source = True
+                break
+        for k in ("profile_slice", "knowledge_base"):
+            if scoped_context.get(k):
+                has_local_source = True
+                break
+        
+        if not has_local_source:
+            refusal_msg = "Mere paas aapke actual client records ka access nahi hai."
+            print(f"[WORKER:{task.department.upper()}] Hard Refusal triggered: category is BUSINESS_INFORMATION with 0 local sources.", flush=True)
+            return refusal_msg, {"prompt": 0, "completion": 0, "total": 0}
+
     is_private = is_private_data_query(task.objective, category)
 
     system = (

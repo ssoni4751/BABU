@@ -1839,6 +1839,7 @@ class BabuState(TypedDict):
     knowledge_classes: Optional[List[str]]
     source_records: Optional[List[str]]
     conversation_reference: Optional[bool]
+    is_deterministic_response: Optional[bool]
 
 
 _pending_actions_lock = threading.Lock()
@@ -1910,6 +1911,14 @@ def intent_router(state: BabuState):
             clean_query = query[len(prefix):].strip()
             break
 
+    try:
+        from .planner import classify_intent
+    except ImportError:
+        from planner import classify_intent
+
+    intent_packet = classify_intent(clean_query, history_text, model_name=CURRENT_PA_MODEL)
+    ic_tokens = getattr(intent_packet, "tokens", None) or {"prompt": 0, "completion": 0, "total": 0}
+
     detected_action = None
     pending_action_notice = ""
 
@@ -1964,9 +1973,10 @@ def intent_router(state: BabuState):
         "routing_metadata": {
             "mode": "command_only",
             "reason": "explicit_command",
+            "intent_packet": intent_packet.to_dict() if intent_packet else None
         },
         "pending_action_notice": pending_action_notice,
-        "tokens": {"prompt": 0, "completion": 0, "total": 0}
+        "tokens": ic_tokens
     }
 
 
@@ -2017,9 +2027,24 @@ def route_after_router(state: BabuState) -> str:
         return "pending"
     
     query = state.get("user_query", "")
+    routing_metadata = state.get("routing_metadata") or {}
+    intent_packet_dict = routing_metadata.get("intent_packet")
+    
+    query_category = None
+    if intent_packet_dict:
+        query_category = intent_packet_dict.get("query_category")
+        
+    # Deterministic AKS/FAQ/system queries short-circuit BEFORE private-category plan-forcing.
+    # These queries are answered from the database or in-memory with zero LLM tokens.
     if is_pure_greeting(query) or is_deterministic_faq_query(query):
         print(f"[ROUTE AFTER ROUTER] Deterministic FAQ/greeting detected for query: '{query}'. Short-circuiting directly to PA node.", flush=True)
         return "pa"
+
+    # Only force plan route for private queries that are NOT deterministic FAQ/AKS.
+    PRIVATE_QUERY_TYPES = ("BUSINESS_INFORMATION", "PERSONAL_INFORMATION", "SYSTEM_INFORMATION")
+    if query_category in PRIVATE_QUERY_TYPES:
+        print(f"[ROUTE AFTER ROUTER] Private category '{query_category}' detected. Disabling PA direct response bypass and forcing plan route.", flush=True)
+        return "plan"
         
     return "plan"
 
@@ -2825,7 +2850,19 @@ def planner_node(state: BabuState):
     # 1. Intent Governance stage
     ic_start_time = time.time()
     ic_start_iso = datetime.now(timezone.utc).isoformat()
-    intent_packet = classify_intent(query, history_text, model_name=CURRENT_PA_MODEL)
+    
+    routing_metadata = state.get("routing_metadata") or {}
+    intent_packet_dict = routing_metadata.get("intent_packet")
+    if intent_packet_dict:
+        try:
+            from .planner import IntentPacket
+        except ImportError:
+            from planner import IntentPacket
+        intent_packet = IntentPacket.from_dict(intent_packet_dict)
+        print(f"[PLANNER NODE] Reusing pre-classified intent packet (category: {intent_packet.query_category})", flush=True)
+    else:
+        intent_packet = classify_intent(query, history_text, model_name=CURRENT_PA_MODEL)
+        
     ic_end_time = time.time()
     ic_end_iso = datetime.now(timezone.utc).isoformat()
     ic_latency_ms = round((ic_end_time - ic_start_time) * 1000, 2)
@@ -2977,9 +3014,24 @@ def planner_node(state: BabuState):
             )
         # 2b. Simple Local Lookup (No web search or other complex intents are active)
         elif intent_packet.lookup and not (intent_packet.research or intent_packet.generate or intent_packet.execute or requires_workspace_access(query) or requires_web_search(query)):
-            print(f"[PLANNER NODE] Fast-tracking simple lookup/websearch query (lookup={intent_packet.lookup}, websearch={intent_packet.websearch}) directly to PA response", flush=True)
-            graph = build_walk_graph(query, goal_id=pre_goal_id)
-            graph.planner_status = "WALK"
+            PRIVATE_QUERY_TYPES = ("BUSINESS_INFORMATION", "PERSONAL_INFORMATION", "SYSTEM_INFORMATION")
+            if intent_packet.query_category in PRIVATE_QUERY_TYPES:
+                print(f"[PLANNER NODE] Private query category '{intent_packet.query_category}' detected → Disabling fast-track simple lookup shortcut.", flush=True)
+                graph = plan_goal(
+                    query=query,
+                    history_text=history_text,
+                    profile_text=profile_text,
+                    model_name=CURRENT_DEPT_MODEL,
+                    goal_id=pre_goal_id,
+                    is_correction=False,
+                    last_goal_text=None,
+                    intent_packet=intent_packet,
+                    session_id=session_id,
+                )
+            else:
+                print(f"[PLANNER NODE] Fast-tracking simple lookup/websearch query (lookup={intent_packet.lookup}, websearch={intent_packet.websearch}) directly to PA response", flush=True)
+                graph = build_walk_graph(query, goal_id=pre_goal_id)
+                graph.planner_status = "WALK"
         else:
             # Check if this query is a correction referencing a recent workflow
             is_correction = False
@@ -4262,26 +4314,26 @@ def pa_node(state: BabuState):
         now_ist = now_utc + timedelta(hours=5, minutes=30)
         time_response = f"The current time in Indian Standard Time (IST) is **{now_ist.strftime('%I:%M %p (%A, %B %d, %Y)')}**."
         print(f"[PA NODE] Deterministic short-circuit for time query: '{user_query}'", flush=True)
-        return {"messages": state["messages"] + [AIMessage(content=time_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
+        return {"messages": state["messages"] + [AIMessage(content=time_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
 
     # 2. How old are you? / date of birth of babu
     if any(k in lowered_query for k in ("how old are you", "how old you are", "your age", "what is your age", "date of birth of babu", "babu birth", "babu creation", "dob of babu")):
         age_str = get_babu_age_string()
         age_response = f"I am **Project BABU** (Behavioral Autonomous Bureaucratic Utility). My date of birth is **May 27, 2026**. I have been active for **{age_str}**!"
         print(f"[PA NODE] Deterministic short-circuit for age query: '{user_query}'", flush=True)
-        return {"messages": state["messages"] + [AIMessage(content=age_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
+        return {"messages": state["messages"] + [AIMessage(content=age_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
 
     # 3. Who are you / Tell me about yourself
     if any(k in lowered_query for k in ("who are you", "tell me about yourself", "about yourself", "know about yourself", "describe yourself", "introduce yourself", "your identity", "what is your name")):
         identity_response = get_dynamic_self_identity()
         print(f"[PA NODE] Deterministic short-circuit for identity query: '{user_query}'", flush=True)
-        return {"messages": state["messages"] + [AIMessage(content=identity_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
+        return {"messages": state["messages"] + [AIMessage(content=identity_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
         
     # 3.5 System Health Dashboard
     if any(k in lowered_query for k in ("system health", "status dashboard", "how are you doing", "what is your status", "health dashboard", "current state", "your current state", "what is your current state", "system status", "system status dashboard")):
         dashboard_response = get_system_health_dashboard()
         print(f"[PA NODE] Deterministic short-circuit for health dashboard query: '{user_query}'", flush=True)
-        return {"messages": state["messages"] + [AIMessage(content=dashboard_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
+        return {"messages": state["messages"] + [AIMessage(content=dashboard_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
 
     # 3.6 Upgrades / ADR / Architecture Decisions / System Evolution / AKS
     if any(k in lowered_query for k in ("upgrades received", "recent upgrades", "what upgrades", "upgrades did you receive", "upgrades did you recieve", "upgrades in last", "upgrade received", "recent upgrade", "what upgrade", "upgrade did you receive", "upgrade did you recieve", "upgrade in last", "adr", "architecture decision", "tradeoff", "tradeoffs", "lessons learned", "evolution", "upgrades", "upgrade", "gemini", "dynamic imports", "runtime_index", "postmortem", "lesson", "incident", "impact_score", "highest impact", "largest impact", "biggest impact", "most impact", "supersedes", "solve", "evolve", "hierarchy")):
@@ -4387,7 +4439,7 @@ def pa_node(state: BabuState):
             cursor.close()
             conn.close()
         print(f"[PA NODE] Dynamic short-circuit for upgrades/ADR query: '{user_query}'", flush=True)
-        return {"messages": state["messages"] + [AIMessage(content=upgrades_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
+        return {"messages": state["messages"] + [AIMessage(content=upgrades_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
 
     # 4. Tell me about your architecture
     if any(k in lowered_query for k in ("your architecture", "tell me about your architecture", "how are you built", "how do you work")):
@@ -4399,7 +4451,7 @@ def pa_node(state: BabuState):
             "4. **Bipartite Auditor**: A dual-stage governance gatekeeper (`PreExecutionGatekeeper` and `PostExecutionValidator`) that ensures safety and compliance."
         )
         print(f"[PA NODE] Deterministic short-circuit for architecture query: '{user_query}'", flush=True)
-        return {"messages": state["messages"] + [AIMessage(content=arch_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
+        return {"messages": state["messages"] + [AIMessage(content=arch_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
 
     # 5. what are failures happened in last 5 days?
     if any(k in lowered_query for k in ("failures happened", "recent failures", "what are failures", "failures in last", "failures happened in last")):
@@ -4442,7 +4494,7 @@ def pa_node(state: BabuState):
             conn.close()
             
         print(f"[PA NODE] Deterministic short-circuit for failures query: '{user_query}'", flush=True)
-        return {"messages": state["messages"] + [AIMessage(content=failures_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
+        return {"messages": state["messages"] + [AIMessage(content=failures_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
     
     greetings = {
         "hi", "hello", "hey", "how are you", "how's it going", "how you doing", 
@@ -4465,7 +4517,57 @@ def pa_node(state: BabuState):
         chosen_response = random.choice(greeting_responses)
         print(f"[PA NODE] Deterministic chitchat short-circuit for greeting: '{user_query}'", flush=True)
         response = AIMessage(content=chosen_response)
-        return {"messages": state["messages"] + [response], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
+        return {"messages": state["messages"] + [response], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
+
+    routing_metadata = state.get("routing_metadata") or {}
+    intent_packet_dict = routing_metadata.get("intent_packet")
+    category = None
+    if intent_packet_dict:
+        category = intent_packet_dict.get("query_category")
+    if not category:
+        try:
+            from .planner import classify_intent
+        except ImportError:
+            from planner import classify_intent
+        intent_packet = classify_intent(user_query, history, model_name=CURRENT_PA_MODEL)
+        category = intent_packet.query_category
+
+    # Extract all collected sources from the task execution log or goal graph.
+    sources = {}
+    graph_dict = state.get("goal_graph")
+    if graph_dict:
+        tasks = graph_dict.get("tasks", [])
+        for t in tasks:
+            t_ctx = t.get("context", {})
+            sc = t_ctx.get("scoped_context", {})
+            t_sources = sc.get("sources", {})
+            if isinstance(t_sources, dict):
+                for k, v in t_sources.items():
+                    if v:
+                        sources[k] = v
+            for k in ("profile_slice", "knowledge_base"):
+                if sc.get(k):
+                    sources[k] = sc[k]
+
+    # Enforcement of programmatic hard refusal check
+    if category == "BUSINESS_INFORMATION":
+        allowed_keys = ["AUTHORITY_MEMORY", "AUTHORITY_DATABASE", "AUTHORITY_LEDGER"]
+        has_local_source = False
+        for k in allowed_keys:
+            if sources.get(k):
+                has_local_source = True
+                break
+        for k in ("profile_slice", "knowledge_base"):
+            if k in sources and sources[k]:
+                has_local_source = True
+                break
+        
+        if not has_local_source:
+            refusal_msg = "Mere paas aapke actual client records ka access nahi hai."
+            print(f"[PA NODE] Hard Refusal triggered: category is BUSINESS_INFORMATION with 0 local sources.", flush=True)
+            return {"messages": state["messages"] + [AIMessage(content=refusal_msg)], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
+
+    is_private = is_private_data_query(user_query, category)
 
     if is_fresh_greeting or not is_conversational:
         history = ""
@@ -4566,6 +4668,15 @@ def pa_node(state: BabuState):
         if pa_rules:
             manifesto += "\n\n" + pa_rules
 
+    if is_private:
+        manifesto += (
+            "\n\nCRITICAL EPISTEMIC DIRECTIVES (AUTHORITY LEVELS):\n"
+            "- You must strictly answer based ONLY on the [AUTHORITATIVE SOURCES] provided in the context.\n"
+            "- AUTHORITY_MEMORY represents the local user profile; AUTHORITY_DATABASE represents the local knowledge base; AUTHORITY_LEDGER represents the system's ledger.\n"
+            "- Do NOT fabricate, assume, or generalize any business metrics, client details, transaction numbers, or claims not explicitly listed in these sources.\n"
+            "- If the requested details are not present, refuse the query or state that you do not have access to these records."
+        )
+
     parts = []
     if history:
         parts.append(f"[Conversation History]\n{history}")
@@ -4580,6 +4691,10 @@ def pa_node(state: BabuState):
         parts.append(f"[Automation Result]\n{action_result}")
     if research:
         parts.append(f"[Internal Research]\n{research}")
+    if sources:
+        import json
+        sources_str = "\n".join(f"- {k}: {json.dumps(v, ensure_ascii=False)}" for k, v in sources.items())
+        parts.append(f"[AUTHORITATIVE SOURCES]\n{sources_str}")
 
     pa_start_time = time.time()
     pa_start_iso = datetime.now(timezone.utc).isoformat()
@@ -4747,11 +4862,15 @@ def invoke_babu(message: str, session_id: str = "default", goal_id: Optional[str
         "tokens":         {"prompt": 0, "completion": 0, "total": 0},
         "knowledge_classes": [],
         "source_records": [],
-        "conversation_reference": False
+        "conversation_reference": False,
+        "is_deterministic_response": False
     }, config)
     
     reply = output["messages"][-1].content
     tokens = output.get("tokens", {"prompt": 0, "completion": 0, "total": 0})
+    # If pa_node fired a deterministic short-circuit (no LLM used), zero out accumulated ic_tokens
+    if output.get("is_deterministic_response"):
+        tokens = {"prompt": 0, "completion": 0, "total": 0}
     
     add_to_history(session_id, message, reply)
     

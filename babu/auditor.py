@@ -287,8 +287,8 @@ class PostExecutionValidator:
                 }
                 return False, reason_source
 
-        # 2. Programmatic execution and PA passthrough tasks bypass LLM semantic validation
-        if task.department.lower() in ("execution", "pa"):
+        # 2. Programmatic execution and PA passthrough tasks bypass LLM semantic validation, UNLESS it is a private query
+        if task.department.lower() in ("execution", "pa") and not is_private:
             print(f"[AUDITOR:POST] Bypassing LLM semantic validation for '{task.department}' task '{task.task_id}'", flush=True)
             return True, result
 

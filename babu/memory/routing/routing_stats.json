@@ -1648,5 +1648,93 @@
     "has_action": false,
     "ttl_days": 10,
     "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-18T10:22:38.349016+00:00",
+    "last_used": "2026-06-18T10:22:38.349016+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "what is the current time in IST",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-18T10:22:41.207753+00:00",
+    "last_used": "2026-06-18T10:22:41.207753+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "system health dashboard",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-18T10:23:12.923437+00:00",
+    "last_used": "2026-06-18T10:23:12.923437+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "what are the tradeoffs in BABU?",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-18T10:23:46.185445+00:00",
+    "last_used": "2026-06-18T10:23:46.185445+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "which upgrade had the highest impact?",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-18T10:30:39.082735+00:00",
+    "last_used": "2026-06-18T10:30:39.082735+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "what is the current time in IST",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-18T10:30:43.424791+00:00",
+    "last_used": "2026-06-18T10:30:43.424791+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "system health dashboard",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-18T10:30:52.049781+00:00",
+    "last_used": "2026-06-18T10:30:52.049781+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "what are the tradeoffs in BABU?",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-18T10:31:02.567619+00:00",
+    "last_used": "2026-06-18T10:31:02.567619+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "which upgrade had the highest impact?",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
   }
 ]
