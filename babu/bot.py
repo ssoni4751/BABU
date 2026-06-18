@@ -153,14 +153,29 @@ def init_postgres_db():
                 session_id TEXT NOT NULL,
                 goal_id TEXT NOT NULL,
                 user_query TEXT NOT NULL,
-                response TEXT NOT NULL,
+                response TEXT,
+                response_full TEXT,
+                response_summary TEXT,
                 status TEXT NOT NULL,
                 failures TEXT,
                 retrieved_records TEXT,
+                knowledge_classes TEXT,
+                source_records TEXT,
+                conversation_reference BOOLEAN DEFAULT FALSE,
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_k0_session_id ON babu_k0_working_memory (session_id);")
+        
+        # Safe migration / column additions for babu_k0_working_memory if table exists
+        try:
+            cursor.execute("ALTER TABLE babu_k0_working_memory ADD COLUMN IF NOT EXISTS response_full TEXT;")
+            cursor.execute("ALTER TABLE babu_k0_working_memory ADD COLUMN IF NOT EXISTS response_summary TEXT;")
+            cursor.execute("ALTER TABLE babu_k0_working_memory ADD COLUMN IF NOT EXISTS knowledge_classes TEXT;")
+            cursor.execute("ALTER TABLE babu_k0_working_memory ADD COLUMN IF NOT EXISTS source_records TEXT;")
+            cursor.execute("ALTER TABLE babu_k0_working_memory ADD COLUMN IF NOT EXISTS conversation_reference BOOLEAN DEFAULT FALSE;")
+        except Exception as e:
+            print(f"[POSTGRES K0 MIGRATION WARNING] Failed to run K0 column migrations: {e}", flush=True)
         
         # Safe migration from babu_adr if exists
         try:
@@ -323,14 +338,36 @@ def init_durable_checkpoint_db():
             session_id TEXT NOT NULL,
             goal_id TEXT NOT NULL,
             user_query TEXT NOT NULL,
-            response TEXT NOT NULL,
+            response TEXT,
+            response_full TEXT,
+            response_summary TEXT,
             status TEXT NOT NULL,
             failures TEXT,
             retrieved_records TEXT,
+            knowledge_classes TEXT,
+            source_records TEXT,
+            conversation_reference BOOLEAN DEFAULT 0,
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_k0_session_id ON babu_k0_working_memory (session_id);")
+    
+    # Safe migration for SQLite to add new columns if they do not exist
+    try:
+        cursor.execute("PRAGMA table_info(babu_k0_working_memory);")
+        existing_cols = [c[1] for c in cursor.fetchall()]
+        if "response_full" not in existing_cols:
+            cursor.execute("ALTER TABLE babu_k0_working_memory ADD COLUMN response_full TEXT;")
+        if "response_summary" not in existing_cols:
+            cursor.execute("ALTER TABLE babu_k0_working_memory ADD COLUMN response_summary TEXT;")
+        if "knowledge_classes" not in existing_cols:
+            cursor.execute("ALTER TABLE babu_k0_working_memory ADD COLUMN knowledge_classes TEXT;")
+        if "source_records" not in existing_cols:
+            cursor.execute("ALTER TABLE babu_k0_working_memory ADD COLUMN source_records TEXT;")
+        if "conversation_reference" not in existing_cols:
+            cursor.execute("ALTER TABLE babu_k0_working_memory ADD COLUMN conversation_reference BOOLEAN DEFAULT 0;")
+    except Exception as e:
+        print(f"[SQLITE K0 MIGRATION WARNING] Failed to run SQLite K0 migrations: {e}", flush=True)
     
     # Safe migration from babu_adr if exists
     try:
@@ -1746,6 +1783,9 @@ class BabuState(TypedDict):
     goal_graph:     Optional[dict]
     execution_log:  list[dict]
     final_brief:    str
+    knowledge_classes: Optional[List[str]]
+    source_records: Optional[List[str]]
+    conversation_reference: Optional[bool]
 
 
 _pending_actions_lock = threading.Lock()
@@ -3020,7 +3060,16 @@ def planner_node(state: BabuState):
         }
     )
         
-    ret_dict = {"goal_graph": graph.to_dict(), "execution_tracker": tracker, "tokens": total_planner_tokens}
+    routing_meta = state.get("routing_metadata") or {}
+    routing_meta["sql_context"] = sql_context
+    routing_meta["retrieved_rag"] = retrieved
+
+    ret_dict = {
+        "goal_graph": graph.to_dict(), 
+        "execution_tracker": tracker, 
+        "tokens": total_planner_tokens,
+        "routing_metadata": routing_meta
+    }
     if is_system:
         ret_dict["compressed_research"] = (self_ctx + "\n\n" + sql_context).strip()
     return ret_dict
@@ -4642,7 +4691,10 @@ def invoke_babu(message: str, session_id: str = "default", goal_id: Optional[str
         "goal_graph":     None,
         "execution_log":  [],
         "final_brief":    "",
-        "tokens":         {"prompt": 0, "completion": 0, "total": 0}
+        "tokens":         {"prompt": 0, "completion": 0, "total": 0},
+        "knowledge_classes": [],
+        "source_records": [],
+        "conversation_reference": False
     }, config)
     
     reply = output["messages"][-1].content
