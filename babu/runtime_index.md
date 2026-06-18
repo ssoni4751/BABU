@@ -1,6 +1,11 @@
 BABU Runtime Index v2
 
-## Knowledge Class Hierarchy (K1-K7)
+## Knowledge Class Hierarchy (K0-K7)
+
+K0 WORKING MEMORY
+├─ Session State → babu_k0_working_memory
+├─ Transient Introspection → runtime self-context retention
+├─ Recency Cache → Last session goal, execution results, status summary
 
 K1 IDENTITY
 ├─ System name → Project BABU
@@ -48,6 +53,7 @@ K7 EXTERNAL
 ---
 
 ## Source Priority Ladder
+0. Working Memory (recency cache, transient state) -> Introspection [K0]
 1. Runtime State (health, telemetry, dashboard) -> Introspection [K2]
 2. Config & Env Vars (active models, enabled services) -> Runtime config [K2]
 3. User Memory (user facts, profile ledger) -> DB system_memory [K3]

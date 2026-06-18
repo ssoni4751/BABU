@@ -265,3 +265,38 @@ def test_no_drop_table_in_init():
     assert "DROP TABLE IF EXISTS architecture_knowledge" not in source, "init_durable_checkpoint_db must not drop architecture_knowledge"
 
 
+def test_k0_working_memory_lifecycle():
+    """Verify the database schema, persistence, and retrieval of K0 Working Memory."""
+    from babu.bot import get_db_connection, save_k0_memory_entry, retrieve_k0_memory, get_babu_self_context
+    
+    # 1. Verify table exists in local db
+    conn, is_pg = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        if is_pg:
+            cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_name = 'babu_k0_working_memory'")
+        else:
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='babu_k0_working_memory'")
+        row = cursor.fetchone()
+        assert row is not None, "babu_k0_working_memory table should exist in database"
+    finally:
+        cursor.close()
+        conn.close()
+
+    # 2. Save mock data
+    test_session = "test_k0_session_123"
+    save_k0_memory_entry(test_session, "mock_goal_id", "K0 working memory test query", "Mock successful response from BABU", {"goal_graph": {"status": "SUCCESS"}})
+    
+    # 3. Retrieve and assert
+    k0_ctx = retrieve_k0_memory(test_session)
+    assert "K0 - CONVERSATIONAL WORKING MEMORY" in k0_ctx
+    assert "K0 working memory test query" in k0_ctx
+    assert "Mock successful response from BABU" in k0_ctx
+
+    # 4. Check integration with get_babu_self_context
+    self_ctx = get_babu_self_context(test_session)
+    assert "K0 - CONVERSATIONAL WORKING MEMORY" in self_ctx
+    assert "Mock successful response from BABU" in self_ctx
+
+
+

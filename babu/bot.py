@@ -147,6 +147,20 @@ def init_postgres_db():
                 timestamp TEXT
             );
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS babu_k0_working_memory (
+                id SERIAL PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                goal_id TEXT NOT NULL,
+                user_query TEXT NOT NULL,
+                response TEXT NOT NULL,
+                status TEXT NOT NULL,
+                failures TEXT,
+                retrieved_records TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_k0_session_id ON babu_k0_working_memory (session_id);")
         
         # Safe migration from babu_adr if exists
         try:
@@ -303,6 +317,20 @@ def init_durable_checkpoint_db():
             timestamp TEXT
         );
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS babu_k0_working_memory (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            goal_id TEXT NOT NULL,
+            user_query TEXT NOT NULL,
+            response TEXT NOT NULL,
+            status TEXT NOT NULL,
+            failures TEXT,
+            retrieved_records TEXT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_k0_session_id ON babu_k0_working_memory (session_id);")
     
     # Safe migration from babu_adr if exists
     try:
@@ -1507,6 +1535,158 @@ def compact_completed_session_history(session_id: str) -> None:
         _histories[session_id] = compacted
 
 
+def save_k0_memory_entry(session_id: str, goal_id: str, user_query: str, response: str, output_state: dict):
+    # Determine status
+    goal_graph_dict = output_state.get("goal_graph")
+    status = "COMPLETED"
+    if goal_graph_dict:
+        status = goal_graph_dict.get("status", "COMPLETED")
+        if status == "ACTIVE":
+            status = "COMPLETED"
+
+    # Collect failures
+    failures_list = []
+    execution_log = output_state.get("execution_log") or []
+    for entry in execution_log:
+        if entry.get("status") == "FAILED" or entry.get("error"):
+            failures_list.append(f"Task '{entry.get('task_id')}' failed: {entry.get('error') or entry.get('status')}")
+
+    conn, is_pg = get_db_connection()
+    if conn:
+        cursor = conn.cursor()
+        try:
+            # We can also check execution_ledger for errors to be absolutely sure
+            # (e.g. if the graph failed before tasks ran)
+            if is_pg:
+                cursor.execute("""
+                    SELECT event_type, metadata FROM execution_ledger 
+                    WHERE goal_id = %s AND event_type IN ('AUDIT_PRE_FAIL', 'AUDIT_POST_FAIL', 'EXECUTION_FAIL', 'PLANNER_CONSTRAINT_VIOLATION')
+                    ORDER BY event_id ASC
+                """, (goal_id,))
+            else:
+                cursor.execute("""
+                    SELECT event_type, metadata FROM execution_ledger 
+                    WHERE goal_id = ? AND event_type IN ('AUDIT_PRE_FAIL', 'AUDIT_POST_FAIL', 'EXECUTION_FAIL', 'PLANNER_CONSTRAINT_VIOLATION')
+                    ORDER BY event_id ASC
+                """, (goal_id,))
+            for r in cursor.fetchall():
+                failures_list.append(f"{r[0]}: {r[1]}")
+        except Exception as e:
+            print(f"[K0 MEMORY ERROR] Failed to query failures: {e}", flush=True)
+
+        failures_str = "; ".join(failures_list) if failures_list else None
+
+        # Collect retrieved records summary
+        retrieved_parts = []
+        try:
+            if is_pg:
+                cursor.execute("SELECT metadata FROM execution_ledger WHERE goal_id = %s AND event_type = 'RAG_RETRIEVAL'", (goal_id,))
+            else:
+                cursor.execute("SELECT metadata FROM execution_ledger WHERE goal_id = ? AND event_type = 'RAG_RETRIEVAL'", (goal_id,))
+            for r in cursor.fetchall():
+                try:
+                    meta = json.loads(r[0]) if isinstance(r[0], str) else r[0]
+                    if meta and meta.get("retrieved_tokens", 0) > 0:
+                        retrieved_parts.append(f"RAG Knowledge (tokens: {meta.get('retrieved_tokens')})")
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"[K0 MEMORY ERROR] Failed to query RAG ledger: {e}", flush=True)
+
+        # Check what SQL memories were retrieved based on user query keywords
+        q_lower = user_query.lower()
+        if any(k in q_lower for k in ("who is", "profile", "identity", "about me", "preferences", "interest")):
+            retrieved_parts.append("K3 - User Profile")
+        if any(k in q_lower for k in ("goal", "query", "run", "request", "task list", "dag")):
+            retrieved_parts.append("K2 - Runtime Goals")
+        if any(k in q_lower for k in ("fail", "error", "reject", "violation", "why did", "problem", "warn")):
+            retrieved_parts.append("K2 - Runtime Failures")
+        if any(k in q_lower for k in ("timeline", "happen", "change", "unresolved", "recent", "chronology", "status", "history")):
+            retrieved_parts.append("K2 - Runtime Timeline")
+        if any(k in q_lower for k in ("rule", "anti-pattern", "immune", "lesson", "pattern", "governance")):
+            retrieved_parts.append("K5 - Architecture Anti-Patterns")
+        if any(k in q_lower for k in ("template", "etemp", "promoted", "compiled")):
+            retrieved_parts.append("K4 - Execution Templates")
+        if any(k in q_lower for k in ("adr", "architecture", "tradeoff", "postmortem", "lesson", "evolution", "upgrades", "gemini", "dynamic import", "runtime index", "supersede", "impact_score", "milestone", "hierarchy")):
+            retrieved_parts.append("K5 - Architecture Knowledge System (AKS)")
+
+        retrieved_str = ", ".join(retrieved_parts) if retrieved_parts else None
+
+        try:
+            if is_pg:
+                cursor.execute("""
+                    INSERT INTO babu_k0_working_memory (session_id, goal_id, user_query, response, status, failures, retrieved_records)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (session_id, goal_id, user_query, response, status, failures_str, retrieved_str))
+            else:
+                cursor.execute("""
+                    INSERT INTO babu_k0_working_memory (session_id, goal_id, user_query, response, status, failures, retrieved_records)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (session_id, goal_id, user_query, response, status, failures_str, retrieved_str))
+            conn.commit()
+        except Exception as e:
+            print(f"[K0 MEMORY ERROR] Failed to save K0 working memory: {e}", flush=True)
+        finally:
+            cursor.close()
+            conn.close()
+
+
+def retrieve_k0_memory(session_id: str, limit: int = 5) -> str:
+    conn, is_pg = get_db_connection()
+    if not conn:
+        return ""
+    cursor = conn.cursor()
+    context = ""
+    try:
+        if is_pg:
+            cursor.execute("""
+                SELECT timestamp, goal_id, user_query, response, status, failures, retrieved_records
+                FROM babu_k0_working_memory
+                WHERE session_id = %s
+                ORDER BY id DESC
+                LIMIT %s
+            """, (session_id, limit))
+        else:
+            cursor.execute("""
+                SELECT timestamp, goal_id, user_query, response, status, failures, retrieved_records
+                FROM babu_k0_working_memory
+                WHERE session_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+            """, (session_id, limit))
+        rows = cursor.fetchall()
+        if rows:
+            rows.reverse()
+            parts = []
+            for r in rows:
+                ts = r[0]
+                ts_str = ts.strftime('%Y-%m-%d %H:%M:%S') if hasattr(ts, 'strftime') else str(ts)
+                goal_id = r[1]
+                query = r[2]
+                response = r[3]
+                status = r[4]
+                failures = r[5]
+                retrieved = r[6]
+
+                block = (
+                    f"[{ts_str}] Goal ID: {goal_id} | Status: {status}\n"
+                    f"- User Query: {query}\n"
+                    f"- Response: {response}"
+                )
+                if failures:
+                    block += f"\n- Failures: {failures}"
+                if retrieved:
+                    block += f"\n- Retrieved Records: {retrieved}"
+                parts.append(block)
+            context = "=== K0 - CONVERSATIONAL WORKING MEMORY (Recent Goals & Turns) ===\n" + "\n\n".join(parts)
+    except Exception as e:
+        print(f"[K0 RETRIEVAL ERROR] Failed: {e}", flush=True)
+    finally:
+        cursor.close()
+        conn.close()
+    return context
+
+
 def extract_tokens(res) -> dict:
     """Safely extract prompt, completion, and total tokens from an LLM response."""
     usage = {"prompt": 0, "completion": 0, "total": 0}
@@ -2220,14 +2400,17 @@ def get_system_health_dashboard() -> str:
     )
     return dashboard
 
-def get_babu_self_context() -> str:
+def get_babu_self_context(session_id: str = "default") -> str:
     from datetime import datetime, timezone
     now_utc = datetime.now(timezone.utc)
     import sys
     
     age_str = get_babu_age_string()
     
-    return f"""=== BABU SELF CONTEXT ===
+    k0_ctx = retrieve_k0_memory(session_id)
+    k0_part = f"{k0_ctx}\n\n" if k0_ctx else ""
+    
+    return f"""{k0_part}=== BABU SELF CONTEXT ===
 - Name: Project BABU (Behavioral Autonomous Bureaucratic Utility)
 - Date of Birth (Creation): May 27, 2026 (Launch epoch)
 - Age: {age_str} (exactly { (now_utc - datetime(2026, 5, 27, tzinfo=timezone.utc)).days } days since creation)
@@ -2483,7 +2666,7 @@ def planner_node(state: BabuState):
     # 0. Load BABU Self Context if system query
     self_ctx = ""
     if is_system:
-        self_ctx = get_babu_self_context()
+        self_ctx = get_babu_self_context(session_id)
         profile_text = (profile_text + "\n\n" + self_ctx).strip()
     
     # 1. Retrieve system memory context via SQL first if system/self-aware query
@@ -4284,6 +4467,12 @@ def pa_node(state: BabuState):
     parts = []
     if history:
         parts.append(f"[Conversation History]\n{history}")
+    
+    session_id = state.get("session_id", "default")
+    k0_ctx = retrieve_k0_memory(session_id)
+    if k0_ctx:
+        parts.append(f"[K0 Working Memory]\n{k0_ctx}")
+
     parts.append(f"User: {state['user_query']}")
     if action_result:
         parts.append(f"[Automation Result]\n{action_result}")
@@ -4711,6 +4900,11 @@ def invoke_babu(message: str, session_id: str = "default", goal_id: Optional[str
             except Exception as outer_err:
                 print(f"[SEALING METRICS ERROR] General error in promotion/demotion checks: {outer_err}", flush=True)
             
+    try:
+        save_k0_memory_entry(session_id, goal_id, message, reply, output)
+    except Exception as k0_err:
+        print(f"[K0 HOOK ERROR] Failed to save K0 working memory: {k0_err}", flush=True)
+
     return reply, "DYNAMIC", tokens
 
 
