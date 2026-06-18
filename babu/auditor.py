@@ -142,6 +142,93 @@ class PreExecutionGatekeeper:
         return True, ""
 
 
+def verify_source_authority(worker_result: str, scoped_context: dict, category: str) -> tuple[bool, str]:
+    """Ensure that for private data queries (BUSINESS_INFORMATION/PERSONAL_INFORMATION),
+    the worker result does not contain facts (numbers, capitalized words) fabricated by the model
+    (AUTHORITY_MODEL) that are not present in the allowed local sources.
+    """
+    import json
+    import re
+    
+    lower_res = worker_result.lower()
+    
+    # Refusal checklist: if the worker output contains refusal markers, it is a valid refusal.
+    # We must allow both the config REFUSAL_PRIVATE_DATA and standard refusal phrases.
+    refusal_signals = [
+        "information unavailable",
+        "no authoritative business records",
+        "mere paas aapke actual client records",
+        "access nahi hai",
+        "records not found",
+        "no records found",
+        "information is unavailable",
+        "not available"
+    ]
+    if any(sig in lower_res for sig in refusal_signals):
+        return True, "Valid refusal, no hallucination detected."
+
+    # If it is a private query category, verify the sources
+    if category in ("BUSINESS_INFORMATION", "PERSONAL_INFORMATION"):
+        sources = scoped_context.get("sources", {})
+        # Allowed sources for personal/business data
+        # We permit memory, database, and ledger
+        allowed_keys = ["AUTHORITY_MEMORY", "AUTHORITY_DATABASE", "AUTHORITY_LEDGER"]
+        allowed_text_parts = []
+        for k in allowed_keys:
+            val = sources.get(k)
+            if val:
+                allowed_text_parts.append(json.dumps(val, ensure_ascii=False))
+        
+        # Also fall back to check standard flat context keys in scoped_context for robustness
+        for k in ("profile_slice", "knowledge_base"):
+            if k in scoped_context and scoped_context[k]:
+                allowed_text_parts.append(json.dumps(scoped_context[k], ensure_ascii=False))
+                
+        allowed_text_lower = " ".join(allowed_text_parts).lower()
+        
+        # 1. Check numbers (excluding common indices, list numbers 1-10)
+        numbers = re.findall(r'\b\d+\b', worker_result)
+        for num in numbers:
+            if num in ("1", "2", "3", "4", "5", "6", "7", "8", "9", "10"):
+                continue
+            if num not in allowed_text_lower:
+                return False, f"Source Authority Violation: Number '{num}' is attributed to AUTHORITY_MODEL because it is not present in the allowed local sources."
+
+        # 2. Check capitalized term sequences (potential names / custom metrics)
+        # Avoid matching starting words of standard English sentences.
+        capital_words = re.findall(r'\b[A-Z][a-zA-Z]*\b', worker_result)
+        for word in capital_words:
+            word_lower = word.lower()
+            if word_lower in (
+                "here", "there", "this", "that", "the", "client", "customer", "business", "tax",
+                "consultancy", "shubham", "swarnkar", "anshu", "babu", "information", "details",
+                "records", "status", "report", "consultant", "ledger", "database", "private", "public",
+                "pf", "itr", "gst", "cons", "ltd", "co", "consolidation", "kyc", "declaration",
+                "january", "february", "march", "april", "may", "june", "july", "august", "september",
+                "october", "november", "december",
+                # Hinglish / Hindi common words
+                "aap", "aapke", "aapki", "aapka", "mere", "meri", "mera", "apne", "apni", "apna", "kitne",
+                "ka", "ke", "ki", "se", "ko", "ne", "tha", "the", "thi", "hai", "hain", "honge", "hogi",
+                "raha", "rahe", "rahi", "aur", "ya", "ek", "do", "teen", "char", "paanch", "saath", "sath",
+                "hisab", "mutabik", "anusar", "mili", "mila", "mile", "diya", "diye", "di",
+                # English common words/pronouns/conjunctions
+                "a", "an", "your", "my", "our", "their", "his", "her", "its", "us", "we", "they", "he", "she",
+                "i", "you", "it", "who", "what", "when", "where", "why", "how", "is", "are", "am", "was", "were",
+                "be", "been", "being", "have", "has", "had", "do", "does", "did", "shall", "will", "should",
+                "would", "may", "might", "must", "can", "could", "of", "at", "by", "for", "with", "about",
+                "against", "between", "into", "through", "during", "before", "after", "above", "below", "to",
+                "from", "up", "down", "in", "out", "on", "off", "over", "under", "again", "further", "then",
+                "once", "all", "any", "both", "each", "few", "more", "most", "other", "some", "such", "no",
+                "nor", "not", "only", "own", "same", "so", "than", "too", "very", "according", "to", "based",
+                "on", "records"
+            ):
+                continue
+            if word_lower not in allowed_text_lower:
+                return False, f"Source Authority Violation: Term '{word}' is attributed to AUTHORITY_MODEL because it is not present in the allowed local sources."
+
+    return True, "Deterministic source authority validation passed."
+
+
 class PostExecutionValidator:
     """Semantic validation and hallucination checks. Executes after worker completes."""
 
@@ -174,6 +261,32 @@ class PostExecutionValidator:
         if "[Worker error" in result or "[LLM error" in result:
             return False, f"Deterministic execution error detected: {result}"
 
+        # Deterministic source authority validation for private data queries
+        category = None
+        intent_packet = task.context.get("intent_packet")
+        if intent_packet and isinstance(intent_packet, dict):
+            category = intent_packet.get("query_category")
+
+        scoped_context = task.context.get("scoped_context") or {}
+
+        try:
+            from .bot import is_private_data_query
+        except ImportError:
+            from bot import is_private_data_query
+
+        is_private = is_private_data_query(task.objective, category)
+        if is_private:
+            passed_source, reason_source = verify_source_authority(result, scoped_context, category)
+            if not passed_source:
+                print(f"[AUDITOR:POST] Deterministic block: {reason_source}", flush=True)
+                task.context["audit_metrics"] = {
+                    "confidence": 0.0,
+                    "uncertainty_flag": True,
+                    "risk_assessment": "Deterministic Source Authority Violation",
+                    "reason": reason_source
+                }
+                return False, reason_source
+
         # 2. Programmatic execution and PA passthrough tasks bypass LLM semantic validation
         if task.department.lower() in ("execution", "pa"):
             print(f"[AUDITOR:POST] Bypassing LLM semantic validation for '{task.department}' task '{task.task_id}'", flush=True)
@@ -204,7 +317,19 @@ class PostExecutionValidator:
                 "- Be fair, realistic, and constructive. Do NOT reject or block valid responses simply because they are concise, summarizing, or convey upstream results clearly, as long as they address the objective.\n"
                 "- For local profile searches, personal details lookup, or simple information retrievals, do NOT penalize the worker for lacking academic web citations or complex external evidence. The local user profile or local context is the authoritative source. If the worker presents the correct information retrieved from the local profile, treat it as fully compliant and verified.\n"
                 "- For the 'information' department (designed for general information retrieval, simple web search, and Wikipedia-style lookups), do NOT penalize the worker for lacking academic-level citations, sources, or strict evidence links, unless the task objective or checklist explicitly demands them. The 'information' department only requires retrieving accurate facts or answers concisely and factually.\n"
-                "- Output ONLY a JSON payload matching this format:\n"
+            )
+            
+            if is_private:
+                system_prompt += (
+                    "\n\nCRITICAL SOURCE AUTHORITY AUDIT RULES (PRIVATE DATA QUERY):\n"
+                    "- This query concerns private user/business data. You must strictly check if the worker's result contains fabricated facts, client counts, names, dates, or details.\n"
+                    "- Cross-reference every factual claim in the worker's result (e.g. client names, numbers of clients) with the 'scoped_context' inside the context of the audit payload. The local context (profile_slice, knowledge_base) is the ONLY source of truth.\n"
+                    "- If the local context does NOT contain any client list or client names, and the worker still lists names, counts, or claims about them, you MUST fail the audit (set 'passed': false, 'confidence': 0.0, 'uncertainty_flag': true, and explain 'Source Authority Violation: fabricated client data without local evidence' in reason).\n"
+                    "- If the worker correctly refused to answer (e.g. outputted 'Mere paas aapke actual client records ka access nahi hai.' or 'Information unavailable.'), you MUST pass the audit (set 'passed': true, 'confidence': 1.0).\n"
+                )
+            
+            system_prompt += (
+                "\nOutput ONLY a JSON payload matching this format:\n"
                 "{\n"
                 '  "passed": true/false,\n'
                 '  "confidence": 0.0 to 1.0,\n'
@@ -267,6 +392,9 @@ class PostExecutionValidator:
                     if not passed:
                         # Priority Directive: Do not fail entire workflows because a research/information task has low confidence.
                         if task.department.lower() in ("research", "information") and (confidence < 0.5 or uncertainty_flag):
+                            if is_private:
+                                print(f"[AUDITOR:POST] Strict audit block: Research override disabled for private personal/business data query '{task.task_id}' ({reason}).", flush=True)
+                                return False, reason
                             print(f"[AUDITOR:POST] Warning: Research/Information task '{task.task_id}' failed audit checklist with low confidence ({reason}). Overriding failure under Priority Directive. Proceeding with confidence score {confidence}.", flush=True)
                             task.context["audit_metrics"]["uncertainty_flag"] = True
                             task.context["audit_metrics"]["override_applied"] = True

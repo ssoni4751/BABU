@@ -38,6 +38,14 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory", "babu_checkpoint.db")
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
+REFUSAL_PRIVATE_DATA = "Information unavailable. No authoritative business records were found."
+
+AUTHORITY_MEMORY = "AUTHORITY_MEMORY"
+AUTHORITY_DATABASE = "AUTHORITY_DATABASE"
+AUTHORITY_LEDGER = "AUTHORITY_LEDGER"
+AUTHORITY_WEB = "AUTHORITY_WEB"
+AUTHORITY_MODEL = "AUTHORITY_MODEL"
+
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 def get_db_connection():
@@ -860,6 +868,47 @@ def is_profile_relevant_query(query: str) -> bool:
     # Check exact keyword matching or substring match
     return any(kw in q for kw in personal_keywords)
 
+def is_private_data_query(query: str, category: Optional[str] = None) -> bool:
+    """Determine if a query is asking for private user-owned data or business operations."""
+    if not query:
+        return False
+    q = query.lower()
+    
+    # 1. Check intent category if provided
+    if category in ("BUSINESS_INFORMATION", "PERSONAL_INFORMATION", "SYSTEM_INFORMATION"):
+        return True
+
+    # 2. Check for private business and personal keywords (with possessive/pronoun cues or strong topics)
+    possessives = {"my", "mere", "meri", "mera", "apna", "apne", "apni", "mne", "our", "us", "mine", "we"}
+    private_topics = {
+        "client", "clients", "customer", "customers", "invoice", "invoices", "payment",
+        "payments", "transaction", "transactions", "sales", "earnings", "revenue", "profit",
+        "profits", "ledger", "ledgers", "pf claim", "pf claims", "uan consolidation", "kyc correction",
+        "joint declaration", "gst registration", "gstr-1", "gstr-3b"
+    }
+    
+    # Check if any possessive prefix matches
+    words = q.split()
+    for i, w in enumerate(words):
+        if w in possessives and i + 1 < len(words) and words[i+1] in private_topics:
+            return True
+
+    # Check for direct private topics unless it is a general explanation query
+    is_general = any(g in q for g in ("what is", "how to", "definition", "explain", "tutorial", "general process", "generic"))
+    if not is_general:
+        if any(topic in q for topic in private_topics):
+            return True
+            
+    # Or strong standalone indicators of user's personal operations
+    strong_indicators = {
+        "kitne clients", "client details", "client records", "customer details", "customer records",
+        "official mail", "official email", "personal mail", "personal email"
+    }
+    if any(ind in q for ind in strong_indicators):
+        return True
+        
+    return False
+
 def get_user_profile_text(profile_type: str = "FULL") -> str:
     """Return L1 Daily Profile Context, selectively retrieving context based on type."""
     profile = get_current_profile()
@@ -1342,6 +1391,10 @@ def wikipedia_search(query: str, max_results: int = 3) -> str:
 
 
 def web_search(query: str, max_results: int = 4) -> str:
+    if is_private_data_query(query):
+        print(f"[SEARCH BLOCK] Web search blocked for private personal/business data query: '{query}'", flush=True)
+        return REFUSAL_PRIVATE_DATA
+
     cleaned = clean_search_query(query)
     if not cleaned:
         return "No results found."

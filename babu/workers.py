@@ -45,10 +45,32 @@ def run_worker(task: TaskDTO, scoped_context: dict, llm: Any) -> tuple[str, dict
     """
     from langchain_core.messages import SystemMessage, HumanMessage
 
+    try:
+        from .bot import is_private_data_query, REFUSAL_PRIVATE_DATA
+    except ImportError:
+        from bot import is_private_data_query, REFUSAL_PRIVATE_DATA
+
+    category = None
+    intent_packet = task.context.get("intent_packet")
+    if intent_packet and isinstance(intent_packet, dict):
+        category = intent_packet.get("query_category")
+
+    is_private = is_private_data_query(task.objective, category)
+
     system = (
         f"ARIA Worker [{task.department.upper()}]: Execute the task below.\n"
         f"Use ONLY the provided context. Be extremely concise and factual. Do NOT assume, invent, or extrapolate facts.\n"
     )
+    if is_private:
+        system += (
+            "\nCRITICAL EPISTEMIC DIRECTIVE:\n"
+            "This task concerns private user/business data. Use ONLY the provided local context. "
+            "Do NOT search the web, assume, estimate, or extrapolate. If the provided local context does not contain the specific requested records "
+            "(such as actual client names, list of clients, specific transaction details, or PF claim details), you MUST strictly refuse to answer and output exactly one of:\n"
+            f"- '{REFUSAL_PRIVATE_DATA}'\n"
+            "- 'Mere paas aapke actual client records ka access nahi hai.' (if query is in Hindi/Hinglish or specifically requests client names)\n"
+            "Do NOT fabricate any fake client names, client counts, or dates.\n"
+        )
     if task.compliance_checklist:
         system += (
             f"\nCRITICAL: Your output MUST strictly satisfy and EXPLICITLY state/address the following compliance checklist items:\n"

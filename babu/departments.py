@@ -114,6 +114,7 @@ class DepartmentHead:
             raise ValueError(f"Invalid task for {self.name}: {task.task_id}")
 
         scoped = self.scope_context(task, shared_resources)
+        task.context["scoped_context"] = scoped
         if task.compliance_checklist:
             scoped["compliance_checklist"] = task.compliance_checklist
         print(
@@ -197,25 +198,37 @@ class ResearchHead(DepartmentHead):
 
         # 2. Dynamically import search helpers to avoid circular dependencies
         try:
-            from .bot import web_search, search_knowledge, search_profile, is_profile_relevant_query
+            from .bot import (
+                web_search, search_knowledge, search_profile, is_profile_relevant_query,
+                AUTHORITY_MEMORY, AUTHORITY_DATABASE, AUTHORITY_LEDGER, AUTHORITY_WEB
+            )
         except ImportError:
-            from bot import web_search, search_knowledge, search_profile, is_profile_relevant_query
+            from bot import (
+                web_search, search_knowledge, search_profile, is_profile_relevant_query,
+                AUTHORITY_MEMORY, AUTHORITY_DATABASE, AUTHORITY_LEDGER, AUTHORITY_WEB
+            )
+
+        sources = {}
 
         # 3. Dynamic search execution
         print(f"[DEPT:research] Dynamically executing web search for objective: '{search_query}'", flush=True)
         web_hits = web_search(search_query)
         if web_hits and web_hits != "No results found.":
             scoped["web_search"] = web_hits
+            sources[AUTHORITY_WEB] = web_hits
 
         kb_hits = search_knowledge(search_query)
         if kb_hits:
             scoped["knowledge_base"] = kb_hits
+            sources[AUTHORITY_DATABASE] = kb_hits
 
         if task.context.get("grant_profile_access", False):
             profile_slice = search_profile(search_query, bypass_filter=True)
             if profile_slice:
                 scoped["profile_slice"] = profile_slice
+                sources[AUTHORITY_MEMORY] = profile_slice
 
+        scoped["sources"] = sources
         return scoped
 
     def compress_result_for_downstream(self, result: str) -> str:
@@ -263,24 +276,48 @@ class InformationHead(DepartmentHead):
         scoped["query"] = search_query
 
         try:
-            from .bot import web_search, search_knowledge, search_profile
+            from .bot import (
+                is_private_data_query, web_search, search_knowledge, search_profile,
+                AUTHORITY_MEMORY, AUTHORITY_DATABASE, AUTHORITY_LEDGER, AUTHORITY_WEB
+            )
         except ImportError:
-            from bot import web_search, search_knowledge, search_profile
+            from bot import (
+                is_private_data_query, web_search, search_knowledge, search_profile,
+                AUTHORITY_MEMORY, AUTHORITY_DATABASE, AUTHORITY_LEDGER, AUTHORITY_WEB
+            )
 
-        print(f"[DEPT:information] Executing general information web search for: '{search_query}'", flush=True)
-        web_hits = web_search(search_query)
-        if web_hits and web_hits != "No results found.":
-            scoped["web_search"] = web_hits
+        # Check for query category in intent packet if present
+        category = None
+        intent_packet = task.context.get("intent_packet")
+        if intent_packet and isinstance(intent_packet, dict):
+            category = intent_packet.get("query_category")
+
+        sources = {}
+
+        if is_private_data_query(search_query, category):
+            print(f"[DEPT:information] Bypassing general web search for private query: '{search_query}'", flush=True)
+            web_search_val = "Web search blocked for private personal/business data queries."
+            scoped["web_search"] = web_search_val
+            sources[AUTHORITY_WEB] = web_search_val
+        else:
+            print(f"[DEPT:information] Executing general information web search for: '{search_query}'", flush=True)
+            web_hits = web_search(search_query)
+            if web_hits and web_hits != "No results found.":
+                scoped["web_search"] = web_hits
+                sources[AUTHORITY_WEB] = web_hits
 
         kb_hits = search_knowledge(search_query)
         if kb_hits:
             scoped["knowledge_base"] = kb_hits
+            sources[AUTHORITY_DATABASE] = kb_hits
 
         if task.context.get("grant_profile_access", False):
             profile_slice = search_profile(search_query, bypass_filter=True)
             if profile_slice:
                 scoped["profile_slice"] = profile_slice
+                sources[AUTHORITY_MEMORY] = profile_slice
 
+        scoped["sources"] = sources
         return scoped
 
     def compress_result_for_downstream(self, result: str) -> str:

@@ -1,37 +1,5 @@
 [
   {
-    "timestamp": "2026-06-08T09:14:19.988331+00:00",
-    "last_used": "2026-06-08T09:14:19.988331+00:00",
-    "session_id": "default",
-    "gear": "DYNAMIC",
-    "sequence": [
-      "router",
-      "pa"
-    ],
-    "total_tokens": 269,
-    "latency_seconds": 0.12,
-    "success": true,
-    "note": "tell me a joke",
-    "ttl_days": 10,
-    "confidence": 1.0
-  },
-  {
-    "timestamp": "2026-06-08T09:20:04.180286+00:00",
-    "last_used": "2026-06-08T09:20:04.180286+00:00",
-    "session_id": "default",
-    "gear": "DYNAMIC",
-    "sequence": [
-      "router",
-      "pa"
-    ],
-    "total_tokens": 265,
-    "latency_seconds": 2.32,
-    "success": true,
-    "note": "tell me a joke",
-    "ttl_days": 10,
-    "confidence": 1.0
-  },
-  {
     "timestamp": "2026-06-09T05:55:37.441285+00:00",
     "last_used": "2026-06-09T05:55:37.441285+00:00",
     "session_id": "default",

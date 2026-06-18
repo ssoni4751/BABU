@@ -52,6 +52,7 @@ class IntentPacket:
     tokens: Optional[dict] = None
     model: Optional[str] = None
     system_query: bool = False
+    query_category: str = "PUBLIC_INFORMATION"  # "PUBLIC_INFORMATION", "PERSONAL_INFORMATION", "BUSINESS_INFORMATION", "SYSTEM_INFORMATION"
 
     def __init__(
         self,
@@ -62,6 +63,7 @@ class IntentPacket:
         tokens: Optional[dict] = None,
         model: Optional[str] = None,
         system_query: bool = False,
+        query_category: str = "PUBLIC_INFORMATION",
         # Legacy keyword args for compatibility
         lookup: Optional[bool] = None,
         research: Optional[bool] = None,
@@ -75,6 +77,7 @@ class IntentPacket:
         self.tokens = tokens
         self.model = model
         self.system_query = system_query
+        self.query_category = query_category
 
         if allowed_departments is not None:
             self.allowed_departments = allowed_departments
@@ -166,6 +169,7 @@ class IntentPacket:
             "tokens": self.tokens,
             "model": self.model,
             "system_query": self.system_query,
+            "query_category": self.query_category,
         }
 
     @classmethod
@@ -203,12 +207,19 @@ class IntentPacket:
             confidence=data.get("confidence", 1.0),
             tokens=data.get("tokens"),
             model=data.get("model"),
-            system_query=data.get("system_query", False)
+            system_query=data.get("system_query", False),
+            query_category=data.get("query_category", "PUBLIC_INFORMATION")
         )
 
 INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
     "You are BABU's Intent Classifier. Your ONLY job is to classify the user's "
     "conversational intent into a structured IntentPacket JSON containing capability routing templates.\n"
+    "\n"
+    "QUERY CATEGORY DEFINITIONS:\n"
+    "- BUSINESS_INFORMATION: Set if the query relates to the user's business context, services, client records, customers, invoices, revenue, business operations, or specific client claims (like PF claims, GST registration details for clients). Any query asking for customer/client names or counts is strictly BUSINESS_INFORMATION.\n"
+    "- PERSONAL_INFORMATION: Set if the query relates to the user's personal details, family graph, residential address, personal email/phone, or personal background.\n"
+    "- SYSTEM_INFORMATION: Set if the query relates to the system itself (BABU), its architecture, age, upgrades, logs, ADRs.\n"
+    "- PUBLIC_INFORMATION: Set if the query is a general knowledge question, public search, tax/compliance general laws, Wikipedia lookups, general facts (e.g., 'what is GST?', 'how to settle PF online?').\n"
     "\n"
     "DEPARTMENT DEFINITIONS:\n"
     "- information: Set if query requires general web search, information retrieval, quick facts lookup, chitchat response, or searching local profile/memory "
@@ -246,7 +257,8 @@ INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
     '  "allowed_actions": ["list", "of", "permitted", "actions"],\n'
     '  "execution_mode": "READ_ONLY | APPROVAL_REQUIRED | AUTO_EXECUTE",\n'
     '  "confidence": 0.0 to 1.0,\n'
-    '  "system_query": true | false\n'
+    '  "system_query": true | false,\n'
+    '  "query_category": "BUSINESS_INFORMATION | PERSONAL_INFORMATION | SYSTEM_INFORMATION | PUBLIC_INFORMATION"\n'
     "}\n"
     "\n"
     "CRITICAL: Output ONLY valid raw JSON. No explanation, no markdown fences."
@@ -363,7 +375,22 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
         if is_system_aware_query(query):
             packet.system_query = True
             
-        print(f"[INTENT CLASSIFIER] Classified: allowed_depts={packet.allowed_departments}, allowed_actions={packet.allowed_actions}, mode={packet.execution_mode}, conf={packet.confidence}, sys_query={packet.system_query}", flush=True)
+        # Programmatic query category overrides
+        lowered = query.lower()
+        if packet.system_query or any(k in lowered for k in ("failures", "uptime", "upgrades", "upgrade", "adr", "tradeoff", "tradeoffs", "health dashboard")):
+            packet.query_category = "SYSTEM_INFORMATION"
+        elif any(k in lowered for k in ("anshu", "shubham", "swarnkar", "ash", "ssoni", "who am i", "my father", "my mother", "my brother", "my sibling", "my parents", "my cousin", "my background", "my journey", "my education", "my career", "my email", "my phone", "my number", "my address", "my location", "where i live", "tell me about me", "my profile", "my biography", "my bio", "about me", "know about me")):
+            packet.query_category = "PERSONAL_INFORMATION"
+        elif any(k in lowered for k in ("client", "clients", "customer", "customers", "invoice", "invoices", "payment", "payments", "transaction", "transactions", "sales", "earnings", "revenue", "profit", "profits", "ledger", "ledgers", "pf claim", "pf claims", "uan consolidation", "kyc correction", "joint declaration", "gst registration", "gstr-1", "gstr-3b")):
+            is_general = any(g in lowered for g in ("what is", "how to", "definition", "explain", "tutorial", "general process"))
+            if not is_general:
+                packet.query_category = "BUSINESS_INFORMATION"
+            else:
+                packet.query_category = "PUBLIC_INFORMATION"
+        else:
+            packet.query_category = getattr(packet, "query_category", "PUBLIC_INFORMATION")
+
+        print(f"[INTENT CLASSIFIER] Classified: allowed_depts={packet.allowed_departments}, allowed_actions={packet.allowed_actions}, mode={packet.execution_mode}, conf={packet.confidence}, sys_query={packet.system_query}, query_category={packet.query_category}", flush=True)
         return packet
     except Exception as e:
         print(f"[INTENT CLASSIFIER] Failed to classify intent: {e}. Defaulting to READ_ONLY fallback.", flush=True)
@@ -374,7 +401,7 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
         except ImportError:
             from bot import is_system_aware_query
         is_sys = is_system_aware_query(query)
-        return IntentPacket(
+        packet = IntentPacket(
             allowed_departments=default_depts,
             allowed_actions=default_actions,
             execution_mode="READ_ONLY",
@@ -383,6 +410,18 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
             model=model_name,
             system_query=is_sys
         )
+        lowered = query.lower()
+        if is_sys or any(k in lowered for k in ("failures", "uptime", "upgrades", "upgrade", "adr", "tradeoff", "tradeoffs", "health dashboard")):
+            packet.query_category = "SYSTEM_INFORMATION"
+        elif any(k in lowered for k in ("anshu", "shubham", "swarnkar", "ash", "ssoni", "who am i", "my father", "my mother", "my brother", "my sibling", "my parents", "my cousin", "my background", "my journey", "my education", "my career", "my email", "my phone", "my number", "my address", "my location", "where i live", "tell me about me", "my profile", "my biography", "my bio", "about me", "know about me")):
+            packet.query_category = "PERSONAL_INFORMATION"
+        elif any(k in lowered for k in ("client", "clients", "customer", "customers", "invoice", "invoices", "payment", "payments", "transaction", "transactions", "sales", "earnings", "revenue", "profit", "profits", "ledger", "ledgers", "pf claim", "pf claims", "uan consolidation", "kyc correction", "joint declaration", "gst registration", "gstr-1", "gstr-3b")):
+            is_general = any(g in lowered for g in ("what is", "how to", "definition", "explain", "tutorial", "general process"))
+            if not is_general:
+                packet.query_category = "BUSINESS_INFORMATION"
+            else:
+                packet.query_category = "PUBLIC_INFORMATION"
+        return packet
 
 # ---------------------------------------------------------------------------
 # System prompt
