@@ -14,11 +14,12 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(CURRENT_DIR)
 sys.path.append(os.path.join(CURRENT_DIR, "babu"))
 
-from babu.bot import is_private_data_query, web_search, REFUSAL_PRIVATE_DATA
+from babu.bot import is_private_data_query, web_search, REFUSAL_PRIVATE_DATA, pa_node
 from babu.planner import classify_intent, IntentPacket
 from babu.task_engine import TaskDTO
 from babu.workers import run_worker
 from babu.auditor import PostExecutionValidator
+from langchain_core.messages import AIMessage, HumanMessage
 
 # Use model name from bot config
 try:
@@ -193,3 +194,44 @@ def test_partial_evidence():
     assert passed_fab is False
     assert "Source Authority Violation" in reason_fab
     assert "Mohan" in reason_fab or "Rohan" in reason_fab
+
+def test_pa_epistemic_boundary():
+    """Verify that pa_node correctly enforces programmatic hard refusal on private categories when sources are empty."""
+    # 1. Test business info category with no sources -> Hinglish refusal message
+    state = {
+        "messages": [HumanMessage(content="How many clients do I have in my GST registry?")],
+        "user_query": "How many clients do I have in my GST registry?",
+        "history_text": "",
+        "routing_metadata": {
+            "intent_packet": {
+                "query_category": "BUSINESS_INFORMATION"
+            }
+        },
+        "goal_graph": None,
+        "action_result": "",
+        "compressed_research": "",
+        "research_data": []
+    }
+    
+    result = pa_node(state)
+    assert len(result["messages"]) == 2
+    assert "Mere paas aapke actual client records ka access nahi hai" in result["messages"][-1].content
+    
+    # 2. Test short-circuit deterministic response flag (e.g. current time)
+    state_time = {
+        "messages": [HumanMessage(content="what time is it in IST?")],
+        "user_query": "what time is it in IST?",
+        "history_text": "",
+        "routing_metadata": {
+            "intent_packet": {
+                "query_category": "PUBLIC_INFORMATION"
+            }
+        },
+        "goal_graph": None,
+        "action_result": "",
+        "compressed_research": "",
+        "research_data": []
+    }
+    
+    result_time = pa_node(state_time)
+    assert result_time.get("is_deterministic_response") is True

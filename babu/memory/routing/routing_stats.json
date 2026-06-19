@@ -1,27 +1,5 @@
 [
   {
-    "timestamp": "2026-06-09T05:55:34.333985+00:00",
-    "last_used": "2026-06-09T05:55:34.333985+00:00",
-    "session_id": "default",
-    "query_preview": "Search the web for upcoming international cricket matches for india",
-    "selected_gear": "DYNAMIC",
-    "reason": "routing_dispatch",
-    "has_action": false,
-    "ttl_days": 10,
-    "confidence": 1.0
-  },
-  {
-    "timestamp": "2026-06-09T06:16:01.109035+00:00",
-    "last_used": "2026-06-09T06:16:01.109035+00:00",
-    "session_id": "default",
-    "query_preview": "Search the web for upcoming international cricket matches for india",
-    "selected_gear": "DYNAMIC",
-    "reason": "routing_dispatch",
-    "has_action": false,
-    "ttl_days": 10,
-    "confidence": 1.0
-  },
-  {
     "timestamp": "2026-06-15T12:12:30.654714+00:00",
     "last_used": "2026-06-15T12:12:30.654714+00:00",
     "session_id": "test_session",
@@ -1729,6 +1707,105 @@
   {
     "timestamp": "2026-06-18T10:31:02.567619+00:00",
     "last_used": "2026-06-18T10:31:02.567619+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "which upgrade had the highest impact?",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-19T06:29:41.223928+00:00",
+    "last_used": "2026-06-19T06:29:41.223928+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "what is the current time in IST",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-19T06:29:42.243337+00:00",
+    "last_used": "2026-06-19T06:29:42.243337+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "how old are you",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-19T06:29:42.296145+00:00",
+    "last_used": "2026-06-19T06:29:42.296145+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "who are you",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-19T06:29:43.431121+00:00",
+    "last_used": "2026-06-19T06:29:43.431121+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "tell me about your architecture",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-19T06:29:50.026486+00:00",
+    "last_used": "2026-06-19T06:29:50.026486+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "what are failures happened in last 5 days",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-19T06:30:03.431600+00:00",
+    "last_used": "2026-06-19T06:30:03.431600+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "system health dashboard",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-19T06:30:09.834899+00:00",
+    "last_used": "2026-06-19T06:30:09.834899+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "what upgrades did you recieve in last 20 days",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-19T06:30:31.739074+00:00",
+    "last_used": "2026-06-19T06:30:31.739074+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "what are the tradeoffs in BABU?",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-19T06:30:47.385043+00:00",
+    "last_used": "2026-06-19T06:30:47.385043+00:00",
     "session_id": "test_system_session",
     "query_preview": "which upgrade had the highest impact?",
     "selected_gear": "DYNAMIC",
