@@ -16,10 +16,12 @@ try:
     from .task_engine import TaskDTO
     from .memory import get_anti_pattern_rules
     from .google_service import is_google_configured
+    from .governance import get_constitution
 except ImportError:
     from task_engine import TaskDTO
     from memory import get_anti_pattern_rules
     from google_service import is_google_configured
+    from governance import get_constitution
 def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]]:
     """Dynamically resolve allowed departments and allowed actions based on intent packet."""
     allowed_depts = intent_packet_dict.get("allowed_departments")
@@ -116,6 +118,13 @@ class PreExecutionGatekeeper:
             
             if action not in self.supported_actions:
                 return False, f"Unsupported Workspace action '{action}' in task '{task.task_id}'."
+
+            if action == "send_email":
+                params = task.context.get("params") or {}
+                to_addr = params.get("to", "")
+                allowed_emails = get_constitution("allowed_email_targets", [])
+                if allowed_emails and to_addr not in allowed_emails:
+                    return False, f"Constitutional Violation: Recipient '{to_addr}' is not in the allowed_email_targets list."
 
             # Verify Google Integration credentials for Google-related actions
             google_actions = {

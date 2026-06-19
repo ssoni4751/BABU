@@ -121,6 +121,14 @@ def micro_audit_dag(goal_graph_dict: dict) -> bool:
                     print(f"[MICRO AUDIT ERROR] Task {task_id} requests unsupported action '{action}'.", flush=True)
                     return False
                     
+                if action == "send_email":
+                    params = context.get("params") or {}
+                    to_addr = params.get("to", "")
+                    allowed_emails = E0_A_Rules.get("allowed_email_targets", [])
+                    if allowed_emails and to_addr not in allowed_emails:
+                        print(f"[MICRO AUDIT ERROR] Task {task_id} attempts to send email to unauthorized recipient '{to_addr}'.", flush=True)
+                        return False
+                        
                 if not is_google_configured():
                     print(f"[MICRO AUDIT ERROR] Workspace action requested but Google Workspace credentials are not configured.", flush=True)
                     return False

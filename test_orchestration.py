@@ -195,7 +195,7 @@ class TestBipartiteAuditor(unittest.TestCase):
             department="execution",
             depends_on=[],
             priority=1,
-            context={"action": "send_email"}
+            context={"action": "send_email", "params": {"to": "ssoni4751@gmail.com"}}
         )
         
         # Google not configured

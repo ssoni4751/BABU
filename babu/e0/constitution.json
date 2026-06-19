@@ -8,5 +8,16 @@
   ],
   "human_approval_required": true,
   "audit_requirements": "Every task run must undergo pre and post validation checks.",
-  "micro_auditor_boundary": "Micro Auditor MUST be deterministic, MUST NOT call LLMs, and MUST complete in <50ms."
+  "micro_auditor_boundary": "Micro Auditor MUST be deterministic, MUST NOT call LLMs, and MUST complete in <50ms.",
+  "allowed_email_targets": [
+    "ssoni4751@gmail.com",
+    "anshu@example.com",
+    "shubham@example.com"
+  ],
+  "mandatory_human_approval": [
+    "send_email",
+    "create_calendar_event",
+    "create_event",
+    "post_to_facebook"
+  ]
 }

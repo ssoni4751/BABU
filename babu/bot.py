@@ -3420,7 +3420,15 @@ def task_executor_node(state: BabuState):
             # with the fully resolved parameters (including upstream findings!)
             if task.department == "execution":
                 action = task.context.get("action", "")
-                if action in ("search_sheet", "search_gmail"):
+                try:
+                    from .governance import get_constitution
+                except ImportError:
+                    from governance import get_constitution
+                mandatory_approvals = get_constitution("mandatory_human_approval", [])
+                
+                if action in mandatory_approvals:
+                    task.context["approved"] = False
+                elif action in ("search_sheet", "search_gmail"):
                     task.context["approved"] = True
                 if not task.context.get("approved"):
                     action = task.context.get("action", "")
