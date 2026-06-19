@@ -130,7 +130,6 @@ def generate_daily_post(custom_topic: str = None) -> tuple[str, str, str, list, 
     if category not in ["pf", "itr", "gst", "digital"]:
         category = "itr"
     
-    # Clean markdown formatting characters that crash Telegram V1 Markdown parser
     caption = caption.replace("*", "").replace("_", "").replace("`", "")
     
     return caption, image_prompt, card_title, card_tips, category
@@ -179,13 +178,11 @@ def get_font(font_name: str, size: int):
     is_bold = "bd" in font_name.lower() or "bold" in font_name.lower() or "nirmalab" in font_name.lower() or "segoeuib" in font_name.lower()
     
     paths = []
-    # 1. Prefer Poppins for high-fidelity bilingual display
     if is_bold and os.path.exists(poppins_bold):
         paths.append(poppins_bold)
     elif os.path.exists(poppins_regular):
         paths.append(poppins_regular)
         
-    # 2. Local OS fallbacks
     paths.extend([
         f"C:\\Windows\\Fonts\\{font_name}.ttf",
         f"C:\\Windows\\Fonts\\{font_name.lower()}.ttf",
@@ -208,7 +205,7 @@ def get_font(font_name: str, size: int):
 
 def draw_gradient_background(image, color1, color2):
     """Draw a vertical linear gradient on an image."""
-    from PIL import ImageDrop, ImageDraw
+    from PIL import ImageDraw
     draw = ImageDraw.Draw(image)
     width, height = image.size
     for y in range(height):
@@ -242,7 +239,7 @@ def draw_glass_card(image, x, y, w, h, bg_color=(20, 24, 30, 200), border_color=
 
 def generate_pillow_graphic(title: str, tips: list, background_path: str = None, category: str = "itr") -> str:
     """Generate a high-fidelity fintech dashboard graphic card using PIL."""
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw
     import math
     
     category = str(category).lower().strip()
@@ -251,7 +248,6 @@ def generate_pillow_graphic(title: str, tips: list, background_path: str = None,
         
     print(f"[PILLOW] Rendering floating graphic card for category '{category}' and title '{title}'...", flush=True)
     
-    # Category Theme Definitions
     themes = {
         "pf": {
             "name": "PF",
@@ -385,13 +381,221 @@ def generate_pillow_graphic(title: str, tips: list, background_path: str = None,
 def generate_flux_graphic(prompt: str) -> str:
     """Generate or retrieve a high-quality campaign poster background."""
     import uuid
-    import time
     import requests
     import urllib.parse
-    import re
     
     current_dir = os.path.dirname(os.path.abspath(__file__))
     temp_dir = os.path.join(current_dir, "temp")
     os.makedirs(temp_dir, exist_ok=True)
     unique_id = uuid.uuid4().hex[:8]
-    image_path = os.path.join(temp_dir, f"flux_ba
+    image_path = os.path.join(temp_dir, f"flux_backdrop_{unique_id}.jpg")
+    
+    gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        
+    if gemini_key:
+        print("[IMAGE ENGINE] Attempting image generation via Google Imagen 4...", flush=True)
+        try:
+            from google import genai
+            from google.genai import types
+            
+            client = genai.Client(api_key=gemini_key)
+            response = client.models.generate_images(
+                model='imagen-4.0-generate-001',
+                prompt=prompt,
+                config=types.GenerateImagesConfig(
+                    number_of_images=1,
+                    output_mime_type='image/jpeg',
+                    aspect_ratio='1:1'
+                )
+            )
+            if response.generated_images:
+                img_bytes = response.generated_images[0].image.image_bytes
+                with open(image_path, "wb") as f:
+                    f.write(img_bytes)
+                print(f"[IMAGE ENGINE SUCCESS] Generated image via Gemini Imagen 4 saved to {image_path}", flush=True)
+                return image_path
+        except Exception as e:
+            print(f"[IMAGE ENGINE WARNING] Gemini Imagen 4 generation failed: {e}", flush=True)
+            
+    hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_API_KEY")
+    if hf_token:
+        print("[IMAGE ENGINE] Attempting image generation via Hugging Face Inference API...", flush=True)
+        model_id = "black-forest-labs/FLUX.1-schnell"
+        api_url = f"[https://api-inference.huggingface.co/models/](https://api-inference.huggingface.co/models/){model_id}"
+        headers = {"Authorization": f"Bearer {hf_token}"}
+        try:
+            resp = requests.post(api_url, headers=headers, json={"inputs": prompt}, timeout=40)
+            if resp.status_code == 200:
+                with open(image_path, "wb") as f:
+                    f.write(resp.content)
+                print(f"[IMAGE ENGINE SUCCESS] Generated image via Hugging Face saved to {image_path}", flush=True)
+                return image_path
+        except Exception as e:
+            print(f"[IMAGE ENGINE WARNING] Hugging Face generation failed: {e}", flush=True)
+
+    print("[IMAGE ENGINE] Attempting to retrieve stock background illustration via DuckDuckGo Images...", flush=True)
+    try:
+        from ddgs import DDGS
+        words = [w for w in re.split(r'[\s,.:;!?()"\']', prompt) if w.strip()]
+        stop_words = {"a", "an", "the", "and", "or", "but", "with", "featuring", "representing", "minimalist", "minimalism", "3d", "illustration", "premium", "style", "features", "sleek", "abstract", "elements", "vibrant", "corporate", "colors", "clean"}
+        keywords = [w for w in words if w.lower() not in stop_words]
+        
+        search_term = "minimalist 3d " + " ".join(keywords[:4])
+        print(f"[IMAGE ENGINE] Searching DuckDuckGo for: '{search_term}'", flush=True)
+        with DDGS() as ddgs:
+            results = list(ddgs.images(search_term, max_results=3))
+            
+        if results:
+            img_url = results[0].get("image")
+            if img_url:
+                resp = requests.get(img_url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+                resp.raise_for_status()
+                with open(image_path, "wb") as f:
+                    f.write(resp.content)
+                return image_path
+    except Exception as e:
+        print(f"[IMAGE ENGINE WARNING] DuckDuckGo Images fallback failed: {e}", flush=True)
+        
+    print("[IMAGE ENGINE] Attempting keyless generation via Pollinations.ai...", flush=True)
+    try:
+        encoded_prompt = urllib.parse.quote_plus(prompt)
+        url = f"[https://image.pollinations.ai/prompt/](https://image.pollinations.ai/prompt/){encoded_prompt}?width=1024&height=1024&nologo=true&private=true"
+        resp = requests.get(url, timeout=25, headers={"User-Agent": "Mozilla/5.0"})
+        resp.raise_for_status()
+        with open(image_path, "wb") as f:
+            f.write(resp.content)
+        return image_path
+    except Exception as e:
+        print(f"[IMAGE ENGINE WARNING] Pollinations failed: {e}", flush=True)
+        
+    raise RuntimeError("All background image generation/retrieval engines failed.")
+
+
+def publish_to_facebook_page(image_path: str, caption: str) -> tuple[bool, str]:
+    """Publish the photo (if provided) or caption to Facebook Page via Graph API."""
+    page_id = os.environ.get("FACEBOOK_PAGE_ID")
+    page_token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN")
+    
+    if not page_id or not page_token:
+        return False, "Missing FACEBOOK_PAGE_ID or FACEBOOK_PAGE_ACCESS_TOKEN in environment variables."
+        
+    has_image = image_path and os.path.exists(image_path)
+    
+    if has_image:
+        url = f"[https://graph.facebook.com/v19.0/](https://graph.facebook.com/v19.0/){page_id}/photos"
+        try:
+            with open(image_path, "rb") as img_file:
+                files = {"source": img_file}
+                data = {"message": caption, "access_token": page_token}
+                print(f"[FACEBOOK] Publishing photo to page {page_id}...", flush=True)
+                response = requests.post(url, files=files, data=data, timeout=30)
+                
+            res_json = response.json()
+            if response.status_code == 200 and "id" in res_json:
+                return True, f"Successfully published to Facebook Page! Post ID: {res_json['id']}"
+            else:
+                return False, f"Facebook API Error: {res_json.get('error', {}).get('message', 'Unknown error')}"
+        except Exception as e:
+            return False, f"Failed to publish to Facebook: {e}"
+    else:
+        url = f"[https://graph.facebook.com/v19.0/](https://graph.facebook.com/v19.0/){page_id}/feed"
+        try:
+            data = {"message": caption, "access_token": page_token}
+            response = requests.post(url, data=data, timeout=30)
+            res_json = response.json()
+            if response.status_code == 200 and "id" in res_json:
+                return True, f"Successfully published to Facebook Page! Post ID: {res_json['id']}"
+            else:
+                return False, f"Facebook API Error: {res_json.get('error', {}).get('message', 'Unknown error')}"
+        except Exception as e:
+            return False, f"Failed to publish to Facebook: {e}"
+
+
+def clean_old_temp_files(temp_dir: str):
+    """Clean up files in temp directory older than 12 hours."""
+    try:
+        now = time.time()
+        for f in os.listdir(temp_dir):
+            path = os.path.join(temp_dir, f)
+            if os.path.isfile(path) and (f.startswith("daily_post_") or f.startswith("flux_backdrop_")):
+                if now - os.path.getmtime(path) > 43200:
+                    os.remove(path)
+    except Exception as e:
+        print(f"[CLEANUP WARNING] Failed to clean old temp files: {e}", flush=True)
+
+
+def generate_social_post_draft(custom_topic: str = None) -> dict:
+    """Scrape trends, generate caption, image prompt, download FLUX backdrop, and render Pillow glass card."""
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    temp_dir = os.path.join(current_dir, "temp")
+    if os.path.exists(temp_dir):
+        clean_old_temp_files(temp_dir)
+        
+    caption, img_prompt, card_title, card_tips, category = generate_daily_post(custom_topic)
+    
+    bg_path = None
+    try:
+        bg_path = generate_flux_graphic(img_prompt)
+    except Exception as e:
+        print(f"[SOCIAL WARNING] Background generation failed: {e}", flush=True)
+        
+    img_path = generate_pillow_graphic(card_title, card_tips, background_path=bg_path, category=category)
+    
+    return {
+        "caption": caption,
+        "image_prompt": img_prompt,
+        "card_title": card_title,
+        "card_tips": card_tips,
+        "image_path": img_path,
+        "category": category
+    }
+
+
+def run_autonomous_social_post() -> tuple[bool, str, str, str]:
+    """Unified wrapper that runs the entire generation and publishing flow."""
+    from memory import append_to_profile_ledger, log_execution_failure
+    
+    caption, img_prompt = "", ""
+    img_path = ""
+    try:
+        draft = generate_social_post_draft()
+        caption = draft["caption"]
+        img_prompt = draft["image_prompt"]
+        img_path = draft["image_path"]
+        
+        ok, msg = publish_to_facebook_page(img_path, caption)
+        
+        append_to_profile_ledger("work_summaries", {
+            "task_name": "Daily FB Marketing Post",
+            "status": "SUCCESS" if ok else "FAILED",
+            "details": f"Message: {msg} | Graphic Prompt: {img_prompt[:80]}..."
+        })
+        
+        if not ok:
+            log_execution_failure(
+                domain="social_media.facebook_publisher",
+                method="publish_to_facebook_page",
+                exception_msg=msg,
+                goal="Daily Autonomous Marketing Post publishing"
+            )
+            
+        import gc
+        gc.collect()
+        return ok, msg, caption, img_path
+    except Exception as e:
+        error_msg = str(e)
+        append_to_profile_ledger("work_summaries", {
+            "task_name": "Daily FB Marketing Post",
+            "status": "CRITICAL_ERROR",
+            "details": error_msg
+        })
+        
+        log_execution_failure(
+            domain="social_media.autonomous_social_post",
+            method="run_autonomous_social_post",
+            exception_msg=error_msg,
+            goal="Daily Autonomous Marketing Post generation and publishing"
+        )
+        import gc
+        gc.collect()
+        return False, f"Autonomous workflow failed: {error_msg}", caption, img_path
