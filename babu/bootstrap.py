@@ -92,3 +92,5 @@ def bootstrap_brain():
         except Exception as e:
             print(f"[TELEGRAM ERROR] Polling failed or conflicted: {e}. Retrying in 15 seconds...", flush=True)
             time.sleep(15)
+if __name__ == "__main__":
+    bootstrap_brain()
