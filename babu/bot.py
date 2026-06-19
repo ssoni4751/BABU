@@ -244,9 +244,6 @@ def init_postgres_db():
     except Exception as e:
         print(f"[POSTGRES ERROR] init_postgres_db failed: {e}", flush=True)
 
-if DATABASE_URL and (DATABASE_URL.startswith("postgres://") or DATABASE_URL.startswith("postgresql://")):
-    init_postgres_db()
-
 def init_durable_checkpoint_db():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     cursor = conn.cursor()
@@ -2021,6 +2018,99 @@ def is_deterministic_faq_query(query: str) -> bool:
     return any(k in t for k in faq_keywords)
 
 
+def has_multiple_tasks_or_requests(query: str, intent_packet_dict: Optional[dict] = None) -> bool:
+    import re
+    t = (query or "").lower().strip()
+    
+    # 1. Check intent packet indicators for multiple actions or core departments
+    if intent_packet_dict:
+        allowed_depts = intent_packet_dict.get("allowed_departments", [])
+        allowed_actions = intent_packet_dict.get("allowed_actions", [])
+        
+        # Core departments are everything except "pa" and non-mutating "execution"
+        mutating_actions = {
+            "send_email", "create_event", "log_to_sheet", "create_doc", 
+            "copy_photos_to_drive", "copy_contacts_to_drive", 
+            "send_slack", "create_task", "post_to_facebook", "generate_image"
+        }
+        has_mutating = any(act in allowed_actions for act in mutating_actions)
+        core_depts = [d for d in allowed_depts if d != "pa" and (d != "execution" or has_mutating)]
+        if len(core_depts) > 1:
+            return True
+            
+        # Multiple actions requested (only count active mutating actions)
+        mutating_actions = {
+            "send_email", "create_event", "log_to_sheet", "create_doc", 
+            "copy_photos_to_drive", "copy_contacts_to_drive", 
+            "send_slack", "create_task", "post_to_facebook", "generate_image"
+        }
+        active_mutating_actions = [act for act in allowed_actions if act in mutating_actions]
+        if len(active_mutating_actions) > 1:
+            return True
+            
+        # If we have an execution action and another informational/research department active
+        has_execution = len(active_mutating_actions) > 0
+        if has_execution and ("information" in allowed_depts or "research" in allowed_depts):
+            return True
+
+    # 2. Check text-based checks for conjunctions and multiple verbs/requests
+    conjunction_patterns = [r'\band\b', r'\balso\b', r'\bthen\b', r'\bplus\b', r'\balong with\b', r'\bas well as\b', r';']
+    has_conjunction = any(re.search(pat, t) for pat in conjunction_patterns)
+    
+    if has_conjunction:
+        parts = re.split(r'\band\b|\balso\b|\bthen\b|\bplus\b|\balong with\b|\bas well as\b|;', t)
+        parts = [p.strip() for p in parts if p.strip()]
+        
+        valid_requests_count = 0
+        for part in parts:
+            if len(part) < 4:
+                continue
+            request_keywords = (
+                "current time", "time in ist", "what time", "what is the time",
+                "how old", "your age", "date of birth", "dob", "who are you", "about yourself",
+                "system health", "status dashboard", "system status", "upgrades", "upgrade",
+                "tradeoff", "highest impact", "evolution", "evolve", "history", "timeline",
+                "send", "email", "mail", "create", "event", "calendar", "log", "sheet", "spreadsheet",
+                "document", "doc", "slack", "post", "facebook", "search", "find", "look up", "lookup",
+                "tell", "check", "show", "who", "what", "where", "when", "how", "why"
+            )
+            if any(k in part for k in request_keywords):
+                valid_requests_count += 1
+                
+        if valid_requests_count > 1:
+            return True
+            
+    # 3. Check for multiple distinct FAQ/system query categories in the same query
+    faq_types_present = set()
+    if any(k in t for k in ("current time", "time in ist", "time here in ist", "what is the time", "what time is it")):
+        faq_types_present.add("time")
+    if any(k in t for k in ("how old are you", "how old you are", "your age", "what is your age", "date of birth", "dob of babu")):
+        faq_types_present.add("age")
+    if any(k in t for k in ("who are you", "tell me about yourself", "about yourself", "your identity", "what is your name")):
+        faq_types_present.add("identity")
+    if any(k in t for k in ("system health", "status dashboard", "health dashboard", "system status")):
+        faq_types_present.add("health")
+    if any(k in t for k in ("upgrades", "upgrade", "adr", "tradeoff", "highest impact", "evolution", "evolve", "history", "timeline", "incident")):
+        faq_types_present.add("system")
+        
+    if len(faq_types_present) > 1:
+        return True
+
+    # 4. Check if there is an FAQ query keyword AND a workspace/web search requirement
+    has_faq = any(k in t for k in (
+        "current time", "time in ist", "what is the time", "what time is it",
+        "how old are you", "your age", "date of birth", "dob of babu",
+        "who are you", "tell me about yourself", "your identity", "what is your name",
+        "system health", "status dashboard", "system status",
+        "upgrades", "upgrade", "tradeoff", "highest impact", "evolution", "history", "timeline"
+    ))
+    if has_faq:
+        if requires_workspace_access(query) or requires_web_search(query):
+            return True
+            
+    return False
+
+
 def route_after_router(state: BabuState) -> str:
     notice = state.get("pending_action_notice", "")
     if notice:
@@ -2036,7 +2126,7 @@ def route_after_router(state: BabuState) -> str:
         
     # Deterministic AKS/FAQ/system queries short-circuit BEFORE private-category plan-forcing.
     # These queries are answered from the database or in-memory with zero LLM tokens.
-    if is_pure_greeting(query) or is_deterministic_faq_query(query):
+    if (is_pure_greeting(query) or is_deterministic_faq_query(query)) and not has_multiple_tasks_or_requests(query, intent_packet_dict):
         print(f"[ROUTE AFTER ROUTER] Deterministic FAQ/greeting detected for query: '{query}'. Short-circuiting directly to PA node.", flush=True)
         return "pa"
 
@@ -2584,8 +2674,8 @@ def requires_web_search(query: str) -> bool:
         if not any(kw in t for kw in ("search the web", "search google", "web search", "google search", "wikipedia", "search online")):
             return False
 
-    # Do not require web search for ARIA internal / self-awareness questions
-    if is_system_aware_query(query):
+    # Do not require web search for ARIA internal / self-awareness questions or deterministic FAQ queries
+    if is_system_aware_query(query) or is_deterministic_faq_query(query):
         if not any(kw in t for kw in ("search the web", "search google", "web search", "google search", "wikipedia", "search online")):
             return False
 
@@ -3013,7 +3103,7 @@ def planner_node(state: BabuState):
                 intent_packet=intent_packet.to_dict()
             )
         # 2b. Simple Local Lookup (No web search or other complex intents are active)
-        elif intent_packet.lookup and not (intent_packet.research or intent_packet.generate or intent_packet.execute or requires_workspace_access(query) or requires_web_search(query)):
+        elif intent_packet.lookup and not (intent_packet.research or intent_packet.generate or intent_packet.execute or requires_workspace_access(query) or requires_web_search(query)) and not has_multiple_tasks_or_requests(query, intent_packet.to_dict()):
             PRIVATE_QUERY_TYPES = ("BUSINESS_INFORMATION", "PERSONAL_INFORMATION", "SYSTEM_INFORMATION")
             if intent_packet.query_category in PRIVATE_QUERY_TYPES:
                 print(f"[PLANNER NODE] Private query category '{intent_packet.query_category}' detected → Disabling fast-track simple lookup shortcut.", flush=True)
@@ -4302,11 +4392,14 @@ def pa_node(state: BabuState):
 
     # Determine conversational vs workflow mode dynamically based on the planned graph
     is_conversational = True
+    has_tasks = False
     graph_dict = state.get("goal_graph")
     if graph_dict:
         tasks = graph_dict.get("tasks", [])
         if len(tasks) > 1:
             is_conversational = False
+        if len(tasks) >= 1:
+            has_tasks = True
 
     # Soft Continuity: Suppress conversational history for fresh greetings to avoid residual bias
     lowered_query = user_query.lower().strip().removeprefix("/").removeprefix("!")
@@ -4314,9 +4407,12 @@ def pa_node(state: BabuState):
         lowered_query = lowered_query.replace(char, "")
     lowered_query = lowered_query.strip()
     
+    intent_packet_dict = state.get("routing_metadata", {}).get("intent_packet")
+    is_multi_request = has_multiple_tasks_or_requests(user_query, intent_packet_dict)
+    
     # Deterministic FAQ short-circuits for high-frequency queries:
     # 1. Current Time in IST
-    if any(k in lowered_query for k in ("current time", "time in ist", "time here in ist", "what is the time", "what time is it")):
+    if not is_multi_request and any(k in lowered_query for k in ("current time", "time in ist", "time here in ist", "what is the time", "what time is it")):
         from datetime import datetime, timezone, timedelta
         now_utc = datetime.now(timezone.utc)
         now_ist = now_utc + timedelta(hours=5, minutes=30)
@@ -4325,20 +4421,20 @@ def pa_node(state: BabuState):
         return {"messages": state["messages"] + [AIMessage(content=time_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
 
     # 2. How old are you? / date of birth of babu
-    if any(k in lowered_query for k in ("how old are you", "how old you are", "your age", "what is your age", "date of birth of babu", "babu birth", "babu creation", "dob of babu")):
+    if not is_multi_request and any(k in lowered_query for k in ("how old are you", "how old you are", "your age", "what is your age", "date of birth of babu", "babu birth", "babu creation", "dob of babu")):
         age_str = get_babu_age_string()
         age_response = f"I am **Project BABU** (Behavioral Autonomous Bureaucratic Utility). My date of birth is **May 27, 2026**. I have been active for **{age_str}**!"
         print(f"[PA NODE] Deterministic short-circuit for age query: '{user_query}'", flush=True)
         return {"messages": state["messages"] + [AIMessage(content=age_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
 
     # 3. Who are you / Tell me about yourself
-    if any(k in lowered_query for k in ("who are you", "tell me about yourself", "about yourself", "know about yourself", "describe yourself", "introduce yourself", "your identity", "what is your name")):
+    if not is_multi_request and any(k in lowered_query for k in ("who are you", "tell me about yourself", "about yourself", "know about yourself", "describe yourself", "introduce yourself", "your identity", "what is your name")):
         identity_response = get_dynamic_self_identity()
         print(f"[PA NODE] Deterministic short-circuit for identity query: '{user_query}'", flush=True)
         return {"messages": state["messages"] + [AIMessage(content=identity_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
         
     # 3.5 System Health Dashboard
-    if any(k in lowered_query for k in ("system health", "status dashboard", "how are you doing", "what is your status", "health dashboard", "current state", "your current state", "what is your current state", "system status", "system status dashboard")):
+    if not is_multi_request and any(k in lowered_query for k in ("system health", "status dashboard", "how are you doing", "what is your status", "health dashboard", "current state", "your current state", "what is your current state", "system status", "system status dashboard")):
         dashboard_response = get_system_health_dashboard()
         print(f"[PA NODE] Deterministic short-circuit for health dashboard query: '{user_query}'", flush=True)
         return {"messages": state["messages"] + [AIMessage(content=dashboard_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
@@ -4450,7 +4546,7 @@ def pa_node(state: BabuState):
         return {"messages": state["messages"] + [AIMessage(content=upgrades_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
 
     # 4. Tell me about your architecture
-    if any(k in lowered_query for k in ("your architecture", "tell me about your architecture", "how are you built", "how do you work")):
+    if not is_multi_request and any(k in lowered_query for k in ("your architecture", "tell me about your architecture", "how are you built", "how do you work")):
         arch_response = (
             "My architecture is a decentralized LangGraph-based swarm framework. It consists of:\n"
             "1. **Strategic Planner & Intent Classifier**: Decomposes user queries and enforces capability boundaries.\n"
@@ -4462,7 +4558,7 @@ def pa_node(state: BabuState):
         return {"messages": state["messages"] + [AIMessage(content=arch_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
 
     # 5. what are failures happened in last 5 days?
-    if any(k in lowered_query for k in ("failures happened", "recent failures", "what are failures", "failures in last", "failures happened in last")):
+    if not is_multi_request and any(k in lowered_query for k in ("failures happened", "recent failures", "what are failures", "failures in last", "failures happened in last")):
         conn, is_pg = get_db_connection()
         cursor = conn.cursor()
         try:
@@ -4511,7 +4607,7 @@ def pa_node(state: BabuState):
     }
     is_fresh_greeting = lowered_query in greetings or any(lowered_query.startswith(g + " ") for g in greetings)
     
-    if is_fresh_greeting and not action_result:
+    if not is_multi_request and is_fresh_greeting and not action_result:
         profile = get_current_profile()
         details = profile.get("personal_details", {}) if profile else {}
         nickname = details.get("primary_nickname", "") or details.get("full_name", "Anshu")
@@ -4597,7 +4693,7 @@ def pa_node(state: BabuState):
         return {"messages": state["messages"] + [response], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
 
     # Deterministic short-circuit for basic profile facts.
-    if not action_result:
+    if not is_multi_request and not action_result:
         direct_fact = get_profile_fact_answer(user_query)
         if direct_fact:
             if not is_conversational:
@@ -8871,36 +8967,11 @@ def cleanup_corrupt_failures():
         print(f"[CLEANUP ERROR] Failed to clean failures: {e}", flush=True)
 
 
-if __name__ == "__main__":
-    cleanup_corrupt_failures()
-    health_thread = threading.Thread(target=start_health_server, name="web_dashboard_health_server", daemon=True)
-    health_thread.start()
-    google_status = f"Google Workspace ({'active' if is_google_configured() else 'NOT configured'})"
-    print(f"--- ARIA IS LIVE | Memory | Web Search | Knowledge Base | {google_status} | Unified Swarm ---", flush=True)
-    bot = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    tg_application = bot
-    
-    # Start autonomous social media manager scheduler
-    start_social_scheduler(bot)
-    
-    bot.add_handler(CommandHandler("launch", cmd_launch))
-    bot.add_handler(CommandHandler("clear",  cmd_clear))
-    bot.add_handler(CommandHandler("goals",  cmd_goals))
-    bot.add_handler(CommandHandler("help",   cmd_help))
-    bot.add_handler(CommandHandler("stats",  cmd_stats))
-    bot.add_handler(CommandHandler("model",  cmd_model))
-    bot.add_handler(CommandHandler("postnow", cmd_postnow))
-    bot.add_handler(CommandHandler("promote", cmd_promote))
-    bot.add_handler(CommandHandler("retire", cmd_retire))
-    bot.add_handler(MessageHandler((filters.TEXT | filters.VOICE | filters.Document.ALL) & (~filters.COMMAND), on_message))
-    bot.add_handler(CallbackQueryHandler(on_post_callback))
-    bot.add_error_handler(telegram_error_handler)
-    while True:
-        try:
-            bot.run_polling(drop_pending_updates=True)
-            break
-        except Exception as e:
-            print(f"[TELEGRAM ERROR] Polling failed or conflicted: {e}. Retrying in 15 seconds...", flush=True)
-            time.sleep(15)
 
 
+
+
+
+if __name__ == '__main__':
+    from .bootstrap import bootstrap_brain
+    bootstrap_brain()

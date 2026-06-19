@@ -599,6 +599,35 @@ def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]
     return allowed_depts_set, set(allowed_actions)
 
 
+COMPILED_BRAIN_CONTEXT: Optional[str] = None
+
+def compile_planner() -> str:
+    """Load and compile the Layer A Institutional Brain context into memory."""
+    global COMPILED_BRAIN_CONTEXT
+    try:
+        brain_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "brain")
+        with open(os.path.join(brain_dir, "constitution.md"), "r", encoding="utf-8") as f:
+            const_text = f.read()
+        with open(os.path.join(brain_dir, "organization.md"), "r", encoding="utf-8") as f:
+            org_text = f.read()
+        with open(os.path.join(brain_dir, "doctrine.md"), "r", encoding="utf-8") as f:
+            doc_text = f.read()
+        with open(os.path.join(brain_dir, "capabilities.md"), "r", encoding="utf-8") as f:
+            cap_text = f.read()
+            
+        COMPILED_BRAIN_CONTEXT = (
+            f"\n\n[BRAIN LAYER A: CONSTITUTION]\n{const_text}"
+            f"\n\n[BRAIN LAYER A: ORGANIZATION]\n{org_text}"
+            f"\n\n[BRAIN LAYER A: DOCTRINE]\n{doc_text}"
+            f"\n\n[BRAIN LAYER A: CAPABILITIES]\n{cap_text}"
+        )
+        print("[PLANNER] Compiled Layer A Brain successfully.", flush=True)
+    except Exception as e:
+        print(f"[PLANNER ERROR] Failed to compile Layer A Brain: {e}", flush=True)
+        COMPILED_BRAIN_CONTEXT = ""
+    return COMPILED_BRAIN_CONTEXT
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -698,8 +727,15 @@ def plan_goal(
         ]
         gov_planning_rules = get_anti_pattern_rules_for_domains(planning_domains)
         system_prompt = PLANNER_SYSTEM_PROMPT
+        
+        # Phase 4 - Compile Planner (Load Institutional Brain Context)
+        global COMPILED_BRAIN_CONTEXT
+        if COMPILED_BRAIN_CONTEXT is None:
+            compile_planner()
+        system_prompt += COMPILED_BRAIN_CONTEXT
+
         if gov_planning_rules:
-            system_prompt += f"\n\n{gov_planning_rules}"
+            system_prompt += f"\n\n[CRITICAL HISTORICAL GOVERNANCE RULES]\n{gov_planning_rules}"
 
         response = invoke_with_fallback(
             [SystemMessage(content=system_prompt), HumanMessage(content=user_content)],
