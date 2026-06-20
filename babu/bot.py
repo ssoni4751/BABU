@@ -2132,11 +2132,51 @@ def has_multiple_tasks_or_requests(query: str, intent_packet_dict: Optional[dict
     if has_conjunction:
         parts = re.split(r'\band\b|\balso\b|\bthen\b|\bplus\b|\balong with\b|\bas well as\b|;', t)
         parts = [p.strip() for p in parts if p.strip()]
-        
-        valid_requests_count = 0
+
+        # Pure FAQ/identity keywords — queries made up entirely of these fragments
+        # are handled atomically by pa_node short-circuits from memory.
+        # They must NOT be flagged as multi-task even if conjunctions are present.
+        # e.g. "who are you and what you do best" → single identity FAQ.
+        pure_faq_keywords = (
+            "who are you", "what are you", "what do you do", "what you do",
+            "what you does", "what can you do", "what you can do",
+            "tell me about yourself", "about yourself", "about you", "tell me about you",
+            "describe yourself", "introduce yourself", "your identity", "what is your name",
+            "how old are you", "your age", "date of birth",
+            "what is the time", "current time", "time in ist",
+            "your architecture", "how do you work", "how are you built",
+            "your capabilities", "what you does best", "what you do best",
+            "what do you do best", "your strength", "your strengths", "best at",
+            "your specialty", "specialize", "specialise",
+        )
+
+        # Mutating / workspace / web-search keywords that require actual task execution
+        action_keywords = (
+            "send", "email", "mail", "create", "event", "calendar", "log", "sheet",
+            "spreadsheet", "document", "doc", "slack", "post", "facebook",
+            "search", "find", "look up", "lookup", "research", "fetch", "get me",
+        )
+
+        faq_part_count = 0
+        action_part_count = 0
         for part in parts:
             if len(part) < 4:
                 continue
+            is_faq_part = any(k in part for k in pure_faq_keywords)
+            is_action_part = any(k in part for k in action_keywords)
+            if is_faq_part and not is_action_part:
+                faq_part_count += 1
+            elif is_action_part:
+                action_part_count += 1
+
+        # If every sub-part is a pure FAQ fragment (no action keywords at all),
+        # this is a single-intent identity/FAQ query — do NOT flag as multi-task.
+        if action_part_count == 0 and faq_part_count >= 1:
+            pass  # fall through — not a multi-task request
+        else:
+            # Fall back to broad keyword check only for queries that mix FAQ + action,
+            # or for queries where none of the parts matched FAQ fragments.
+            valid_requests_count = 0
             request_keywords = (
                 "current time", "time in ist", "what time", "what is the time",
                 "how old", "your age", "date of birth", "dob", "who are you", "about yourself",
@@ -2144,13 +2184,13 @@ def has_multiple_tasks_or_requests(query: str, intent_packet_dict: Optional[dict
                 "tradeoff", "highest impact", "evolution", "evolve", "history", "timeline",
                 "send", "email", "mail", "create", "event", "calendar", "log", "sheet", "spreadsheet",
                 "document", "doc", "slack", "post", "facebook", "search", "find", "look up", "lookup",
-                "tell", "check", "show", "who", "what", "where", "when", "how", "why"
+                "tell", "check", "show",
             )
-            if any(k in part for k in request_keywords):
-                valid_requests_count += 1
-                
-        if valid_requests_count > 1:
-            return True
+            for part in parts:
+                if len(part) < 4 and any(k in part for k in request_keywords):
+                    valid_requests_count += 1
+            if valid_requests_count > 1:
+                return True
             
     # 3. Check for multiple distinct FAQ/system query categories in the same query
     faq_types_present = set()
@@ -2198,8 +2238,19 @@ def route_after_router(state: BabuState) -> str:
         
     # Deterministic AKS/FAQ/system queries short-circuit BEFORE private-category plan-forcing.
     # These queries are answered from the database or in-memory with zero LLM tokens.
-    if (is_pure_greeting(query) or is_deterministic_faq_query(query)) and not has_multiple_tasks_or_requests(query, intent_packet_dict):
+    # Note: has_multiple_tasks_or_requests() now correctly exempts all-FAQ conjunction queries
+    # (e.g. "who are you and what you do best") from the multi-task flag.
+    is_faq = is_pure_greeting(query) or is_deterministic_faq_query(query)
+    is_multi = has_multiple_tasks_or_requests(query, intent_packet_dict)
+    if is_faq and not is_multi:
         print(f"[ROUTE AFTER ROUTER] Deterministic FAQ/greeting detected for query: '{query}'. Short-circuiting directly to PA node.", flush=True)
+        return "pa"
+
+    # SYSTEM_INFORMATION + FAQ: even if multi-task check fired (edge cases), still route
+    # identity/capability queries directly to pa_node so short-circuits handle them for free.
+    # Only let non-FAQ SYSTEM_INFORMATION queries (e.g. deep ADR lookups) go to plan.
+    if query_category == "SYSTEM_INFORMATION" and is_faq:
+        print(f"[ROUTE AFTER ROUTER] SYSTEM_INFORMATION FAQ query detected ('{query}'). Routing to PA short-circuit.", flush=True)
         return "pa"
 
     # Only force plan route for private queries that are NOT deterministic FAQ/AKS.
@@ -2207,7 +2258,7 @@ def route_after_router(state: BabuState) -> str:
     if query_category in PRIVATE_QUERY_TYPES:
         print(f"[ROUTE AFTER ROUTER] Private category '{query_category}' detected. Disabling PA direct response bypass and forcing plan route.", flush=True)
         return "plan"
-        
+
     return "plan"
 
 
@@ -2941,7 +2992,10 @@ def planner_node(state: BabuState):
     )
     
     is_profile = is_profile_relevant_query(query)
-    is_system = is_system_aware_query(query)
+    # is_system gates the SII RAG block. Exclude pure FAQ/identity queries even if
+    # is_system_aware_query() fires on them — they are handled from memory in pa_node
+    # (K1 Identity short-circuits) and there are no ADR books covering identity.
+    is_system = is_system_aware_query(query) and not is_deterministic_faq_query(query)
     profile_text = get_user_profile_text() if is_profile else ""
     
     # 0. Load BABU Self Context if system query
