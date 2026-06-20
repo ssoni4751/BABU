@@ -724,6 +724,48 @@ class TestGoalCorrection(unittest.TestCase):
         self.assertEqual(retrieved["goal"], "Original target goal description")
         self.assertEqual(retrieved["goal_type"], "NEW")
 
+    def test_double_approval_deduplication(self):
+        from babu.bot import _pending_actions, PENDING_POSTS, _pending_actions_lock
+        
+        # Test double approval for general actions
+        sid = "test_session_id_123"
+        action_payload = {
+            "action": "send_email",
+            "params": {"to": "test@example.com", "subject": "Test", "body": "Hello"},
+            "goal_id": "G_test_1",
+            "task_id": "T1"
+        }
+        
+        with _pending_actions_lock:
+            _pending_actions[sid] = action_payload
+            
+        # Simulating first approval: pops immediately
+        with _pending_actions_lock:
+            first_pop = _pending_actions.pop(sid, None)
+        self.assertEqual(first_pop, action_payload)
+        
+        # Simulating second approval (duplicate click): should get None
+        with _pending_actions_lock:
+            second_pop = _pending_actions.pop(sid, None)
+        self.assertIsNone(second_pop)
+
+        # Test double approval for Facebook pending posts
+        chat_id = 987654321
+        post_draft = {
+            "image_path": "",
+            "caption": "Hello world post",
+            "custom_topic": "General consultancy"
+        }
+        PENDING_POSTS[chat_id] = post_draft
+        
+        # Simulating first approval: pops immediately
+        first_post_pop = PENDING_POSTS.pop(chat_id, None)
+        self.assertEqual(first_post_pop, post_draft)
+        
+        # Simulating second approval: should get None
+        second_post_pop = PENDING_POSTS.pop(chat_id, None)
+        self.assertIsNone(second_post_pop)
+
 
 if __name__ == "__main__":
     unittest.main()

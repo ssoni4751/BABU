@@ -8153,7 +8153,8 @@ class HealthHandler(BaseHTTPRequestHandler):
 
             if has_fb_pending and (target_fb_approve or target_fb_cancel):
                 if target_fb_approve:
-                    draft = PENDING_POSTS.get(chat_id)
+                    # Pop draft immediately to prevent concurrent duplicate execution
+                    draft = PENDING_POSTS.pop(chat_id, None)
                     if draft:
                         try:
                             from .social_media import publish_to_facebook_page
@@ -8162,7 +8163,6 @@ class HealthHandler(BaseHTTPRequestHandler):
                         
                         ok, result_msg = publish_to_facebook_page(draft["image_path"], draft["caption"])
                         if ok:
-                            PENDING_POSTS.pop(chat_id, None)
                             try:
                                 from .memory import append_to_profile_ledger
                             except ImportError:
@@ -8175,6 +8175,8 @@ class HealthHandler(BaseHTTPRequestHandler):
                             })
                             reply = f"Facebook post published successfully!\n\n{result_msg}"
                         else:
+                            # Re-insert on failure to allow retry
+                            PENDING_POSTS[chat_id] = draft
                             reply = f"Facebook post publishing failed:\n\n{result_msg}"
                         
                         response = json.dumps({"reply": reply, "gear": "DYNAMIC", "has_pending": False}).encode()
@@ -8199,10 +8201,14 @@ class HealthHandler(BaseHTTPRequestHandler):
                     return
 
             # Check for pending action in _pending_actions
+            # Pop draft/action immediately under lock to prevent concurrent duplicate execution
             with _pending_actions_lock:
-                pending = _pending_actions.get(sid)
+                pending = _pending_actions.pop(sid, None)
 
             if pending and is_generic_approve:
+                # Delete from DB immediately to prevent concurrent lookups
+                db_delete_pending_action(sid)
+                
                 action = pending.get("action", "")
                 params = resolve_action_params(pending.get("params", {}), research_text="")
                 
@@ -8219,11 +8225,12 @@ class HealthHandler(BaseHTTPRequestHandler):
                 
                 ok, result_msg = execute_google_action(action, params)
                 if ok:
-                    with _pending_actions_lock:
-                        _pending_actions.pop(sid, None)
-                    db_delete_pending_action(sid)
                     reply = f"Action executed successfully.\n\n{result_msg}"
                 else:
+                    # Put it back on failure to allow retry
+                    with _pending_actions_lock:
+                        _pending_actions[sid] = pending
+                    db_save_pending_action(sid, pending)
                     reply = f"Action execution failed.\n\n{result_msg}\n\nYou can type '1' / 'approve' again to retry, or '0' / 'cancel' to discard."
                 
                 # Check pending status
@@ -9164,8 +9171,11 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if pending and _is_approval_message(msg):
         with _pending_actions_lock:
-            pending = _pending_actions.get(session_id)
+            pending = _pending_actions.pop(session_id, None)
         if pending:
+            # Delete from DB immediately to prevent concurrent lookups
+            db_delete_pending_action(session_id)
+            
             action = pending.get("action", "")
             params = resolve_action_params(pending.get("params", {}), research_text="")
             
@@ -9183,12 +9193,14 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             ok, result_msg = await asyncio.to_thread(execute_google_action, action, params)
             if ok:
-                with _pending_actions_lock:
-                    _pending_actions.pop(session_id, None)
-                db_delete_pending_action(session_id)
                 status = "Action executed successfully."
                 await update.message.reply_text(f"{status}\n\n{result_msg}")
             else:
+                # Re-insert on failure to allow retry
+                with _pending_actions_lock:
+                    _pending_actions[session_id] = pending
+                db_save_pending_action(session_id, pending)
+                
                 status = "Action execution failed."
                 await update.message.reply_text(
                     f"{status}\n\n{result_msg}\n\nYou can type '1' / 'approve' again to retry, or '0' / 'cancel' to discard.",
@@ -9227,7 +9239,8 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     review_intent = classify_review_intent(msg)
     
     if review_intent == "approve" and chat_id in PENDING_POSTS:
-        draft = PENDING_POSTS.get(chat_id)
+        # Pop draft immediately to prevent concurrent duplicate execution
+        draft = PENDING_POSTS.pop(chat_id, None)
         if draft:
             await update.message.reply_text("Interpreted text approval. Publishing to Facebook Page. Please wait...")
             try:
@@ -9258,13 +9271,14 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 set_last_post_date(today_str)
                 
                 # Clean up pending states
-                PENDING_POSTS.pop(chat_id, None)
                 WAITING_FOR_TOPIC.pop(chat_id, None)
                 
                 await update.message.reply_text(
                     f"Successfully published to Facebook Page!\n\n{res_msg}\n\nCaption:\n{escape_markdown(draft['caption'])}"
                 )
             else:
+                # Re-insert on failure to allow retry
+                PENDING_POSTS[chat_id] = draft
                 await update.message.reply_text(
                     f"Failed to publish to Facebook:\n{escape_markdown(res_msg)}\n\nCaption:\n{escape_markdown(draft['caption'])}\n\nYou can reply with 'Approve and publish' to retry, or 'Cancel post' to discard."
                 )
@@ -9525,10 +9539,14 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             session_id = data.split("|", 1)[1].strip()
             sync_pending_actions()
             with _pending_actions_lock:
-                pending = _pending_actions.get(session_id)
+                pending = _pending_actions.pop(session_id, None)
             if not pending:
                 await query.edit_message_text("No pending action found to approve.")
                 return
+            
+            # Delete from DB immediately to prevent concurrent lookups
+            db_delete_pending_action(session_id)
+            
             action = pending.get("action", "")
             params = resolve_action_params(pending.get("params", {}), research_text="")
             
@@ -9546,12 +9564,14 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             ok, result_msg = await asyncio.to_thread(execute_google_action, action, params)
             if ok:
-                with _pending_actions_lock:
-                    _pending_actions.pop(session_id, None)
-                db_delete_pending_action(session_id)
                 status = "Action executed successfully."
                 await query.edit_message_text(f"{status}\n\n{result_msg}")
             else:
+                # Re-insert on failure to allow retry
+                with _pending_actions_lock:
+                    _pending_actions[session_id] = pending
+                db_save_pending_action(session_id, pending)
+                
                 status = "Action execution failed."
                 await query.edit_message_text(
                     f"{status}\n\n{result_msg}\n\nYou can click Approve again to retry, or Cancel.",
@@ -9583,7 +9603,8 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         if data == "post_approve":
-            draft = PENDING_POSTS.get(chat_id)
+            # Pop draft immediately to prevent concurrent duplicate execution
+            draft = PENDING_POSTS.pop(chat_id, None)
             if not draft:
                 await edit_callback_message(query, "No pending post found to approve. Run /postnow to generate a new draft.")
                 return
@@ -9617,7 +9638,6 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 set_last_post_date(today_str)
                 
                 # Clean up pending states
-                PENDING_POSTS.pop(chat_id, None)
                 WAITING_FOR_TOPIC.pop(chat_id, None)
                 
                 await edit_callback_message(
@@ -9630,6 +9650,9 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode="Markdown"
                 )
             else:
+                # Re-insert on failure to allow retry
+                PENDING_POSTS[chat_id] = draft
+                
                 await edit_callback_message(
                     query,
                     "⚠️ Failed to publish to Facebook Page.",
