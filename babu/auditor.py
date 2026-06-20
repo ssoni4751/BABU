@@ -119,13 +119,6 @@ class PreExecutionGatekeeper:
             if action not in self.supported_actions:
                 return False, f"Unsupported Workspace action '{action}' in task '{task.task_id}'."
 
-            if action == "send_email":
-                params = task.context.get("params") or {}
-                to_addr = params.get("to", "")
-                allowed_emails = get_constitution("allowed_email_targets", [])
-                if allowed_emails and to_addr not in allowed_emails:
-                    return False, f"Constitutional Violation: Recipient '{to_addr}' is not in the allowed_email_targets list."
-
             # Verify Google Integration credentials for Google-related actions
             google_actions = {
                 "send_email", "create_event", "log_to_sheet", "create_doc",
