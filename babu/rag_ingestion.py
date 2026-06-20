@@ -200,7 +200,12 @@ def run_full_ingestion(artifact_dir: str, project_dir: str):
         ("babu_immune_rules_report.md", "immune_lessons"),
         ("babu_latency_analysis_report.md", "telemetry_knowledge"),
         ("walkthrough.md", "engineering_history"),
-        ("implementation_plan.md", "engineering_history")
+        ("implementation_plan.md", "engineering_history"),
+        ("System_Information_Index.md", "system_index"),
+        ("ARIA_ADR_Book_v1.md", "adr_books"),
+        ("ARIA_ADR_Book_v2.md", "adr_books"),
+        ("ARIA_ADR_Book_v3.md", "adr_books"),
+        ("ARIA_ADR_Book_v4.md", "adr_books")
     ]
     
     for filename, collection in markdown_files:
@@ -228,6 +233,13 @@ def run_full_ingestion(artifact_dir: str, project_dir: str):
 
 if __name__ == "__main__":
     # Script entry point
-    artifact_path = r"C:\Users\LENOVO\.gemini\antigravity\brain\6d0c89f4-8e58-41cb-9549-ca0575e8a3a5"
-    project_path = r"c:\Users\LENOVO\.gemini\antigravity\scratch\Babu"
+    # Dynamically resolve project directory as parent of 'babu' folder
+    current_file_dir = os.path.dirname(os.path.abspath(__file__))
+    project_path = os.path.dirname(current_file_dir)
+    # Use workspace brain or fallback
+    artifact_path = os.path.join(os.path.dirname(project_path), "brain")
+    if not os.path.exists(artifact_path):
+        artifact_path = project_path
+        
+    print(f"[INGESTION] Running with project_path={project_path}, artifact_path={artifact_path}", flush=True)
     run_full_ingestion(artifact_path, project_path)

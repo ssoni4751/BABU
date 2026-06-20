@@ -193,7 +193,7 @@ def compute_cosine_similarity(v1: list[float], v2: list[float]) -> float:
     return dot / (norm1 * norm2)
 
 
-def retrieve_knowledge(query: str, collections: Optional[list[str]] = None, top_k: int = 3, similarity_threshold: float = 0.35) -> list[dict]:
+def retrieve_knowledge(query: str, collections: Optional[list[str]] = None, top_k: int = 3, similarity_threshold: float = 0.35, sources: Optional[list[str]] = None) -> list[dict]:
     """Retrieve top matched knowledge chunks, strictly enforcing token budget constraints."""
     init_rag_db()
     
@@ -212,14 +212,25 @@ def retrieve_knowledge(query: str, collections: Optional[list[str]] = None, top_
             # Postgres pgvector search
             # Cosine distance: <=>
             # Cosine similarity = 1 - Cosine distance
-            if collections:
-                cursor.execute("""
+            if collections or sources:
+                clauses = []
+                params = [query_vector]
+                if collections:
+                    clauses.append("collection = ANY(%s)")
+                    params.append(collections)
+                if sources:
+                    clauses.append("source = ANY(%s)")
+                    params.append(sources)
+                
+                where_clause = " AND ".join(clauses)
+                params.extend([query_vector, similarity_threshold, top_k * 2])
+                cursor.execute(f"""
                     SELECT id, collection, source, title, chunk_text, metadata, (1 - (embedding <=> %s::vector)) AS similarity
                     FROM babu_knowledge
-                    WHERE collection = ANY(%s) AND (1 - (embedding <=> %s::vector)) >= %s
+                    WHERE {where_clause} AND (1 - (embedding <=> %s::vector)) >= %s
                     ORDER BY similarity DESC
                     LIMIT %s
-                """, (query_vector, collections, query_vector, similarity_threshold, top_k * 2))
+                """, params)
             else:
                 cursor.execute("""
                     SELECT id, collection, source, title, chunk_text, metadata, (1 - (embedding <=> %s::vector)) AS similarity
@@ -242,13 +253,24 @@ def retrieve_knowledge(query: str, collections: Optional[list[str]] = None, top_
                 })
         else:
             # SQLite programmatic similarity fallback
-            if collections:
-                placeholders = ",".join("?" for _ in collections)
+            if collections or sources:
+                clauses = []
+                params = []
+                if collections:
+                    placeholders = ",".join("?" for _ in collections)
+                    clauses.append(f"collection IN ({placeholders})")
+                    params.extend(collections)
+                if sources:
+                    placeholders_src = ",".join("?" for _ in sources)
+                    clauses.append(f"source IN ({placeholders_src})")
+                    params.extend(sources)
+                
+                where_clause = " AND ".join(clauses)
                 cursor.execute(f"""
                     SELECT id, collection, source, title, chunk_text, embedding, metadata
                     FROM babu_knowledge
-                    WHERE collection IN ({placeholders})
-                """, collections)
+                    WHERE {where_clause}
+                """, params)
             else:
                 cursor.execute("""
                     SELECT id, collection, source, title, chunk_text, embedding, metadata
@@ -296,13 +318,23 @@ def retrieve_knowledge(query: str, collections: Optional[list[str]] = None, top_
                 cursor = conn.cursor()
                 if is_pg:
                     like_clauses = " OR ".join(["chunk_text ILIKE %s" for _ in keywords])
-                    if collections:
+                    if collections or sources:
+                        clauses = []
+                        params = []
+                        if collections:
+                            clauses.append("collection = ANY(%s)")
+                            params.append(collections)
+                        if sources:
+                            clauses.append("source = ANY(%s)")
+                            params.append(sources)
+                        
+                        where_clause = " AND ".join(clauses)
                         cursor.execute(f"""
                             SELECT id, collection, source, title, chunk_text, metadata, 0.49 AS similarity
                             FROM babu_knowledge
-                            WHERE collection = ANY(%s) AND ({like_clauses})
+                            WHERE {where_clause} AND ({like_clauses})
                             LIMIT %s
-                        """, (collections, *[f"%{kw}%" for kw in keywords], top_k * 2))
+                        """, (*params, *[f"%{kw}%" for kw in keywords], top_k * 2))
                     else:
                         cursor.execute(f"""
                             SELECT id, collection, source, title, chunk_text, metadata, 0.49 AS similarity
@@ -323,14 +355,25 @@ def retrieve_knowledge(query: str, collections: Optional[list[str]] = None, top_
                         })
                 else:
                     like_clauses = " OR ".join(["chunk_text LIKE ?" for _ in keywords])
-                    if collections:
-                        placeholders = ",".join("?" for _ in collections)
+                    if collections or sources:
+                        clauses = []
+                        params = []
+                        if collections:
+                            placeholders = ",".join("?" for _ in collections)
+                            clauses.append(f"collection IN ({placeholders})")
+                            params.extend(collections)
+                        if sources:
+                            placeholders_src = ",".join("?" for _ in sources)
+                            clauses.append(f"source IN ({placeholders_src})")
+                            params.extend(sources)
+                        
+                        where_clause = " AND ".join(clauses)
                         cursor.execute(f"""
                             SELECT id, collection, source, title, chunk_text, metadata, 0.49 AS similarity
                             FROM babu_knowledge
-                            WHERE collection IN ({placeholders}) AND ({like_clauses})
+                            WHERE {where_clause} AND ({like_clauses})
                             LIMIT ?
-                        """, (*collections, *[f"%{kw}%" for kw in keywords], top_k * 2))
+                        """, (*params, *[f"%{kw}%" for kw in keywords], top_k * 2))
                     else:
                         cursor.execute(f"""
                             SELECT id, collection, source, title, chunk_text, metadata, 0.49 AS similarity

@@ -2957,56 +2957,103 @@ def planner_node(state: BabuState):
         if sql_context:
             profile_text = (profile_text + "\n\n" + sql_context).strip()
             
-    # 2. Retrieve RAG context if query relates to codebase, architecture, or documents
+    # 2. System Index Layer — route query to targeted ADRs + books, then retrieve
     retrieved = []
+    sii_routing = {}
     if is_system:
-        doc_keywords = ("architecture", "codebase", "how do you work", "how does babu work", "docs", "walkthrough", "implementation", "design", "blueprint")
-        if any(kw in query.lower() for kw in doc_keywords) or not sql_context:
-            try:
-                from .rag_storage import retrieve_knowledge
-            except ImportError:
-                from rag_storage import retrieve_knowledge
-                
-            rag_start = time.time()
-            retrieved = retrieve_knowledge(query, collections=["babu_docs", "engineering_history"])
-            rag_end = time.time()
-            rag_latency = round((rag_end - rag_start) * 1000, 2)
-            
-            hit = len(retrieved) > 0
-            retrieved_tokens = sum(len(x["chunk_text"]) // 4 for x in retrieved) if hit else 0
-            
-            # Log RAG_RETRIEVAL event
-            log_execution_ledger_event(
-                session_id=session_id,
-                goal_id=pre_goal_id or "G-PLAN",
-                task_id=None,
-                department=None,
-                event_type="RAG_RETRIEVAL",
-                state_before=None,
-                state_after=None,
-                metadata={
-                    "query": query,
-                    "retrieval_requests": 1,
-                    "retrieval_hits": 1 if hit else 0,
-                    "retrieval_misses": 0 if hit else 1,
-                    "retrieval_latency_ms": rag_latency,
-                    "retrieved_tokens": retrieved_tokens,
-                    "collections_accessed": list(set(x["collection"] for x in retrieved)) if hit else []
-                }
+        # ── 2a. Route via System Information Index ──────────────────────
+        try:
+            from .system_index import route_query as sii_route_query
+        except ImportError:
+            from system_index import route_query as sii_route_query
+
+        sii_routing = sii_route_query(query)
+        matched_books  = sii_routing.get("books", [])
+        matched_adrs   = sii_routing.get("adrs", [])
+        query_mode     = sii_routing.get("query_mode", "SYSTEM_INFORMATION")
+        matched_comp   = sii_routing.get("matched_component")
+        matched_layer  = sii_routing.get("matched_layer")
+
+        print(
+            f"[SII] Query routed | mode={query_mode} | "
+            f"adrs={matched_adrs} | books={matched_books} | "
+            f"component={matched_comp} | layer={matched_layer}",
+            flush=True
+        )
+
+        # ── 2b. Targeted RAG retrieval using resolved books ─────────────
+        # Always trigger RAG for system queries (not only for doc keywords).
+        try:
+            from .rag_storage import retrieve_knowledge
+        except ImportError:
+            from rag_storage import retrieve_knowledge
+
+        rag_start = time.time()
+
+        if matched_books:
+            # Targeted: restrict to matched ADR books + system_index collection
+            retrieved = retrieve_knowledge(
+                query,
+                collections=["adr_books", "system_index", "babu_docs", "engineering_history"],
+                sources=matched_books + ["System_Information_Index.md"],
             )
-            log_temporal_event(
-                event_category="RAG_RETRIEVAL",
-                summary=f"Retrieved self-awareness document context for: '{query[:50]}'",
-                outcome="SUCCESS" if hit else "FAIL",
-                metadata={"hits": len(retrieved), "latency_ms": rag_latency}
+        else:
+            # Fallback: search across all internal system collections
+            retrieved = retrieve_knowledge(
+                query,
+                collections=["adr_books", "system_index", "babu_docs", "engineering_history"],
             )
-            
-            if hit:
-                context_str = "\n\n=== SELF_AWARENESS_DOCUMENT_CONTEXT ===\n"
-                for item in retrieved:
-                    context_str += f"[{item['collection']} - {item['title']}]:\n{item['chunk_text']}\n\n"
-                context_str += "=== END OF SELF_AWARENESS_DOCUMENT_CONTEXT ===\n"
-                profile_text = (profile_text + "\n" + context_str).strip()
+
+        rag_end = time.time()
+        rag_latency = round((rag_end - rag_start) * 1000, 2)
+
+        hit = len(retrieved) > 0
+        retrieved_tokens = sum(len(x["chunk_text"]) // 4 for x in retrieved) if hit else 0
+
+        # ── 2c. Log rich RAG_RETRIEVAL event ───────────────────────────
+        log_execution_ledger_event(
+            session_id=session_id,
+            goal_id=pre_goal_id or "G-PLAN",
+            task_id=None,
+            department=None,
+            event_type="RAG_RETRIEVAL",
+            state_before=None,
+            state_after=None,
+            metadata={
+                "query": query,
+                "system_query": True,
+                "query_mode": query_mode,
+                "matched_component": matched_comp,
+                "matched_layer": matched_layer,
+                "matched_adrs": matched_adrs,
+                "matched_books": matched_books,
+                "retrieval_requests": 1,
+                "retrieval_hits": 1 if hit else 0,
+                "retrieval_misses": 0 if hit else 1,
+                "retrieval_latency_ms": rag_latency,
+                "retrieved_tokens": retrieved_tokens,
+                "collections_accessed": list(set(x["collection"] for x in retrieved)) if hit else [],
+            }
+        )
+        log_temporal_event(
+            event_category="RAG_RETRIEVAL",
+            summary=f"[SII] {query_mode} | books={matched_books} | '{query[:50]}'",
+            outcome="SUCCESS" if hit else "FAIL",
+            metadata={"hits": len(retrieved), "latency_ms": rag_latency, "query_mode": query_mode}
+        )
+
+        # ── 2d. Inject retrieved evidence into planner context ──────────
+        if hit:
+            context_str = f"\n\n=== SYSTEM_INDEX_DOCUMENT_CONTEXT [mode={query_mode}] ===\n"
+            if matched_adrs:
+                context_str += f"Resolved ADRs: {', '.join(matched_adrs)}\n"
+            if matched_books:
+                context_str += f"Evidence from: {', '.join(matched_books)}\n"
+            context_str += "\n"
+            for item in retrieved:
+                context_str += f"[{item['collection']} / {item['source']} - {item['title']}]:\n{item['chunk_text']}\n\n"
+            context_str += "=== END OF SYSTEM_INDEX_DOCUMENT_CONTEXT ===\n"
+            profile_text = (profile_text + "\n" + context_str).strip()
             
     print(f"[PLANNER NODE] Planning goal for query: '{query[:50]}' (goal_id: {pre_goal_id})", flush=True)
     
