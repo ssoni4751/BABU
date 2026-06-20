@@ -1843,6 +1843,75 @@ _pending_actions_lock = threading.Lock()
 _pending_actions: dict[str, dict] = {}
 
 
+def db_save_pending_action(session_id: str, action_dict: dict):
+    try:
+        conn, is_pg = get_db_connection()
+        cursor = conn.cursor()
+        key = f"pending_action:{session_id}"
+        val = json.dumps(action_dict)
+        if is_pg:
+            cursor.execute("""
+                INSERT INTO system_memory (key, data) VALUES (%s, %s)
+                ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data
+            """, (key, val))
+        else:
+            cursor.execute("INSERT OR REPLACE INTO system_memory (key, data) VALUES (?, ?)", (key, val))
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"[DB ERROR] db_save_pending_action failed: {e}", flush=True)
+
+
+def db_delete_pending_action(session_id: str):
+    try:
+        conn, is_pg = get_db_connection()
+        cursor = conn.cursor()
+        key = f"pending_action:{session_id}"
+        if is_pg:
+            cursor.execute("DELETE FROM system_memory WHERE key = %s", (key,))
+        else:
+            cursor.execute("DELETE FROM system_memory WHERE key = ?", (key,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"[DB ERROR] db_delete_pending_action failed: {e}", flush=True)
+
+
+def db_load_pending_actions() -> dict[str, dict]:
+    actions = {}
+    try:
+        conn, is_pg = get_db_connection()
+        cursor = conn.cursor()
+        if is_pg:
+            cursor.execute("SELECT key, data FROM system_memory WHERE key LIKE 'pending_action:%'")
+        else:
+            cursor.execute("SELECT key, data FROM system_memory WHERE key LIKE 'pending_action:%'")
+        rows = cursor.fetchall()
+        for row in rows:
+            key, val = row
+            if key.startswith("pending_action:"):
+                sid = key[len("pending_action:"):]
+                try:
+                    actions[sid] = json.loads(val)
+                except Exception:
+                    pass
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"[DB ERROR] db_load_pending_actions failed: {e}", flush=True)
+    return actions
+
+
+def sync_pending_actions():
+    with _pending_actions_lock:
+        db_actions = db_load_pending_actions()
+        _pending_actions.clear()
+        _pending_actions.update(db_actions)
+
+
+
 def _is_approval_message(text: str) -> bool:
     t = (text or "").strip().lower()
     return t in {"1", "yes", "approve", "approved", "ok", "confirm", "proceed"}
@@ -1919,6 +1988,7 @@ def intent_router(state: BabuState):
     detected_action = None
     pending_action_notice = ""
 
+    sync_pending_actions()
     with _pending_actions_lock:
         pending = _pending_actions.get(session_id)
 
@@ -1926,9 +1996,11 @@ def intent_router(state: BabuState):
         detected_action = pending
         with _pending_actions_lock:
             _pending_actions.pop(session_id, None)
+        db_delete_pending_action(session_id)
     elif pending and _is_reject_message(query):
         with _pending_actions_lock:
             _pending_actions.pop(session_id, None)
+        db_delete_pending_action(session_id)
         pending_action_notice = "Pending action cancelled."
     elif pending:
         pending_action_notice = "You already have a pending action approval. Reply with '1' / 'approve' to execute, or '0' / 'cancel' to discard."
@@ -3541,6 +3613,7 @@ def task_executor_node(state: BabuState):
                             "task_id": task.task_id,
                             "goal_id": goal_graph.goal_id
                         }
+                    db_save_pending_action(session_id, _pending_actions[session_id])
                         
                     # Format a beautiful preview of the action plan!
                     preview_fields = {k: v for k, v in resolved_params.items() if k not in ("body", "content", "caption")}
@@ -7867,6 +7940,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 query_params = parse_qs(parsed_path.query)
                 sid = query_params.get("session_id", ["web_anon"])[0]
                 
+                sync_pending_actions()
                 chat_id = get_persisted_chat_id()
                 with _pending_actions_lock:
                     has_pending_action = sid in _pending_actions
@@ -8032,6 +8106,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                         _histories[sid].clear()
                 with _pending_actions_lock:
                     _pending_actions.pop(sid, None)
+                db_delete_pending_action(sid)
                 
                 try:
                     from .memory import FAILURES_PATH, FAILURES_TEST_PATH, _write_json_list
@@ -8059,6 +8134,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 self.wfile.write(response)
                 return
 
+            sync_pending_actions()
             # Check for Facebook post approval/cancel from web
             chat_id = get_persisted_chat_id()
             with _pending_actions_lock:
@@ -8145,6 +8221,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 if ok:
                     with _pending_actions_lock:
                         _pending_actions.pop(sid, None)
+                    db_delete_pending_action(sid)
                     reply = f"Action executed successfully.\n\n{result_msg}"
                 else:
                     reply = f"Action execution failed.\n\n{result_msg}\n\nYou can type '1' / 'approve' again to retry, or '0' / 'cancel' to discard."
@@ -8213,6 +8290,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 )
                 with _pending_actions_lock:
                     _pending_actions.pop(sid, None)
+                db_delete_pending_action(sid)
                 reply = "Pending action cancelled."
                 response = json.dumps({"reply": reply, "gear": "DYNAMIC", "has_pending": False}).encode()
                 self.send_response(200)
@@ -8828,6 +8906,7 @@ async def run_babu(update: Update, msg: str, session_id: str):
         stop_typing.set()
         typing_task.cancel()
 
+    sync_pending_actions()
     with _pending_actions_lock:
         has_pending = session_id in _pending_actions
     if has_pending and "Action authorization required." in reply:
@@ -9079,6 +9158,7 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     session_id = tg_session(update)
 
+    sync_pending_actions()
     with _pending_actions_lock:
         pending = _pending_actions.get(session_id)
 
@@ -9105,6 +9185,7 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if ok:
                 with _pending_actions_lock:
                     _pending_actions.pop(session_id, None)
+                db_delete_pending_action(session_id)
                 status = "Action executed successfully."
                 await update.message.reply_text(f"{status}\n\n{result_msg}")
             else:
@@ -9132,6 +9213,7 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         with _pending_actions_lock:
             _pending_actions.pop(session_id, None)
+        db_delete_pending_action(session_id)
         await update.message.reply_text("Pending action cancelled.")
         return
 
@@ -9249,6 +9331,7 @@ async def cmd_goals(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     pending_post = PENDING_POSTS.get(chat_id)
     
+    sync_pending_actions()
     with _pending_actions_lock:
         pending_action = _pending_actions.get(session_id)
         
@@ -9440,6 +9523,7 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if data.startswith("action_approve|"):
             session_id = data.split("|", 1)[1].strip()
+            sync_pending_actions()
             with _pending_actions_lock:
                 pending = _pending_actions.get(session_id)
             if not pending:
@@ -9464,6 +9548,7 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if ok:
                 with _pending_actions_lock:
                     _pending_actions.pop(session_id, None)
+                db_delete_pending_action(session_id)
                 status = "Action executed successfully."
                 await query.edit_message_text(f"{status}\n\n{result_msg}")
             else:
@@ -9476,6 +9561,7 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if data.startswith("action_cancel|"):
             session_id = data.split("|", 1)[1].strip()
+            sync_pending_actions()
             with _pending_actions_lock:
                 pending = _pending_actions.get(session_id)
             if pending:
@@ -9492,6 +9578,7 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             with _pending_actions_lock:
                 _pending_actions.pop(session_id, None)
+            db_delete_pending_action(session_id)
             await query.edit_message_text("Pending action cancelled.")
             return
         
