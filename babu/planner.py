@@ -243,7 +243,8 @@ INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
     "SYSTEM QUERY FLAG DEFINITION:\n"
     "- Set system_query to true if the query is asking about the system itself, its name, identity, age, creation date, date of birth, architecture, departments, governance system, failures log, templates, system policies, architectural decisions (ADRs), tradeoffs, or recent upgrades/updates/evolution to your codebase (e.g., Gemini migration, dynamic imports, etc.). Set it to false for all general queries.\n"
     "\n"
-    "CRITICAL CLASSIFICATION RULES:\n"
+    "- CRITICAL CLASSIFICATION RULES:\n"
+    "- HISTORY OVERLOAD: The 'Recent History' is provided ONLY for context resolution. You MUST base your intent classification primarily on the 'User Query'. If the 'User Query' is a new, distinct question (e.g. asking for status), DO NOT carry over the actions (e.g. 'post_to_facebook') from the 'Recent History'.\n"
     "- Do not research unless explicitly told to do so. ONLY include 'research' in allowed_departments if the user explicitly uses the word 'research' in their query (e.g. 'research X'). For all standard web searches, lookups, and fact checks (e.g. 'search the web for X', 'look up Y', 'who is Z', 'upcoming matches'), you MUST use 'information' instead of 'research'.\n"
     "- Any research or information query that expects a compiled summary, report, or draft response naturally requires the 'writing' department. You MUST include 'writing' in 'allowed_departments' for all search, lookup, or research queries that require text synthesis/summarization.\n"
     "- ONLY include 'execution' in allowed_departments and list execution actions (such as 'send_email', 'create_event', 'log_to_sheet', 'post_to_facebook', 'create_doc') in allowed_actions if the user explicitly requests that physical action/mutation in their query. Do NOT default to allowed_actions = ['send_email'] or execution_mode = 'APPROVAL_REQUIRED' for simple web search/informational queries; for these, the execution_mode MUST be 'READ_ONLY' and allowed_actions must not contain mutation actions.\n"
@@ -374,6 +375,12 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
             
         if is_system_aware_query(query):
             packet.system_query = True
+            packet.execution_mode = "READ_ONLY"
+            packet.allowed_actions = []
+            allowed_depts = [d for d in packet.allowed_departments if d != "execution"]
+            if "pa" not in allowed_depts:
+                allowed_depts.append("pa")
+            packet.allowed_departments = allowed_depts
             
         # Programmatic query category overrides
         lowered = query.lower()

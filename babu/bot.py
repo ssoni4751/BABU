@@ -2720,7 +2720,8 @@ def is_system_aware_query(query: str) -> bool:
         "introduce yourself", "who are you", "what is your name", "your identity",
         "how old are you", "your age", "date of birth", "dob of babu",
         "adr", "architecture decision", "tradeoff", "lessons learned", "evolution",
-        "architecture report", "system upgrades", "gemini chosen", "dynamic imports", "runtime_index"
+        "architecture report", "system upgrades", "gemini chosen", "dynamic imports", "runtime_index",
+        "status of last goal", "last goal status", "current goal", "pending action", "pending goal", "system status", "status of goal"
     }
     if any(kw in q for kw in keywords):
         return True
