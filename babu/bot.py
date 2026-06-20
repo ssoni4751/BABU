@@ -6225,6 +6225,12 @@ STATUS_HTML = """<!DOCTYPE html>
 </div>
 
 <script>
+  let dashboardSessionId = localStorage.getItem('babu_dashboard_session_id');
+  if (!dashboardSessionId) {
+    dashboardSessionId = 'web_dashboard_' + Math.floor(Date.now() / 1000) + '_' + Math.random().toString(36).substring(2, 9);
+    localStorage.setItem('babu_dashboard_session_id', dashboardSessionId);
+  }
+
   // Convert UTC ISO timestamps or sqlite timestamps to IST (UTC+5:30) dynamically
   function formatIST(isoString) {
     if (!isoString) return '-';
@@ -6317,7 +6323,7 @@ STATUS_HTML = """<!DOCTYPE html>
         headers: getHeaders(),
         body: JSON.stringify({
           message: query,
-          session_id: 'web_dashboard_' + Math.floor(Date.now() / 1000)
+          session_id: dashboardSessionId
         })
       });
       
