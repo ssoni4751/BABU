@@ -1596,29 +1596,88 @@ def get_history_text(session_id: str) -> str:
     return "\n".join(f"{role.upper()}: {content}" for role, content in h)
 
 
+def _strip_history_boilerplate(text: str) -> str:
+    """
+    Strip swarm output boilerplate from a BABU response before storing in
+    conversation history. Keeps only the core reply the user received.
+
+    Strips:
+    - Everything from '## Workflow Overview' onward (full swarm report)
+    - '💡 *System Suggestion*' promote blocks
+    - 'Swarm profile:' timing lines
+    - 'Reply with ...' approval prompts
+    - Markdown rule separators
+    """
+    import re as _re
+    # Strip from major swarm report headers onward
+    for sentinel in (
+        "## Workflow Overview",
+        "## Findings",
+        "## Triggered Actions",
+        "## System Suggestion",
+        "Swarm Output Execution Feed",
+        "Swarm profile:",
+    ):
+        idx = text.find(sentinel)
+        if idx != -1:
+            text = text[:idx].strip()
+
+    # Strip standalone promote / suggestion blocks
+    text = _re.sub(
+        r'💡.*?`/promote[^`]+`',
+        '',
+        text,
+        flags=_re.DOTALL
+    ).strip()
+
+    # Strip approval prompt lines
+    text = _re.sub(
+        r"Reply with '1' / 'approve'.*",
+        '',
+        text,
+        flags=_re.DOTALL
+    ).strip()
+
+    # Strip trailing markdown rulers
+    text = _re.sub(r'\n---+\s*$', '', text).strip()
+
+    return text or "[response stored]"
+
+
 def add_to_history(session_id: str, user_msg: str, babu_msg: str) -> None:
+    """
+    Append a user/babu turn to the in-memory history deque.
+    The BABU response is stripped of swarm-report boilerplate before storage
+    so that planner context does not get contaminated by previous goal reports.
+    """
+    compact_babu = _strip_history_boilerplate(babu_msg)
+    # Hard cap: never store more than 280 chars per BABU turn in history.
+    # The planner only uses history_snippet[:300] anyway — storing more is waste.
+    if len(compact_babu) > 280:
+        compact_babu = compact_babu[:277] + "…"
     with _memory_lock:
         _histories[session_id].append(("user", user_msg))
-        _histories[session_id].append(("babu", babu_msg))
+        _histories[session_id].append(("babu", compact_babu))
 
 
 def compact_completed_session_history(session_id: str) -> None:
     """Wipe intermediate details from conversation history once the goal epoch is completed.
-    
-    Keeps only high-level requests and concise summaries to prevent context contamination.
+
+    Threshold tightened to 250 chars so short-but-noisy blocks
+    (promote suggestions, approval prompts) are also compacted.
     """
     with _memory_lock:
         history = _histories[session_id]
         if not history:
             return
-            
+
         compacted = deque(maxlen=20)
         for role, content in history:
-            if len(content) > 800:
-                summary = content[:300] + "\n... [Intermediate details cleared upon successful audit validation] ...\n" + content[-200:]
-                compacted.append((role, summary))
-            else:
-                compacted.append((role, content))
+            # Re-strip boilerplate in case anything slipped through add_to_history
+            cleaned = _strip_history_boilerplate(content) if role == "babu" else content
+            if len(cleaned) > 250:
+                cleaned = cleaned[:200] + " … [compacted]"
+            compacted.append((role, cleaned))
         _histories[session_id] = compacted
 
 

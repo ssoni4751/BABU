@@ -684,7 +684,18 @@ def plan_goal(
     now_utc_dt = datetime.now(timezone.utc)
     now_ist_dt = now_utc_dt + timedelta(hours=5, minutes=30)
     now_utc = f"{now_utc_dt.strftime('%Y-%m-%d %H:%M:%S')} UTC / {now_ist_dt.strftime('%Y-%m-%d %H:%M:%S')} IST (Indian Standard Time)"
-    history_snippet = (history_text[:500] + "…") if len(history_text) > 500 else history_text
+    # History snippet: strip boilerplate and cap at 300 chars.
+    # add_to_history already strips before writing; this is a belt-and-suspenders
+    # guard so swarm report headers never reach the planner prompt even in edge cases.
+    try:
+        from .bot import _strip_history_boilerplate as _strip_h
+    except ImportError:
+        try:
+            from bot import _strip_history_boilerplate as _strip_h
+        except ImportError:
+            _strip_h = None
+    _ht = _strip_h(history_text) if (_strip_h and history_text) else (history_text or "")
+    history_snippet = (_ht[:300] + "…") if len(_ht) > 300 else _ht
 
     user_content_parts: List[str] = [
         f"Current datetime: {now_utc}",
