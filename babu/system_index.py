@@ -90,14 +90,14 @@ def parse_sii(filepath: str) -> Optional[dict]:
       adr_map     — {adr_num(int): book_filename} pre-computed coverage map
     """
     if not os.path.exists(filepath):
-        print(f"[SII ERROR] System index file not found at: {filepath}", flush=True)
+        print(f"[SII WARNING] System index file not found at: {filepath} — SII routing disabled, falling back to all collections.", flush=True)
         return None
 
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             content = f.read()
     except Exception as e:
-        print(f"[SII ERROR] Failed to read system index file: {e}", flush=True)
+        print(f"[SII WARNING] Failed to read system index file: {e} — SII routing disabled.", flush=True)
         return None
 
     layers: dict = {}
