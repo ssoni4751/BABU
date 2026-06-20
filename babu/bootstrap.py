@@ -50,10 +50,10 @@ def bootstrap_brain():
     
     print("[BOOTSTRAP] Phase 4: Compile Planner", flush=True)
     try:
-        from babu.planner import compile_planner, COMPILED_BRAIN_CONTEXT
-        compile_planner()
-        if COMPILED_BRAIN_CONTEXT:
-            print(f"  -> Planner context compiled successfully ({len(COMPILED_BRAIN_CONTEXT)} characters)", flush=True)
+        from babu.planner import compile_planner
+        compiled_ctx = compile_planner()
+        if compiled_ctx:
+            print(f"  -> Planner context compiled successfully ({len(compiled_ctx)} characters)", flush=True)
         else:
             print("  -> [WARNING] Planner context compilation returned empty text.", flush=True)
     except Exception as e:
