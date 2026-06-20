@@ -6809,7 +6809,6 @@ STATUS_HTML = """<!DOCTYPE html>
 </script>
 </body>
 </html>"""
-
 CHAT_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6844,12 +6843,114 @@ CHAT_HTML = """<!DOCTYPE html>
   .dot:nth-child(1) { animation-delay: -0.32s; }
   .dot:nth-child(2) { animation-delay: -0.16s; }
   @keyframes bounce { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
+
+  /* Modal Overlay styling */
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(7, 7, 14, 0.7);
+    backdrop-filter: blur(8px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+  .modal-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .modal-card {
+    background: #121223;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 24px;
+    width: 90%;
+    max-width: 450px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+    transform: scale(0.9);
+    transition: transform 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .modal-overlay.active .modal-card {
+    transform: scale(1);
+  }
+  .modal-title {
+    font-weight: 600;
+    font-size: 18px;
+    color: #f4f4f5;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .modal-image {
+    width: 100%;
+    max-height: 180px;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    margin-bottom: 8px;
+  }
+  .modal-body {
+    font-size: 14px;
+    color: #a1a1aa;
+    line-height: 1.6;
+    max-height: 250px;
+    overflow-y: auto;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    white-space: pre-wrap;
+  }
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 8px;
+  }
+  .modal-btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .modal-btn.approve {
+    background: #10b981;
+    color: white;
+  }
+  .modal-btn.approve:hover {
+    background: #059669;
+  }
+  .modal-btn.cancel {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+  }
+  .modal-btn.cancel:hover {
+    background: rgba(239, 68, 68, 0.2);
+  }
 </style>
 </head>
 <body>
   <div id="header">
     <div>ARIA Web Interface</div>
-    <div id="header-status">● Online</div>
+    <div style="display: flex; align-items: center; gap: 15px;">
+      <button id="clear-btn" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: #ef4444; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s;">Clear Chat</button>
+      <div id="header-status">● Online</div>
+    </div>
   </div>
   <div id="chat">
     <div class="msg bot">Hello! I am ARIA. How can I help you today?</div>
@@ -6858,10 +6959,37 @@ CHAT_HTML = """<!DOCTYPE html>
     <input type="text" id="input" placeholder="Message ARIA..." autocomplete="off">
     <button id="send">Send</button>
   </div>
+  
+  <!-- Action Authorization Modal Popup Window -->
+  <div id="auth-modal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-title">
+        <span>🛡️ Action Authorization Required</span>
+      </div>
+      <div id="modal-image-container" style="display:none; text-align:center;">
+        <img id="modal-img" class="modal-image" src="" alt="Post Preview">
+      </div>
+      <div id="modal-details" class="modal-body">
+        Loading action details...
+      </div>
+      <div class="modal-actions">
+        <button id="modal-cancel-btn" onclick="window.sendApproval('cancel')" class="modal-btn cancel">Cancel</button>
+        <button id="modal-approve-btn" onclick="window.sendApproval('approve')" class="modal-btn approve">Approve</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const chat = document.getElementById('chat');
     const input = document.getElementById('input');
     const sendBtn = document.getElementById('send');
+    
+    // Manage session ID persistent in localStorage
+    let sessionId = localStorage.getItem('aria_session_id');
+    if (!sessionId) {
+      sessionId = 'web_session_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
+      localStorage.setItem('aria_session_id', sessionId);
+    }
     
     const renderer = new marked.Renderer();
     const linkRenderer = renderer.link;
@@ -6870,18 +6998,70 @@ CHAT_HTML = """<!DOCTYPE html>
       return html.replace(/^<a /, '<a target="_blank" rel="noopener noreferrer" ');
     };
     marked.setOptions({ renderer: renderer, breaks: true });
-
-    function appendMsg(text, sender) {
+    
+    function appendMsg(text, sender, hasPending = false, pendingType = 'action', pendingDetails = '', imageUrl = '') {
       const d = document.createElement('div');
       d.className = 'msg ' + sender;
       if(sender === 'bot') {
         d.innerHTML = marked.parse(text);
+        if (hasPending) {
+          const btnContainer = document.createElement('div');
+          btnContainer.className = 'approval-buttons';
+          btnContainer.style.marginTop = '15px';
+          btnContainer.style.display = 'flex';
+          btnContainer.style.gap = '10px';
+          
+          let approveCmd = "sendApproval('approve')";
+          let cancelCmd = "sendApproval('cancel')";
+          if (pendingType === 'post') {
+            approveCmd = "sendApproval('approve post')";
+            cancelCmd = "sendApproval('cancel post')";
+          }
+          
+          btnContainer.innerHTML = `
+            <button onclick="${approveCmd}" style="padding: 8px 16px; border: none; background: #10b981; color: white; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 14px; transition: background 0.2s;">Approve</button>
+            <button onclick="${cancelCmd}" style="padding: 8px 16px; border: none; background: #ef4444; color: white; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 14px; transition: background 0.2s;">Cancel</button>
+          `;
+          d.appendChild(btnContainer);
+
+          // Open overlay modal window
+          const modal = document.getElementById('auth-modal');
+          const modalDetails = document.getElementById('modal-details');
+          const imgContainer = document.getElementById('modal-image-container');
+          const imgEl = document.getElementById('modal-img');
+          if (modal && modalDetails) {
+            modalDetails.textContent = pendingDetails || text.replace(/Reply with '1'.*/s, '').trim();
+            const approveBtn = document.getElementById('modal-approve-btn');
+            const cancelBtn = document.getElementById('modal-cancel-btn');
+            approveBtn.setAttribute('onclick', `window.${approveCmd}`);
+            cancelBtn.setAttribute('onclick', `window.${cancelCmd}`);
+            
+            if (imageUrl) {
+              imgEl.src = imageUrl;
+              imgContainer.style.display = 'block';
+            } else {
+              imgContainer.style.display = 'none';
+              imgEl.src = '';
+            }
+            
+            modal.classList.add('active');
+          }
+        }
       } else {
         d.textContent = text;
       }
       chat.appendChild(d);
       chat.scrollTo({ top: chat.scrollHeight, behavior: 'smooth' });
     }
+
+    window.sendApproval = async function(choice) {
+      const modal = document.getElementById('auth-modal');
+      if (modal) modal.classList.remove('active');
+      const containers = document.querySelectorAll('.approval-buttons');
+      containers.forEach(c => c.remove());
+      input.value = choice;
+      sendMessage();
+    };
 
     async function sendMessage() {
       const text = input.value.trim();
@@ -6904,12 +7084,12 @@ CHAT_HTML = """<!DOCTYPE html>
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({message: text, session_id: 'web_session_' + Date.now()})
+          body: JSON.stringify({message: text, session_id: sessionId})
         });
         const data = await res.json();
         document.getElementById(typingId).remove();
         if(data.reply) {
-          appendMsg(data.reply, 'bot');
+          appendMsg(data.reply, 'bot', data.has_pending, data.pending_type, data.pending_details, data.image_url);
         } else {
           appendMsg('⚠️ Error: ' + JSON.stringify(data), 'bot');
         }
@@ -6923,10 +7103,74 @@ CHAT_HTML = """<!DOCTYPE html>
       }
     }
 
+    async function checkPendingStatus() {
+      try {
+        const res = await fetch(`/api/chat/status?session_id=${sessionId}`);
+        const data = await res.json();
+        const modal = document.getElementById('auth-modal');
+        const modalDetails = document.getElementById('modal-details');
+        const imgContainer = document.getElementById('modal-image-container');
+        const imgEl = document.getElementById('modal-img');
+        
+        if (data.has_pending) {
+          if (modal && modalDetails) {
+            modalDetails.textContent = data.pending_details;
+            const approveBtn = document.getElementById('modal-approve-btn');
+            const cancelBtn = document.getElementById('modal-cancel-btn');
+            
+            let approveCmd = "sendApproval('approve')";
+            let cancelCmd = "sendApproval('cancel')";
+            if (data.pending_type === 'post') {
+              approveCmd = "sendApproval('approve post')";
+              cancelCmd = "sendApproval('cancel post')";
+            }
+            
+            approveBtn.setAttribute('onclick', `window.${approveCmd}`);
+            cancelBtn.setAttribute('onclick', `window.${cancelCmd}`);
+            
+            if (data.image_url) {
+              imgEl.src = data.image_url;
+              imgContainer.style.display = 'block';
+            } else {
+              imgContainer.style.display = 'none';
+              imgEl.src = '';
+            }
+            
+            modal.classList.add('active');
+          }
+        } else {
+          if (modal) modal.classList.remove('active');
+        }
+      } catch (e) {
+        console.error("Error checking pending status:", e);
+      }
+    }
+
     sendBtn.addEventListener('click', sendMessage);
     input.addEventListener('keypress', (e) => {
       if(e.key === 'Enter') sendMessage();
     });
+    
+    document.getElementById('clear-btn').addEventListener('click', async () => {
+      if(confirm('Are you sure you want to clear chat history and start a new session?')) {
+        try {
+          await fetch('/api/chat', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({message: '/clear', session_id: sessionId})
+          });
+        } catch(e) {}
+        
+        sessionId = 'web_session_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
+        localStorage.setItem('aria_session_id', sessionId);
+        chat.innerHTML = '<div class="msg bot">Hello! I am ARIA. How can I help you today?</div>';
+      }
+    });
+
+    // Check status on load and start auto-polling
+    checkPendingStatus();
+    setInterval(checkPendingStatus, 3000);
+
     input.focus();
   </script>
 </body>
@@ -7469,7 +7713,11 @@ class HealthHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         try:
-            if self.path in ("/healthz", "/api/healthz"):
+            from urllib.parse import urlparse, parse_qs
+            parsed_path = urlparse(self.path)
+            path = parsed_path.path
+
+            if path in ("/healthz", "/api/healthz"):
                 body = json.dumps({
                     "status": "ok", "bot": "ARIA",
                     "features": ["memory", "web_search", "knowledge_base", "google_workspace"],
@@ -7480,7 +7728,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 self._cors()
                 self.end_headers()
                 self.wfile.write(body)
-            elif self.path in ("/api/telemetry", "/api/telemetry/"):
+            elif path in ("/api/telemetry", "/api/telemetry/"):
                 try:
                     data = get_telemetry_data(limit=1000)
                     body = json.dumps(data).encode("utf-8")
@@ -7496,16 +7744,87 @@ class HealthHandler(BaseHTTPRequestHandler):
                     self._cors()
                     self.end_headers()
                     self.wfile.write(err)
-            elif self.path in ("/", ""):
+            elif path in ("/", ""):
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
                 self.wfile.write(STATUS_HTML.encode())
-            elif self.path in ("/chat", "/chat/"):
+            elif path in ("/chat", "/chat/"):
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
                 self.wfile.write(CHAT_HTML.encode())
+            elif path == "/api/chat/status":
+                query_params = parse_qs(parsed_path.query)
+                sid = query_params.get("session_id", ["web_anon"])[0]
+                
+                chat_id = get_persisted_chat_id()
+                with _pending_actions_lock:
+                    has_pending_action = sid in _pending_actions
+                has_pending_post = bool(chat_id and chat_id in PENDING_POSTS)
+                has_pending = has_pending_action or has_pending_post
+                
+                pending_type = "action"
+                pending_details = ""
+                image_url = ""
+                
+                if has_pending_action:
+                    pending_type = "action"
+                    with _pending_actions_lock:
+                        p = _pending_actions.get(sid)
+                    if p:
+                        preview_fields = {k: v for k, v in p.get("params", {}).items() if k not in ("body", "content", "caption")}
+                        fields_str = "\n".join(f"• {k.capitalize()}: {v}" for k, v in preview_fields.items())
+                        body_preview = p.get("params", {}).get("body", p.get("params", {}).get("content", p.get("params", {}).get("caption", "")))
+                        pending_details = f"Proposed Action: {p.get('action')}\n\n{fields_str}"
+                        if body_preview:
+                            pending_details += f"\n\nDraft Content:\n{body_preview}"
+                        
+                        img_path = p.get("params", {}).get("image_path", p.get("params", {}).get("file_path", ""))
+                        if img_path:
+                            import urllib.parse
+                            image_url = f"/api/image?path={urllib.parse.quote(img_path)}"
+                elif has_pending_post:
+                    pending_type = "post"
+                    draft = PENDING_POSTS.get(chat_id)
+                    if draft:
+                        pending_details = f"Proposed Facebook Post\n\n• Topic: {draft.get('custom_topic') or 'Daily Post'}\n\nDraft Caption:\n{draft.get('caption')}"
+                        img_path = draft.get("image_path", "")
+                        if img_path:
+                            import urllib.parse
+                            image_url = f"/api/image?path={urllib.parse.quote(img_path)}"
+                
+                body = json.dumps({
+                    "has_pending": has_pending,
+                    "pending_type": pending_type,
+                    "pending_details": pending_details,
+                    "image_url": image_url
+                }).encode("utf-8")
+                
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self._cors()
+                self.end_headers()
+                self.wfile.write(body)
+            elif path == "/api/image":
+                query_params = parse_qs(parsed_path.query)
+                img_path = query_params.get("path", [""])[0]
+                if img_path and os.path.exists(img_path) and (img_path.lower().endswith(".jpg") or img_path.lower().endswith(".jpeg") or img_path.lower().endswith(".png")):
+                    self.send_response(200)
+                    if img_path.lower().endswith(".png"):
+                        self.send_header("Content-Type", "image/png")
+                    else:
+                        self.send_header("Content-Type", "image/jpeg")
+                    self._cors()
+                    self.end_headers()
+                    try:
+                        with open(img_path, "rb") as f:
+                            self.wfile.write(f.read())
+                    except Exception as e:
+                        print(f"[HTTP SERVER ERROR] Failed to serve image {img_path}: {e}", flush=True)
+                else:
+                    self.send_response(404)
+                    self.end_headers()
             else:
                 self.send_response(404)
                 self.end_headers()
@@ -7596,9 +7915,252 @@ class HealthHandler(BaseHTTPRequestHandler):
             if not msg:
                 raise ValueError("empty message")
             print(f"[WEB] session={sid[:16]} msg={msg[:80]}", flush=True)
+
+            # Handle memory clearance via /clear over API
+            if msg.lower() == "/clear":
+                with _memory_lock:
+                    if sid in _histories:
+                        _histories[sid].clear()
+                with _pending_actions_lock:
+                    _pending_actions.pop(sid, None)
+                
+                try:
+                    from .memory import FAILURES_PATH, FAILURES_TEST_PATH, _write_json_list
+                except ImportError:
+                    from memory import FAILURES_PATH, FAILURES_TEST_PATH, _write_json_list
+                
+                try:
+                    _write_json_list(FAILURES_PATH, [])
+                    _write_json_list(FAILURES_TEST_PATH, [])
+                    conn, is_pg = get_db_connection()
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM system_memory WHERE key IN ('failures', 'failures_test')")
+                    conn.commit()
+                    cursor.close()
+                    conn.close()
+                except Exception as db_err:
+                    print(f"[CLEAR ERROR] Database failures clear failed: {db_err}", flush=True)
+
+                response = json.dumps({"reply": "Memory cleared for a fresh start.", "gear": "DYNAMIC", "has_pending": False}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(response)))
+                self._cors()
+                self.end_headers()
+                self.wfile.write(response)
+                return
+
+            # Check for Facebook post approval/cancel from web
+            chat_id = get_persisted_chat_id()
+            with _pending_actions_lock:
+                has_google_pending = sid in _pending_actions
+            has_fb_pending = bool(chat_id and chat_id in PENDING_POSTS)
+
+            is_fb_approve = msg.lower() in ("approve post", "post_approve")
+            is_fb_cancel = msg.lower() in ("cancel post", "post_cancel")
+
+            is_generic_approve = _is_approval_message(msg)
+            is_generic_cancel = _is_reject_message(msg)
+
+            # Route generic approve/cancel contextually
+            target_fb_approve = is_fb_approve or (is_generic_approve and not has_google_pending and has_fb_pending)
+            target_fb_cancel = is_fb_cancel or (is_generic_cancel and not has_google_pending and has_fb_pending)
+
+            if has_fb_pending and (target_fb_approve or target_fb_cancel):
+                if target_fb_approve:
+                    draft = PENDING_POSTS.get(chat_id)
+                    if draft:
+                        try:
+                            from .social_media import publish_to_facebook_page
+                        except ImportError:
+                            from social_media import publish_to_facebook_page
+                        
+                        ok, result_msg = publish_to_facebook_page(draft["image_path"], draft["caption"])
+                        if ok:
+                            PENDING_POSTS.pop(chat_id, None)
+                            try:
+                                from .memory import append_to_profile_ledger
+                            except ImportError:
+                                from memory import append_to_profile_ledger
+                            append_to_profile_ledger("work_summaries", {
+                                "task_name": "Daily FB Marketing Post",
+                                "status": "SUCCESS",
+                                "details": f"Message: {result_msg} | Topic: {draft.get('custom_topic')}",
+                                "timestamp": datetime.now(timezone.utc).isoformat()
+                            })
+                            reply = f"Facebook post published successfully!\n\n{result_msg}"
+                        else:
+                            reply = f"Facebook post publishing failed:\n\n{result_msg}"
+                        
+                        response = json.dumps({"reply": reply, "gear": "DYNAMIC", "has_pending": False}).encode()
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/json")
+                        self.send_header("Content-Length", str(len(response)))
+                        self._cors()
+                        self.end_headers()
+                        self.wfile.write(response)
+                        return
+
+                if target_fb_cancel:
+                    PENDING_POSTS.pop(chat_id, None)
+                    reply = "Pending Facebook post draft cancelled."
+                    response = json.dumps({"reply": reply, "gear": "DYNAMIC", "has_pending": False}).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(response)))
+                    self._cors()
+                    self.end_headers()
+                    self.wfile.write(response)
+                    return
+
+            # Check for pending action in _pending_actions
+            with _pending_actions_lock:
+                pending = _pending_actions.get(sid)
+
+            if pending and is_generic_approve:
+                action = pending.get("action", "")
+                params = resolve_action_params(pending.get("params", {}), research_text="")
+                
+                log_execution_ledger_event(
+                    session_id=sid,
+                    goal_id=pending.get("goal_id", "default"),
+                    task_id=pending.get("task_id"),
+                    department="execution",
+                    event_type="APPROVAL_GRANTED",
+                    state_before="WAITING",
+                    state_after="RUNNING",
+                    metadata={"by": "web_text", "action": action, "params": params}
+                )
+                
+                ok, result_msg = execute_google_action(action, params)
+                if ok:
+                    with _pending_actions_lock:
+                        _pending_actions.pop(sid, None)
+                    reply = f"Action executed successfully.\n\n{result_msg}"
+                else:
+                    reply = f"Action execution failed.\n\n{result_msg}\n\nYou can type '1' / 'approve' again to retry, or '0' / 'cancel' to discard."
+                
+                # Check pending status
+                with _pending_actions_lock:
+                    has_pending_action = sid in _pending_actions
+                has_pending_post = bool(chat_id and chat_id in PENDING_POSTS)
+                has_pending = has_pending_action or has_pending_post
+                
+                pending_type = "action"
+                pending_details = ""
+                image_url = ""
+                if has_pending_action:
+                    pending_type = "action"
+                    with _pending_actions_lock:
+                        p = _pending_actions.get(sid)
+                    if p:
+                        preview_fields = {k: v for k, v in p.get("params", {}).items() if k not in ("body", "content", "caption")}
+                        fields_str = "\n".join(f"• {k.capitalize()}: {v}" for k, v in preview_fields.items())
+                        body_preview = p.get("params", {}).get("body", p.get("params", {}).get("content", p.get("params", {}).get("caption", "")))
+                        pending_details = f"Proposed Action: {p.get('action')}\n\n{fields_str}"
+                        if body_preview:
+                            pending_details += f"\n\nDraft Content:\n{body_preview}"
+                        
+                        img_path = p.get("params", {}).get("image_path", p.get("params", {}).get("file_path", ""))
+                        if img_path:
+                            import urllib.parse
+                            image_url = f"/api/image?path={urllib.parse.quote(img_path)}"
+                elif has_pending_post:
+                    pending_type = "post"
+                    draft = PENDING_POSTS.get(chat_id)
+                    if draft:
+                        pending_details = f"Proposed Facebook Post\n\n• Topic: {draft.get('custom_topic') or 'Daily Post'}\n\nDraft Caption:\n{draft.get('caption')}"
+                        img_path = draft.get("image_path", "")
+                        if img_path:
+                            import urllib.parse
+                            image_url = f"/api/image?path={urllib.parse.quote(img_path)}"
+                
+                response = json.dumps({
+                    "reply": reply, 
+                    "gear": "DYNAMIC", 
+                    "has_pending": has_pending,
+                    "pending_type": pending_type,
+                    "pending_details": pending_details,
+                    "image_url": image_url
+                }).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(response)))
+                self._cors()
+                self.end_headers()
+                self.wfile.write(response)
+                return
+
+            if pending and is_generic_cancel:
+                log_execution_ledger_event(
+                    session_id=sid,
+                    goal_id=pending.get("goal_id", "default"),
+                    task_id=pending.get("task_id"),
+                    department="execution",
+                    event_type="APPROVAL_DENIED",
+                    state_before="WAITING",
+                    state_after="CANCELLED",
+                    metadata={"by": "web_text", "action": pending.get("action", "")}
+                )
+                with _pending_actions_lock:
+                    _pending_actions.pop(sid, None)
+                reply = "Pending action cancelled."
+                response = json.dumps({"reply": reply, "gear": "DYNAMIC", "has_pending": False}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(response)))
+                self._cors()
+                self.end_headers()
+                self.wfile.write(response)
+                return
+
+            # Normal path
             reply, gear_res, tokens = invoke_babu(msg, sid)
             print(f"[WEB OK] len={len(reply)} | Tokens: {tokens.get('total', 0)}", flush=True)
-            response = json.dumps({"reply": reply, "gear": "DYNAMIC"}).encode()
+            
+            # Check pending status
+            with _pending_actions_lock:
+                has_pending_action = sid in _pending_actions
+            has_pending_post = bool(chat_id and chat_id in PENDING_POSTS)
+            has_pending = has_pending_action or has_pending_post
+            
+            pending_type = "action"
+            pending_details = ""
+            image_url = ""
+            if has_pending_action:
+                pending_type = "action"
+                with _pending_actions_lock:
+                    p = _pending_actions.get(sid)
+                if p:
+                    preview_fields = {k: v for k, v in p.get("params", {}).items() if k not in ("body", "content", "caption")}
+                    fields_str = "\n".join(f"• {k.capitalize()}: {v}" for k, v in preview_fields.items())
+                    body_preview = p.get("params", {}).get("body", p.get("params", {}).get("content", p.get("params", {}).get("caption", "")))
+                    pending_details = f"Proposed Action: {p.get('action')}\n\n{fields_str}"
+                    if body_preview:
+                        pending_details += f"\n\nDraft Content:\n{body_preview}"
+                    
+                    img_path = p.get("params", {}).get("image_path", p.get("params", {}).get("file_path", ""))
+                    if img_path:
+                        import urllib.parse
+                        image_url = f"/api/image?path={urllib.parse.quote(img_path)}"
+            elif has_pending_post:
+                pending_type = "post"
+                draft = PENDING_POSTS.get(chat_id)
+                if draft:
+                    pending_details = f"Proposed Facebook Post\n\n• Topic: {draft.get('custom_topic') or 'Daily Post'}\n\nDraft Caption:\n{draft.get('caption')}"
+                    img_path = draft.get("image_path", "")
+                    if img_path:
+                        import urllib.parse
+                        image_url = f"/api/image?path={urllib.parse.quote(img_path)}"
+
+            response = json.dumps({
+                "reply": reply, 
+                "gear": "DYNAMIC", 
+                "has_pending": has_pending,
+                "pending_type": pending_type,
+                "pending_details": pending_details,
+                "image_url": image_url
+            }).encode()
             self.send_response(200)
             self.send_header("Content-Type",   "application/json")
             self.send_header("Content-Length", str(len(response)))
