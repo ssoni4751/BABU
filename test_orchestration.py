@@ -337,6 +337,15 @@ class TestBipartiteAuditor(unittest.TestCase):
             head.validate_schema_invbabunts(short_out)
         self.assertIn("extremely short output", str(ctx.exception))
 
+    def test_writing_head_short_validation(self):
+        head = get_department_head("writing")
+        # Validate that short outputs like "hi" are permitted for writing department
+        head.validate_schema_invbabunts("hi")
+        # But completely empty outputs should still raise ValueError
+        with self.assertRaises(ValueError) as ctx:
+            head.validate_schema_invbabunts("")
+        self.assertIn("extremely short output", str(ctx.exception))
+
     def test_fail_closed_ambiguity_refusal(self):
         from babu.planner import _build_fallback_graph
         graph = _build_fallback_graph("gibberish query")
