@@ -5921,6 +5921,22 @@ STATUS_HTML = """<!DOCTYPE html>
       </div>
       <div id="execution-output" style="background: rgba(0,0,0,0.3); padding: 20px; border-radius: 12px; font-family: monospace; font-size: 0.9rem; line-height: 1.6; white-space: pre-wrap; max-height: 350px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.04); color: #f4f4f5;"></div>
     </div>
+
+    <!-- Action Authorization Controls Panel -->
+    <div id="dashboard-auth-container" style="display: none; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: 12px; padding: 20px; margin-top: 24px; animation: fadeIn 0.3s ease;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+        <span style="font-size: 0.85rem; font-weight: 700; text-transform: uppercase; color: #818cf8; letter-spacing: 0.5px;">🛡️ Action Authorization Required</span>
+        <span id="dashboard-auth-type" style="font-size: 0.72rem; background: rgba(99, 102, 241, 0.2); color: #818cf8; padding: 3px 10px; border-radius: 12px; font-weight: 600; text-transform: uppercase;"></span>
+      </div>
+      <div id="dashboard-auth-details" style="font-size: 0.9rem; color: #a1a1aa; line-height: 1.6; background: rgba(0, 0, 0, 0.2); padding: 15px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.05); margin-bottom: 15px; white-space: pre-wrap; max-height: 200px; overflow-y: auto; font-family: monospace;"></div>
+      <div id="dashboard-auth-image-container" style="display: none; text-align: center; margin-bottom: 15px;">
+        <img id="dashboard-auth-img" style="max-width: 100%; max-height: 180px; object-fit: cover; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1);" src="" alt="Post Preview">
+      </div>
+      <div style="display: flex; gap: 12px; justify-content: flex-end;">
+        <button onclick="sendDashboardApproval('cancel')" style="padding: 8px 16px; border: 1px solid rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.1); color: #ef4444; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 0.85rem; transition: background 0.2s;">Reject / Cancel</button>
+        <button onclick="sendDashboardApproval('approve')" id="dashboard-approve-btn" style="padding: 8px 16px; border: none; background: #10b981; color: white; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 0.85rem; transition: background 0.2s;">Approve & Execute</button>
+      </div>
+    </div>
   </div>
   
   <!-- Swarm Model Control & Registry Split Panel -->
@@ -6341,6 +6357,7 @@ STATUS_HTML = """<!DOCTYPE html>
       
       // Instantly refresh telemetry to show new ledger logs
       fetchTelemetry();
+      checkDashboardPending();
     } catch (e) {
       console.error(e);
       outDiv.textContent = "Error executing swarm: " + e.message;
@@ -6805,12 +6822,98 @@ STATUS_HTML = """<!DOCTYPE html>
     });
   }
 
+  // Polling for pending actions on the dashboard
+  async function checkDashboardPending() {
+    try {
+      const res = await fetch(`/api/chat/status?session_id=${dashboardSessionId}`);
+      const data = await res.json();
+      
+      const container = document.getElementById('dashboard-auth-container');
+      const details = document.getElementById('dashboard-auth-details');
+      const typeSpan = document.getElementById('dashboard-auth-type');
+      const imgContainer = document.getElementById('dashboard-auth-image-container');
+      const imgEl = document.getElementById('dashboard-auth-img');
+      const approveBtn = document.getElementById('dashboard-approve-btn');
+      
+      if (data.has_pending) {
+        details.textContent = data.pending_details;
+        typeSpan.textContent = data.pending_type;
+        
+        let approveCmd = "sendDashboardApproval('approve')";
+        let cancelCmd = "sendDashboardApproval('cancel')";
+        if (data.pending_type === 'post') {
+          approveCmd = "sendDashboardApproval('approve post')";
+          cancelCmd = "sendDashboardApproval('cancel post')";
+        }
+        
+        approveBtn.setAttribute('onclick', approveCmd);
+        
+        if (data.image_url) {
+          imgEl.src = data.image_url;
+          imgContainer.style.display = 'block';
+        } else {
+          imgContainer.style.display = 'none';
+          imgEl.src = '';
+        }
+        
+        container.style.display = 'block';
+      } else {
+        container.style.display = 'none';
+      }
+    } catch (e) {
+      console.error("Error checking dashboard pending:", e);
+    }
+  }
+
+  window.sendDashboardApproval = async function(choice) {
+    const triggerBtn = document.getElementById('trigger-btn');
+    const triggerText = document.getElementById('trigger-text');
+    const triggerSpinner = document.getElementById('trigger-spinner');
+    const outWrapper = document.getElementById('execution-output-wrapper');
+    const outDiv = document.getElementById('execution-output');
+    
+    triggerBtn.disabled = true;
+    triggerText.textContent = "SENDING DECISION...";
+    triggerSpinner.style.display = "block";
+    outWrapper.style.display = "block";
+    outDiv.textContent = "Submitting authorization decision to the engine...";
+    
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          message: choice,
+          session_id: dashboardSessionId
+        })
+      });
+      
+      const resData = await response.json();
+      triggerBtn.disabled = false;
+      triggerText.textContent = "TRIGGER ACTION";
+      triggerSpinner.style.display = "none";
+      
+      outDiv.textContent = resData.reply;
+      
+      checkDashboardPending();
+      fetchTelemetry();
+    } catch (e) {
+      console.error(e);
+      outDiv.textContent = "Error sending approval decision: " + e.message;
+      triggerBtn.disabled = false;
+      triggerText.textContent = "TRIGGER ACTION";
+      triggerSpinner.style.display = "none";
+    }
+  };
+
   // Bind events and poll
   document.getElementById('search-input').addEventListener('input', updateUI);
 
   // Initial fetch and start interval
   loadAuthToken();
   fetchTelemetry();
+  checkDashboardPending();
+  setInterval(checkDashboardPending, 3000);
   setInterval(fetchTelemetry, 3000);
 </script>
 </body>
