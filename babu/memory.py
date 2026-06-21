@@ -633,10 +633,10 @@ def _read_json_list(path: str) -> list:
     
     # Try fetching from database if possible
     try:
-        from .bot import get_db_connection
+        from .services import get_db_connection
     except ImportError:
         try:
-            from bot import get_db_connection
+            from services import get_db_connection
         except ImportError:
             get_db_connection = None
 
@@ -681,10 +681,10 @@ def _write_json_list(path: str, items: list) -> bool:
     key = os.path.splitext(os.path.basename(path))[0]
     
     try:
-        from .bot import get_db_connection
+        from .services import get_db_connection
     except ImportError:
         try:
-            from bot import get_db_connection
+            from services import get_db_connection
         except ImportError:
             get_db_connection = None
 

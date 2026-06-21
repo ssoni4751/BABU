@@ -35,6 +35,113 @@ except ImportError:
 import sqlite3
 from langgraph.checkpoint.sqlite import SqliteSaver
 
+# Modular imports
+try:
+    from .services import (
+        get_db_connection,
+        get_token_costs,
+        log_temporal_event,
+        get_temporal_events,
+        get_cached_search,
+        store_cached_search,
+        load_user_profile,
+        get_current_profile,
+        is_profile_relevant_query,
+        is_private_data_query,
+        get_user_profile_text,
+        get_profile_fact_answer,
+        is_action_status_query,
+        search_profile,
+        clean_search_query,
+        search_knowledge,
+        wikipedia_search,
+        web_search,
+        retrieve_system_memory_via_sql,
+        retrieve_k0_memory,
+        db_save_pending_action,
+        db_delete_pending_action,
+        DB_PATH
+    )
+    from .gateway import (
+        is_pure_greeting,
+        is_deterministic_faq_query,
+        is_simple_query,
+        requires_workspace_access,
+        requires_web_search,
+        is_system_aware_query,
+        get_babu_age_string,
+        get_dynamic_self_identity,
+        get_system_health_dashboard,
+        get_babu_self_context,
+        has_multiple_tasks_or_requests
+    )
+    from .graph import (
+        BabuState,
+        intent_router,
+        route_after_router,
+        planner_node,
+        task_executor_node,
+        pa_node,
+        action_node,
+        task_manager_node,
+        research_dept,
+        department_synthesizer,
+        workflow
+    )
+except ImportError:
+    from services import (
+        get_db_connection,
+        get_token_costs,
+        log_temporal_event,
+        get_temporal_events,
+        get_cached_search,
+        store_cached_search,
+        load_user_profile,
+        get_current_profile,
+        is_profile_relevant_query,
+        is_private_data_query,
+        get_user_profile_text,
+        get_profile_fact_answer,
+        is_action_status_query,
+        search_profile,
+        clean_search_query,
+        search_knowledge,
+        wikipedia_search,
+        web_search,
+        retrieve_system_memory_via_sql,
+        retrieve_k0_memory,
+        db_save_pending_action,
+        db_delete_pending_action,
+        DB_PATH
+    )
+    from gateway import (
+        is_pure_greeting,
+        is_deterministic_faq_query,
+        is_simple_query,
+        requires_workspace_access,
+        requires_web_search,
+        is_system_aware_query,
+        get_babu_age_string,
+        get_dynamic_self_identity,
+        get_system_health_dashboard,
+        get_babu_self_context,
+        has_multiple_tasks_or_requests
+    )
+    from graph import (
+        BabuState,
+        intent_router,
+        route_after_router,
+        planner_node,
+        task_executor_node,
+        pa_node,
+        action_node,
+        task_manager_node,
+        research_dept,
+        department_synthesizer,
+        workflow
+    )
+
+
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory", "babu_checkpoint.db")
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
@@ -48,15 +155,6 @@ AUTHORITY_MODEL = "AUTHORITY_MODEL"
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
-def get_db_connection():
-    if DATABASE_URL and (DATABASE_URL.startswith("postgres://") or DATABASE_URL.startswith("postgresql://")):
-        import psycopg2
-        url = DATABASE_URL
-        if url.startswith("postgres://"):
-            url = url.replace("postgres://", "postgresql://", 1)
-        return psycopg2.connect(url), True
-    else:
-        return sqlite3.connect(DB_PATH), False
 
 def init_postgres_db():
     if not DATABASE_URL or not (DATABASE_URL.startswith("postgres://") or DATABASE_URL.startswith("postgresql://")):
@@ -426,89 +524,6 @@ def init_durable_checkpoint_db():
     return conn
 
 
-def log_temporal_event(
-    event_category: str,
-    summary: str,
-    outcome: Optional[str] = None,
-    impact_score: float = 1.0,
-    metadata: Optional[dict] = None,
-    cause: Optional[str] = None,
-    effect: Optional[str] = None,
-    resolution: Optional[str] = None,
-    confidence: Optional[float] = None
-):
-    """Log a system chronological event to babu_temporal_timeline."""
-    try:
-        conn, is_pg = get_db_connection()
-        cursor = conn.cursor()
-        meta_str = json.dumps(metadata or {})
-        
-        if is_pg:
-            cursor.execute("""
-                INSERT INTO babu_temporal_timeline (event_category, summary, outcome, impact_score, cause, effect, resolution, confidence, metadata)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (event_category, summary, outcome, impact_score, cause, effect, resolution, confidence, meta_str))
-        else:
-            cursor.execute("""
-                INSERT INTO babu_temporal_timeline (event_category, summary, outcome, impact_score, cause, effect, resolution, confidence, metadata)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (event_category, summary, outcome, impact_score, cause, effect, resolution, confidence, meta_str))
-            
-        conn.commit()
-        cursor.close()
-        conn.close()
-        print(f"[TEMPORAL LOG] [{event_category}] {summary} - {outcome} (Cause: {cause}, Effect: {effect}, Resolution: {resolution}, Conf: {confidence})", flush=True)
-    except Exception as e:
-        print(f"[TEMPORAL ERROR] Failed to log temporal event: {e}", flush=True)
-
-def get_temporal_events(limit: int = 50) -> list[dict]:
-    """Retrieve the latest system chronological events from babu_temporal_timeline."""
-    try:
-        conn, is_pg = get_db_connection()
-        cursor = conn.cursor()
-        
-        if is_pg:
-            cursor.execute("""
-                SELECT event_id, timestamp, event_category, summary, outcome, impact_score, cause, effect, resolution, confidence, metadata
-                FROM babu_temporal_timeline
-                ORDER BY event_id DESC
-                LIMIT %s
-            """, (limit,))
-        else:
-            cursor.execute("""
-                SELECT event_id, timestamp, event_category, summary, outcome, impact_score, cause, effect, resolution, confidence, metadata
-                FROM babu_temporal_timeline
-                ORDER BY event_id DESC
-                LIMIT ?
-            """, (limit,))
-            
-        rows = cursor.fetchall()
-        events = []
-        for row in rows:
-            try:
-                meta = json.loads(row[10]) if row[10] else {}
-            except Exception:
-                meta = {}
-            events.append({
-                "event_id": row[0],
-                "timestamp": str(row[1]),
-                "event_category": row[2],
-                "summary": row[3],
-                "outcome": row[4],
-                "impact_score": row[5],
-                "cause": row[6],
-                "effect": row[7],
-                "resolution": row[8],
-                "confidence": row[9],
-                "metadata": meta
-            })
-            
-        cursor.close()
-        conn.close()
-        return events
-    except Exception as e:
-        print(f"[TEMPORAL ERROR] Failed to fetch temporal events: {e}", flush=True)
-        return []
 
 
 try:
@@ -533,14 +548,6 @@ PRICING_TABLE = {
     "o1-mini": (3.00, 12.00)
 }
 
-def get_token_costs(model_name: str) -> tuple[float, float]:
-    if not model_name:
-        return 0.15 / 1_000_000, 0.60 / 1_000_000 # default fallback
-    m_lower = model_name.lower().strip()
-    for key, rates in PRICING_TABLE.items():
-        if key in m_lower:
-            return rates[0] / 1_000_000, rates[1] / 1_000_000
-    return 0.15 / 1_000_000, 0.60 / 1_000_000
 
 
 def is_epoch_sealed(epoch_id: str) -> bool:
@@ -601,80 +608,14 @@ def get_last_goal_graph(session_id: str) -> Optional[dict]:
 
 # ── Part 3: State Execution Ledger Helpers ───────────────────────────────
 
-def log_execution_ledger_event(session_id: str, goal_id: str, task_id: Optional[str], department: Optional[str], event_type: str, state_before: Optional[str] = None, state_after: Optional[str] = None, metadata: Optional[dict] = None):
-    try:
-        conn, is_pg = get_db_connection()
-        cursor = conn.cursor()
-        meta_str = json.dumps(metadata) if metadata else None
-        placeholders = "%s, %s, %s, %s, %s, %s, %s, %s" if is_pg else "?, ?, ?, ?, ?, ?, ?, ?"
-        cursor.execute(f"""
-            INSERT INTO execution_ledger (session_id, goal_id, task_id, department, event_type, state_before, state_after, metadata)
-            VALUES ({placeholders})
-        """, (session_id, goal_id, task_id, department, event_type, state_before, state_after, meta_str))
-        conn.commit()
-        cursor.close()
-        conn.close()
-    except Exception as e:
-        print(f"[DB ERROR] log_execution_ledger_event failed: {e}", flush=True)
+
 
 # ── Part 2: Stateful Search Cache Helpers ───────────────────────────────────
 
 import hashlib
 
-def _query_hash(query: str) -> str:
-    return hashlib.sha256(query.lower().strip().encode("utf-8")).hexdigest()
 
-def get_cached_search(query: str, ttl_hours: float = 12.0) -> Optional[dict]:
-    try:
-        q_hash = _query_hash(query)
-        conn, is_pg = get_db_connection()
-        cursor = conn.cursor()
-        if is_pg:
-            cursor.execute("""
-                SELECT distilled_results, sources, created_at 
-                FROM search_cache 
-                WHERE query_hash = %s AND (EXTRACT(EPOCH FROM NOW()) - EXTRACT(EPOCH FROM created_at)) < %s
-            """, (q_hash, ttl_hours * 3600))
-        else:
-            cursor.execute("""
-                SELECT distilled_results, sources, created_at 
-                FROM search_cache 
-                WHERE query_hash = ? AND (strftime('%s', 'now') - strftime('%s', created_at)) < ?
-            """, (q_hash, ttl_hours * 3600))
-        res = cursor.fetchone()
-        cursor.close()
-        conn.close()
-        if res:
-            return {"results": res[0], "sources": res[1]}
-    except Exception as e:
-        print(f"[DB ERROR] get_cached_search failed: {e}", flush=True)
-    return None
 
-def store_cached_search(query: str, distilled_results: str, sources: str):
-    try:
-        q_hash = _query_hash(query)
-        conn, is_pg = get_db_connection()
-        cursor = conn.cursor()
-        if is_pg:
-            cursor.execute("""
-                INSERT INTO search_cache (query_hash, raw_query, distilled_results, sources, created_at)
-                VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
-                ON CONFLICT (query_hash) DO UPDATE SET 
-                    raw_query = EXCLUDED.raw_query,
-                    distilled_results = EXCLUDED.distilled_results,
-                    sources = EXCLUDED.sources,
-                    created_at = CURRENT_TIMESTAMP
-            """, (q_hash, query, distilled_results, sources))
-        else:
-            cursor.execute("""
-                INSERT OR REPLACE INTO search_cache (query_hash, raw_query, distilled_results, sources, created_at)
-                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """, (q_hash, query, distilled_results, sources))
-        conn.commit()
-        cursor.close()
-        conn.close()
-    except Exception as e:
-        print(f"[DB ERROR] store_cached_search failed: {e}", flush=True)
 
 from langchain_groq import ChatGroq
 from langgraph.graph import END, StateGraph
@@ -824,663 +765,99 @@ def invoke_with_fallback(messages, model_name: str, temp: float):
 USER_PROFILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "user_profile.json")
 _profile_lock = threading.Lock()
 
-def load_user_profile() -> dict:
-    with _profile_lock:
-        if os.path.exists(USER_PROFILE_PATH):
-            try:
-                with open(USER_PROFILE_PATH, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception as e:
-                print(f"[PROFILE LOAD ERROR] {e}", flush=True)
-        return {}
 
 USER_PROFILE = load_user_profile()
 
-def get_current_profile() -> dict:
-    """Dynamically load fresh user profile from disk to guarantee live state access."""
-    return load_user_profile()
 
-def is_profile_relevant_query(query: str) -> bool:
-    """Determine if a query is related to the user's personal identity, family, business, or background."""
-    if not query:
-        return False
-    q = query.lower()
     
-    # User nicknames, names, business identifiers, and contact placeholders
-    personal_keywords = {
-        "anshu", "shubham", "swarnkar", "ash", "ssoni", "computer", "consultancy", 
-        "tax", "consultant", "consultants", "compliance", "e-governance", "csc",
-        "who am i", "who i am", "my name", "my nickname", "my business", "my company", 
-        "my bussiness", "my busines", "bussiness", "busines", "bussines",
-        "my work", "my job", "my shop", "my family", "my father", "my mother", 
-        "my brother", "my sibling", "my parents", "my cousin", "my background", 
-        "my journey", "my education", "my career", "my email", "my phone", 
-        "my number", "my address", "my location", "where i live", "where do i live",
-        "tell me about me", "my profile", "my biography", "my bio", "who is speaking",
-        "who is talking", "about me", "know about me", "know about my", "pf", "itr", "gst",
-        "orai", "jalaun", "official mail", "official email", "personal mail", "personal email",
-        "my mail", "to my mail", "to my email"
-    }
     
-    # Check exact keyword matching or substring match
-    return any(kw in q for kw in personal_keywords)
 
-def is_private_data_query(query: str, category: Optional[str] = None) -> bool:
-    """Determine if a query is asking for private user-owned data or business operations."""
-    if not query:
-        return False
-    q = query.lower()
     
-    # 1. Check intent category if provided
-    if category in ("BUSINESS_INFORMATION", "PERSONAL_INFORMATION", "SYSTEM_INFORMATION"):
-        return True
 
-    # 2. Check for private business and personal keywords (with possessive/pronoun cues or strong topics)
-    possessives = {"my", "mere", "meri", "mera", "apna", "apne", "apni", "mne", "our", "us", "mine", "we"}
-    private_topics = {
-        "client", "clients", "customer", "customers", "invoice", "invoices", "payment",
-        "payments", "transaction", "transactions", "sales", "earnings", "revenue", "profit",
-        "profits", "ledger", "ledgers", "pf claim", "pf claims", "uan consolidation", "kyc correction",
-        "joint declaration", "gst registration", "gstr-1", "gstr-3b"
-    }
     
-    # Check if any possessive prefix matches
-    words = q.split()
-    for i, w in enumerate(words):
-        if w in possessives and i + 1 < len(words) and words[i+1] in private_topics:
-            return True
 
-    # Check for direct private topics unless it is a general explanation query
-    is_general = any(g in q for g in ("what is", "how to", "definition", "explain", "tutorial", "general process", "generic"))
-    if not is_general:
-        if any(topic in q for topic in private_topics):
-            return True
             
-    # Or strong standalone indicators of user's personal operations
-    strong_indicators = {
-        "kitne clients", "client details", "client records", "customer details", "customer records",
-        "official mail", "official email", "personal mail", "personal email"
-    }
-    if any(ind in q for ind in strong_indicators):
-        return True
         
-    return False
 
-def get_user_profile_text(profile_type: str = "FULL") -> str:
-    """Return L1 Daily Profile Context, selectively retrieving context based on type."""
-    profile = get_current_profile()
-    if not profile:
-        return ""
     
-    details = profile.get("personal_details", {})
-    prefs = profile.get("preferences", {})
-    nickname = details.get("primary_nickname", "") or details.get("full_name", "Anshu")
     
-    if profile_type in ("THIN", "WALK"):
-        # Ultra-thin identity context for casual conversation
-        lines = [
-            "[USER PERSONALIZATION CONTEXT]",
-            f"  • User Name: {nickname}",
-            f"  • Tone Preference: {prefs.get('communication_style', 'Warm, brief, natural')}"
-        ]
-        return "\n".join(lines)
         
-    name = details.get("full_name", "")
-    business = profile.get("business_context", {})
     
-    lines = ["[USER PROFILE & CONTEXT]"]
-    if name:
-        lines.append(f"  • User Name: {name} (Nickname: {nickname})" if nickname else f"  • User Name: {name}")
-    if details.get("personal_email"):
-        lines.append(f"  • Personal Email: {details.get('personal_email')}")
-    if details.get("official_email"):
-        lines.append(f"  • Official Email: {details.get('official_email')}")
-    if details.get("mobile_number"):
-        lines.append(f"  • Mobile Number: {details.get('mobile_number')}")
-    if details.get("residential_address"):
-        addr = details.get("residential_address", {})
-        if isinstance(addr, dict):
-            addr_str = f"{addr.get('address', '')}, {addr.get('city', '')}, {addr.get('state', '')}, {addr.get('country', '')}"
-            lines.append(f"  • Residential Address: {addr_str.strip(', ')}")
-        else:
-            lines.append(f"  • Residential Address: {addr}")
 
-    if business:
-        lines.append("  • Business Details:")
-        lines.append(f"    - Name: {business.get('business_name', '')}")
-        lines.append(f"    - Type: {business.get('business_type', '') or business.get('legacy_name', '')}")
-        if business.get("location"):
-            lines.append(f"    - Location: {business.get('location', {}).get('office', '')}")
-        if business.get("contact"):
-            contact = business.get("contact", {})
-            lines.append(f"    - Website: {contact.get('website', '')}")
-            lines.append(f"    - Contact Email: {contact.get('email', '')}")
-        if business.get("marketing_identity"):
-            lines.append(f"    - Tagline: {business.get('marketing_identity', {}).get('tagline', '')}")
-        if business.get("core_services"):
-            lines.append("    - Core Services:")
-            for srv_cat, srv_list in business.get("core_services", {}).items():
-                lines.append(f"      * {srv_cat.replace('_', ' ').title()}: {', '.join(srv_list)}")
-        if business.get("growth_focus"):
-            lines.append(f"    - Growth Focus: {', '.join(business.get('growth_focus', []))}")
             
-    if prefs:
-        lines.append(f"  • Timezone: {prefs.get('timezone', 'Asia/Kolkata')}")
-        lines.append(f"  • Communication Style: {prefs.get('communication_style', 'Logical and warm')}")
         
-    # Append family graph summary
-    family = profile.get("family_graph", {})
-    if family:
-        lines.append("  • Family Relations:")
-        for rel_cat, rel_val in family.items():
-            if isinstance(rel_val, dict):
-                members = ", ".join(f"{k.replace('_', ' ').title()}: {v}" for k, v in rel_val.items() if v)
-                lines.append(f"    - {rel_cat.replace('_', ' ').title()}: {members}")
-            else:
-                lines.append(f"    - {rel_cat.replace('_', ' ').title()}: {rel_val}")
-
-    # Append mindset & journey highlights
-    journey = profile.get("mindset_and_journey", {})
-    if journey:
-        lines.append("  • Mindset & Journey Highlights:")
-        for k, v in journey.get("life_journey_highlights", {}).items():
-            lines.append(f"    - {k.replace('_', ' ').title()}: {v}")
-        cognitive = journey.get("cognitive_profile", {})
-        if cognitive:
-            lines.append("    - Cognitive Profile:")
-            for ck, cv in cognitive.items():
-                lines.append(f"      * {ck.replace('_', ' ').title()}: {cv}")
-
-    return "\n".join(lines)
 
 
-def get_profile_fact_answer(query: str) -> str:
-    """Deterministic profile answers for high-frequency identity questions."""
-    profile = get_current_profile()
-    if not profile:
-        return ""
-
-    q = (query or "").lower()
-    details = profile.get("personal_details", {})
-    business = profile.get("business_context", {})
-    family = profile.get("family_graph", {})
-
-    full_name = details.get("full_name", "") or details.get("primary_nickname", "")
-    nickname = details.get("primary_nickname", "")
-
-    if any(k in q for k in ("who am i", "my name", "who i am", "who am i?")):
-        if full_name and nickname:
-            return f"You are {full_name}, also known as {nickname}."
-        if full_name:
-            return f"You are {full_name}."
-        return ""
-
-    if any(k in q for k in ("where i work", "where do i work", "my work", "where i am working")):
-        business_name = business.get("business_name", "")
-        classification = business.get("classification", "")
-        if business_name and classification:
-            return f"You work at {business_name} ({classification})."
-        if business_name:
-            return f"You work at {business_name}."
-        return ""
-
-    if any(k in q for k in ("my business", "whats my business", "what is my business", "my company", "my shop", "about my business")):
-        business_name = business.get("business_name", "")
-        business_type = business.get("business_type", "") or business.get("classification", "")
-        if business_name and business_type:
-            return f"Your business is {business_name}, a {business_type}."
-        if business_name:
-            return f"Your business is {business_name}."
-        return ""
-
-    if "father" in q:
-        for relation, data in family.items():
-            rel = relation.lower().replace("_", " ")
-            if "father" in rel and not isinstance(data, (dict, list)):
-                return f"Your father's name is {data}."
-            if isinstance(data, dict):
-                for key, value in data.items():
-                    k = key.lower().replace("_", " ")
-                    if "father" in k:
-                        return f"Your father's name is {value}."
-                    if "father" in rel and value:
-                        return f"Your father's name is {value}."
-        return ""
-
-    return ""
 
 
-def is_action_status_query(query: str) -> bool:
-    q = (query or "").lower()
-    markers = (
-        "did you send",
-        "have you sent",
-        "was it sent",
-        "is it sent",
-        "action triggered",
-        "triggered action",
-        "mail sent",
-        "email sent",
-        "did you create",
-        "was it created",
-    )
-    return any(m in q for m in markers)
 
 
-def search_profile(query: str, bypass_filter: bool = False) -> str:
-    """Perform a local directory search on L1 (Personal Details/Business), L2 (Family Graph) and L3 (Legacy Memory) to retrieve specific context."""
-    profile = get_current_profile()
-    if not profile:
-        return ""
+
+
+
+
+
+
+
+
+
     
-    cleaned = clean_search_query(query)
-    q = cleaned.lower().strip()
     
-    # Programmatic Me/Myself/I override:
-    # If the query is a general question asking about themselves, load the ENTIRE profile history and context!
-    personal_pronouns = {
-        "myself", "who am i", "my journey", "my background", "tell me about me", 
-        "my profile", "my biography", "my bio", "who is talk", "who is speak",
-        "user profile", "profile information", "gather user profile", "know about me",
-        "about me", "personal details", "profile data"
-    }
-    is_general_profile = any(p in q for p in personal_pronouns)
     
-    # Programmatic Query vs Statement Classifier:
-    # If the user is just sharing a conversational statement, diary entry, or thought, do NOT search the database!
-    if not bypass_filter and not is_general_profile:
-        question_starters = (
-            "who", "what", "when", "where", "why", "how", "is", "are", "was", "were", 
-            "can", "could", "should", "would", "do", "does", "did", "tell", "show", 
-            "search", "google", "find", "get", "retrieve", "lookup", "which"
-        )
-        query_phrases = ["what's", "who's", "where's", "how's", "can you", "could you", "do you know"]
         
-        is_inquiry = (
-            q.endswith("?") 
-            or q.startswith(question_starters) 
-            or any(p in q for p in query_phrases)
-            or len(q.split()) < 4  # Short keyphrase lookups (e.g. "father name") are treated as queries
-        )
-        if not is_inquiry:
-            # Reassurance: Treated as a conversational statement or diary share. Skip database query!
-            return ""
 
-    if is_general_profile:
-        results = []
         
-        # Load L1 Daily Details
-        details = profile.get("personal_details", {})
-        if details:
-            results.append("Personal Details:")
-            for k, v in details.items():
-                if v and not str(v).startswith("["):
-                    results.append(f"  • {k.replace('_', ' ').title()}: {v}")
                     
-        # Load L1 Business Context
-        business = profile.get("business_context", {})
-        if business:
-            results.append("Business Context:")
-            for k, v in business.items():
-                if v and not str(v).startswith("["):
-                    results.append(f"  • {k.replace('_', ' ').title()}: {v}")
 
-        # Load L2 Family Graph Summary
-        family = profile.get("family_graph", {})
-        if family:
-            results.append("Family structure:")
-            for rel, d in family.items():
-                if isinstance(d, dict):
-                    members = ", ".join(f"{k.replace('_', ' ').title()}: {v}" for k, v in d.items() if v and not str(v).startswith("["))
-                    if members:
-                        results.append(f"  • {rel.replace('_', ' ').title()}: {members}")
                         
-        # Load L3 Legacy Autobiographical History & Journey
-        journey = profile.get("mindset_and_journey", {})
-        for cat, det in journey.items():
-            results.append(f"{cat.replace('_', ' ').title()} Background:")
-            if isinstance(det, dict):
-                for k, v in det.items():
-                    results.append(f"  • {k.replace('_', ' ').title()}: {v}")
-            else:
-                results.append(f"  • {det}")
                 
-        edu_career = profile.get("education_and_career", {})
-        for edu in edu_career.get("education", []):
-            results.append(f"  • Education Record: {edu}")
-        for emp in edu_career.get("employment_history", []):
-            results.append(f"  • Employment Record: {emp}")
             
-        return "[Local User Profile (Full Personal Directory Loaded)]\n" + "\n".join(results)
 
-    results = []
     
-    # Simple stop-words list to filter out conversational noise
-    stopwords = {
-        "which", "year", "i", "passed", "grade", "ecam", "exam", "my", "me", "in", "on", 
-        "at", "to", "for", "of", "who", "when", "what", "is", "was", "are", "do", "you", 
-        "know", "tell", "show", "did", "does", "have", "has", "had", "a", "an", "the", "about",
-        "hi", "hello", "hey", "yo"  # Add conversational greetings to stopwords
-    }
-    search_words = [re.sub(r'[^a-zA-Z0-9]', '', w) for w in q.split()]
-    search_words = [w for w in search_words if w not in stopwords and len(w) >= 1]
     
-    def matches_word(text: str) -> bool:
-        t_lower = text.lower()
-        return any(re.search(r'\b' + re.escape(w) + r'\b', t_lower) for w in search_words)
 
-    # 1. Search L1: Personal Details
-    details = profile.get("personal_details", {})
-    if details:
-        details_clean = str(details).lower()
-        if "personal" in q or "email" in q or "contact" in q or "phone" in q or "mobile" in q or matches_word(details_clean):
-            results.append(f"• Personal Details: Name: {details.get('full_name', '')} - Nickname: {details.get('primary_nickname', '')} - Email: {details.get('personal_email', '')} - Official Email: {details.get('official_email', '')} - Mobile: {details.get('mobile_number', '')}")
 
-    # 2. Search L1: Business Context
-    business = profile.get("business_context", {})
-    if business:
-        business_name = business.get("business_name", "").lower()
-        business_type = business.get("business_type", "").lower()
-        if "business" in q or "company" in q or "consultancy" in q or "anshu" in q or matches_word(business_name) or matches_word(business_type):
-            results.append(f"• Business Name: {business.get('business_name', '')}")
-            results.append(f"• Business Type: {business.get('business_type', '')}")
-            if business.get("location"):
-                results.append(f"• Business Location: {business.get('location', {}).get('office', '')}")
-            if business.get("contact"):
-                contact = business.get("contact", {})
-                results.append(f"• Business Contact: Website: {contact.get('website', '')}, Email: {contact.get('email', '')}")
-            if business.get("core_services"):
-                results.append(f"• Business Services: {json.dumps(business.get('core_services', {}))}")
-            if business.get("marketing_identity"):
-                results.append(f"• Business Tagline: {business.get('marketing_identity', {}).get('tagline', '')}")
-            if business.get("growth_focus"):
-                results.append(f"• Business Growth Focus: {', '.join(business.get('growth_focus', []))}")
 
-    # 3. Search L2: Family Graph
-    family = profile.get("family_graph", {})
-    for relation, details_val in family.items():
-        relation_clean = relation.lower().replace("_", " ")
-        if isinstance(details_val, dict):
-            for member_key, member_val in details_val.items():
-                member_key_clean = member_key.lower().replace("_", " ")
-                # Match if key is in query, or query is in key, or any search word matches key/value as a whole word
-                if member_key_clean in q or q in member_key_clean or matches_word(member_key_clean) or matches_word(str(member_val)):
-                    results.append(f"• Family Connection ({relation.replace('_', ' ').title()} - {member_key.replace('_', ' ').title()}): {member_val}")
-        elif isinstance(details_val, list):
-            for item in details_val:
-                if q in str(item).lower() or matches_word(str(item)):
-                    results.append(f"• Family connection ({relation.replace('_', ' ').title()}): {item}")
-        else:
-            if relation_clean in q or q in relation_clean or matches_word(str(details_val)):
-                results.append(f"• Family connection ({relation.replace('_', ' ').title()}): {details_val}")
                 
-    # 4. Search L3: Legacy & Autobiographical Memory
-    edu_career = profile.get("education_and_career", {})
-    for edu in edu_career.get("education", []):
-        edu_str = str(edu).lower()
-        if q in edu_str or matches_word(edu_str):
-            results.append(f"• Education Record: {edu}")
             
-    for emp in edu_career.get("employment_history", []):
-        emp_str = str(emp).lower()
-        if q in emp_str or matches_word(emp_str):
-            results.append(f"• Employment Record: {emp}")
             
-    journey = profile.get("mindset_and_journey", {})
-    for category, details_val in journey.items():
-        category_clean = category.lower().replace("_", " ")
-        if isinstance(details_val, dict):
-            for k, v in details_val.items():
-                k_clean = k.lower().replace("_", " ")
-                if k_clean in q or category_clean in q or q in k_clean or q in str(v).lower() or matches_word(str(v)):
-                    results.append(f"• Background History ({category.replace('_', ' ').title()} - {k.replace('_', ' ').title()}): {v}")
-        else:
-            if category_clean in q or q in category_clean or q in str(details_val).lower() or matches_word(str(details_val)):
-                results.append(f"• Background History ({category.replace('_', ' ').title()}): {details_val}")
                 
-    if results:
-        return "[Local User Profile Matches]\n" + "\n".join(results)
-# â”€â”€ Knowledge base â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-KNOWLEDGE_BASE = {
-    "babu": (
-        "BABU (Behavioral Autonomous Bureaucratic Utility) is a multi-agent AI system "
-        "built on LangGraph + Groq/Llama. It dynamically classifies user intent "
-        "and plans a custom task graph executed by independent departments. "
-        "Available on Telegram and the web."
-    ),
-    "planning": (
-        "Intent routing: dynamically builds a custom task graph (DAG). "
-        "Workers like writing, analysis, and execution run independently "
-        "while research executes as a branch only when deep research is explicitly required."
-    ),
-    "tools": (
-        "Every BABU agent has access to: live web search (DuckDuckGo), "
-        "conversation memory (per-session history), the BABU knowledge base, "
-        "and Direct Google Workspace automation (email via Gmail, Calendar events, Sheets logging, and more)."
-    ),
-    "models": (
-        "Router and research agents use llama-3.1-8b-instant (fast). "
-        "The Personal Assistant (PA) uses llama-3.3-70b-versatile (highest quality). "
-        "All inference runs on Groq free tier."
-    ),
-}
 
-def clean_search_query(query: str) -> str:
-    """Strip Telegram commands and conversational greetings to produce a high-quality search query."""
-    # 1. Strip command prefixes like /sprint, /launch, /walk, !sprint, !launch, !walk
-    cleaned = re.sub(r'^(?:/[a-zA-Z]+|![a-zA-Z]+)\s*', '', query, flags=re.IGNORECASE)
-    cleaned = cleaned.strip()
     
-    # 2. Strip conversational introductions/fillers
-    patterns = [
-        r'^(?:hi|hello|hey|yo|greetings|good\s+morning|good\s+afternoon|good\s+evening)\b[,!\s]*',
-        r'^(?:please|kindly|could\s+you\s+please|can\s+you\s+tell\s+me|do\s+you\s+know)\b[,!\s]*',
-        r'^(?:tell\s+me|find\s+out|search\s+for|look\s+up)\b[,!\s]*'
-    ]
-    for pattern in patterns:
-        cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE).strip()
         
-    # 3. Clean trailing punctuation from individual words
-    cleaned = re.sub(r'[?.,!]+$', '', cleaned)
-    cleaned = re.sub(r'\s+[?.,!]+$', '', cleaned)
     
-    # 4. Standardize common profile typos
-    cleaned = re.sub(r'\b(?:bussiness|bussines|busines)\b', 'business', cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r'\b(?:bussinesses|bussinesses|businesses)\b', 'businesses', cleaned, flags=re.IGNORECASE)
         
-    return cleaned if cleaned else query
 
 
-def search_knowledge(query: str) -> str:
-    cleaned = clean_search_query(query)
-    q = cleaned.lower()
-    hits = [v for k, v in KNOWLEDGE_BASE.items() if k in q or any(w in q for w in k.split())]
-    return "\n".join(hits) if hits else ""
 
 
-# ── Web search ────────────────────────────────────────────────────────────────
 
-def wikipedia_search(query: str, max_results: int = 3) -> str:
-    """Query Wikipedia MediaWiki API to fetch high-quality, structured summaries for research data.
     
-    Complies with MediaWiki User-Agent guidelines for up to 200+ requests per minute.
-    """
-    cleaned = clean_search_query(query)
-    if not cleaned:
-        return "No search query provided."
-    import requests
-    url = "https://en.wikipedia.org/w/api.php"
-    params = {
-        "action": "opensearch",
-        "search": cleaned,
-        "limit": max_results,
-        "namespace": 0,
-        "format": "json"
-    }
-    headers = {
-        "User-Agent": "BABU-Assistant/1.0 (ssoni4751@gmail.com) Python-Requests/2.0"
-    }
-    try:
-        response = requests.get(url, params=params, headers=headers, timeout=5)
-        if response.status_code != 200:
-            return f"[Wikipedia search failed: status {response.status_code}]"
         
-        data = response.json()
-        if len(data) < 4:
-            return "No Wikipedia matches found."
             
-        titles = data[1]
-        descriptions = data[2]
-        urls = data[3]
         
-        if not titles:
-            return "No Wikipedia articles matched."
             
-        # Batch-fetch extracts for titles with missing or short descriptions to avoid sequential HTTP requests in a loop
-        titles_needing_extracts = []
-        for i in range(len(titles)):
-            desc = descriptions[i] if i < len(descriptions) else ""
-            if not desc or len(desc) < 30:
-                titles_needing_extracts.append(titles[i])
                 
-        extracts = {}
-        if titles_needing_extracts:
-            extract_params = {
-                "action": "query",
-                "prop": "extracts",
-                "exintro": True,
-                "explaintext": True,
-                "redirects": 1,
-                "titles": "|".join(titles_needing_extracts),
-                "format": "json"
-            }
-            try:
-                ext_resp = requests.get(url, params=extract_params, headers=headers, timeout=4)
-                if ext_resp.status_code == 200:
-                    ext_data = ext_resp.json()
-                    pages = ext_data.get("query", {}).get("pages", {})
-                    for page_id, page_val in pages.items():
-                        title_val = page_val.get("title")
-                        extract_val = page_val.get("extract")
-                        if title_val and extract_val:
-                            extracts[title_val] = extract_val
-            except Exception as e:
-                print(f"[WIKIPEDIA WARNING] Failed to batch fetch extracts: {e}", flush=True)
 
-        lines = []
-        for i in range(len(titles)):
-            title = titles[i]
-            desc = descriptions[i] if i < len(descriptions) else ""
-            link = urls[i] if i < len(urls) else ""
             
-            if not desc or len(desc) < 30:
-                desc = extracts.get(title, desc)
                 
-            if not desc:
-                desc = "No summary available."
                 
-            lines.append(f"• Wikipedia: {title} [Confidence: 0.95]\n  {desc}\n  Source: {link}")
             
-        return "\n\n".join(lines)
-    except Exception as e:
-        return f"[Wikipedia search unavailable: {e}]"
 
 
-def web_search(query: str, max_results: int = 4) -> str:
-    if is_private_data_query(query):
-        print(f"[SEARCH BLOCK] Web search blocked for private personal/business data query: '{query}'", flush=True)
-        return REFUSAL_PRIVATE_DATA
 
-    cleaned = clean_search_query(query)
-    if not cleaned:
-        return "No results found."
 
-    # Check Stateful Search Cache (12-hour TTL)
-    cached = get_cached_search(cleaned)
-    if cached:
-        print(f"[SEARCH CACHE HIT] Reusing cached search results for: '{cleaned[:40]}'", flush=True)
-        return cached["results"]
     
-    ddg_text = ""
-    tavily_key = os.environ.get("TAVILY_API_KEY")
-    if tavily_key:
-        print(f"[SEARCH] Querying Tavily Search API for: '{cleaned[:40]}'", flush=True)
-        try:
-            import requests
-            resp = requests.post(
-                "https://api.tavily.com/search",
-                json={
-                    "api_key": tavily_key,
-                    "query": cleaned,
-                    "search_depth": "basic",
-                    "max_results": max_results
-                },
-                timeout=15
-            )
-            if resp.status_code == 200:
-                tavily_results = resp.json().get("results", [])
-                tavily_lines = []
-                for r in tavily_results:
-                    score = r.get("score", 0.8)
-                    tavily_lines.append(f"• {r['title']} [Confidence: {score}]\n  {r['content']}\n  Source: {r['url']}")
-                ddg_text = "\n\n".join(tavily_lines)
-                print(f"[SEARCH SUCCESS] Tavily returned {len(tavily_results)} results.", flush=True)
-            else:
-                print(f"[SEARCH WARNING] Tavily API returned status {resp.status_code}: {resp.text}", flush=True)
-        except Exception as e:
-            print(f"[SEARCH WARNING] Tavily query failed: {e}. Falling back to DuckDuckGo.", flush=True)
             
-    # Fallback to DuckDuckGo if Tavily is not set or yielded no results
-    if not ddg_text:
-        try:
-            from ddgs import DDGS
-            with DDGS() as ddgs:
-                results = list(ddgs.text(cleaned, max_results=max_results))
-            ddg_lines = []
-            if results:
-                for r in results:
-                    href = r.get("href", "").lower()
-                    # Dynamic Source Confidence Weighting
-                    confidence = 0.50
-                    if any(ext in href for ext in (".edu", ".gov", ".org")):
-                        confidence = 0.98 if any(ext in href for ext in (".edu", ".gov")) else 0.85
-                    elif any(news in href for news in ("reuters.com", "apnews.com", "bbc.co.uk", "nytimes.com", "cnn.com", "bloomberg.com")):
-                        confidence = 0.85
-                    elif any(low in href for low in ("reddit.com", "medium.com", "blogspot.com", "twitter.com", "facebook.com", "x.com")):
-                        confidence = 0.25
-                    ddg_lines.append(f"• {r['title']} [Confidence: {confidence}]\n  {r['body']}\n  Source: {r['href']}")
-            ddg_text = "\n\n".join(ddg_lines)
-        except Exception as e:
-            ddg_text = f"[DuckDuckGo search unavailable: {e}]"
 
-    # 2. Fetch Wikipedia results (max 2 for optimal token management)
-    wiki_text = wikipedia_search(cleaned, max_results=2)
 
-    # Merge results factually
-    merged = []
-    if wiki_text and not wiki_text.startswith("[") and "No Wikipedia" not in wiki_text:
-        merged.append("[Wikipedia Research Matches]")
-        merged.append(wiki_text)
-    if ddg_text and not ddg_text.startswith("[") and "No results found" not in ddg_text:
-        merged.append("[Web Search Results]")
-        merged.append(ddg_text)
         
-    if not merged:
-        merged_text = "No web or Wikipedia results found."
-    else:
-        merged_text = "\n\n".join(merged)
         
-    # Store in local SQLite search cache
-    if merged and "No web" not in merged_text:
-        store_cached_search(cleaned, merged_text, "Wikipedia, DuckDuckGo")
         
-    return merged_text
 
 
-# â”€â”€ Direct Google Workspace automation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-# Actions ARIA can detect and trigger
 MAKE_ACTIONS = {
     "send_email":       "Send an email via Gmail",
     "create_event":     "Create a Google Calendar event",
@@ -1777,165 +1154,18 @@ def save_k0_memory_entry(session_id: str, goal_id: str, user_query: str, respons
             conn.close()
 
 
-def retrieve_k0_memory(session_id: str, limit: int = 5) -> str:
-    conn, is_pg = get_db_connection()
-    if not conn:
-        return ""
-    cursor = conn.cursor()
-    context = ""
-    try:
-        if is_pg:
-            cursor.execute("""
-                SELECT timestamp, goal_id, user_query, response, status, failures, retrieved_records
-                FROM babu_k0_working_memory
-                WHERE session_id = %s
-                ORDER BY id DESC
-                LIMIT %s
-            """, (session_id, limit))
-        else:
-            cursor.execute("""
-                SELECT timestamp, goal_id, user_query, response, status, failures, retrieved_records
-                FROM babu_k0_working_memory
-                WHERE session_id = ?
-                ORDER BY id DESC
-                LIMIT ?
-            """, (session_id, limit))
-        rows = cursor.fetchall()
-        if rows:
-            rows.reverse()
-            parts = []
-            for r in rows:
-                ts = r[0]
-                ts_str = ts.strftime('%Y-%m-%d %H:%M:%S') if hasattr(ts, 'strftime') else str(ts)
-                goal_id = r[1]
-                query = r[2]
-                response = r[3]
-                status = r[4]
-                failures = r[5]
-                retrieved = r[6]
 
-                block = (
-                    f"[{ts_str}] Goal ID: {goal_id} | Status: {status}\n"
-                    f"- User Query: {query}\n"
-                    f"- Response: {response}"
-                )
-                if failures:
-                    block += f"\n- Failures: {failures}"
-                if retrieved:
-                    block += f"\n- Retrieved Records: {retrieved}"
-                parts.append(block)
-            context = "=== K0 - CONVERSATIONAL WORKING MEMORY (Recent Goals & Turns) ===\n" + "\n\n".join(parts)
-    except Exception as e:
-        print(f"[K0 RETRIEVAL ERROR] Failed: {e}", flush=True)
-    finally:
-        cursor.close()
-        conn.close()
-    return context
-
-
-def extract_tokens(res) -> dict:
-    """Safely extract prompt, completion, and total tokens from an LLM response."""
-    usage = {"prompt": 0, "completion": 0, "total": 0}
-    if not res:
-        return usage
-        
-    # 1. Try unified usage_metadata field (Standard in newer LangChain)
-    usage_meta = getattr(res, "usage_metadata", None)
-    if usage_meta:
-        usage["prompt"] = usage_meta.get("input_tokens", 0) or usage_meta.get("prompt_tokens", 0) or 0
-        usage["completion"] = usage_meta.get("output_tokens", 0) or usage_meta.get("completion_tokens", 0) or 0
-        usage["total"] = usage_meta.get("total_tokens", 0) or (usage["prompt"] + usage["completion"])
-        return usage
-
-    # 2. Try response_metadata -> token_usage (OpenAI / Groq)
-    metadata = getattr(res, "response_metadata", {})
-    token_usage = metadata.get("token_usage")
-    if token_usage:
-        usage["prompt"] = token_usage.get("prompt_tokens", 0)
-        usage["completion"] = token_usage.get("completion_tokens", 0)
-        usage["total"] = token_usage.get("total_tokens", 0)
-        return usage
-
-    return usage
-
-
-def add_tokens(existing: dict, new: dict) -> dict:
-    """LangGraph reducer to sum up cumulative token usage across swarm nodes."""
-    if not existing:
-        existing = {"prompt": 0, "completion": 0, "total": 0}
-    if not new:
-        return existing
-    return {
-        "prompt": existing.get("prompt", 0) + new.get("prompt", 0),
-        "completion": existing.get("completion", 0) + new.get("completion", 0),
-        "total": existing.get("total", 0) + new.get("total", 0)
-    }
 
 
 # â”€â”€ LangGraph state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-class BabuState(TypedDict):
-    messages:       Annotated[list[BaseMessage], "Conversation"]
-    research_data:  List[str]
-    user_query:     str
-    history_text:   str
-    session_id:     str
-    search_results: str
-    action_result:  str   # result of direct Google Workspace action if triggered
-    tokens:         Annotated[dict, add_tokens]
-    detected_action: Optional[dict]
-    active_goal:    Optional[dict]
-    execution_tracker: dict
-    compressed_research: str
-    routing_metadata: dict
-    pending_action_notice: str
-    goal_graph:     Optional[dict]
-    execution_log:  list[dict]
-    final_brief:    str
-    knowledge_classes: Optional[List[str]]
-    source_records: Optional[List[str]]
-    conversation_reference: Optional[bool]
-    is_deterministic_response: Optional[bool]
 
 
 _pending_actions_lock = threading.Lock()
 _pending_actions: dict[str, dict] = {}
 
 
-def db_save_pending_action(session_id: str, action_dict: dict):
-    try:
-        conn, is_pg = get_db_connection()
-        cursor = conn.cursor()
-        key = f"pending_action:{session_id}"
-        val = json.dumps(action_dict)
-        if is_pg:
-            cursor.execute("""
-                INSERT INTO system_memory (key, data) VALUES (%s, %s)
-                ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data
-            """, (key, val))
-        else:
-            cursor.execute("INSERT OR REPLACE INTO system_memory (key, data) VALUES (?, ?)", (key, val))
-        conn.commit()
-        cursor.close()
-        conn.close()
-    except Exception as e:
-        print(f"[DB ERROR] db_save_pending_action failed: {e}", flush=True)
 
-
-def db_delete_pending_action(session_id: str):
-    try:
-        conn, is_pg = get_db_connection()
-        cursor = conn.cursor()
-        key = f"pending_action:{session_id}"
-        if is_pg:
-            cursor.execute("DELETE FROM system_memory WHERE key = %s", (key,))
-        else:
-            cursor.execute("DELETE FROM system_memory WHERE key = ?", (key,))
-        conn.commit()
-        cursor.close()
-        conn.close()
-    except Exception as e:
-        print(f"[DB ERROR] db_delete_pending_action failed: {e}", flush=True)
 
 
 def db_load_pending_actions() -> dict[str, dict]:
@@ -2019,2245 +1249,240 @@ def should_escalate_to_workflow(text: str, history_text: str = "") -> bool:
     return False
 
 
-def intent_router(state: BabuState):
-    import time
-    _router_t0 = time.time()
     
-    query = state["messages"][-1].content
-    history_text = state.get("history_text", "")
-    lowered = query.lower().strip()
-    session_id = state.get("session_id", "default")
-
-    # Strip command prefix overrides to keep the processed query clean
-    clean_query = query
-    t_lower = query.lower().strip()
-    for prefix in ("/launch", "!launch", "launch", "/sprint", "!sprint", "sprint", "/walk", "!walk", "walk"):
-        if t_lower.startswith(prefix):
-            clean_query = query[len(prefix):].strip()
-            break
-
-    try:
-        from .planner import classify_intent
-    except ImportError:
-        from planner import classify_intent
-
-    intent_packet = classify_intent(clean_query, history_text, model_name=CURRENT_PA_MODEL)
-    ic_tokens = getattr(intent_packet, "tokens", None) or {"prompt": 0, "completion": 0, "total": 0}
-
-    detected_action = None
-    pending_action_notice = ""
-
-    sync_pending_actions()
-    with _pending_actions_lock:
-        pending = _pending_actions.get(session_id)
-
-    if pending and _is_approval_message(query):
-        detected_action = pending
-        with _pending_actions_lock:
-            _pending_actions.pop(session_id, None)
-        db_delete_pending_action(session_id)
-    elif pending and _is_reject_message(query):
-        with _pending_actions_lock:
-            _pending_actions.pop(session_id, None)
-        db_delete_pending_action(session_id)
-        pending_action_notice = "Pending action cancelled."
-    elif pending:
-        pending_action_notice = "You already have a pending action approval. Reply with '1' / 'approve' to execute, or '0' / 'cancel' to discard."
-
-    try:
-        try:
-            from .memory import log_routing_decision
-        except ImportError:
-            from memory import log_routing_decision
-        log_routing_decision(
-            session_id=state.get("session_id", "default"),
-            query=query,
-            selected_gear="DYNAMIC",
-            reason="routing_dispatch",
-            has_action=bool(detected_action),
-        )
-    except Exception as e:
-        print(f"[ROUTING MEMORY WARNING] Failed to log routing decision: {e}", flush=True)
-
-    _router_duration = round(time.time() - _router_t0, 4)
-    tracker = state.get("execution_tracker") or {
-        "start_time": time.time(),
-        "router_duration": 0.0,
-        "planner_duration": 0.0,
-        "executor_duration": 0.0,
-        "pa_duration": 0.0,
-        "governance_duration": 0.0,
-        "task_latencies": [],
-    }
-    tracker["router_duration"] = _router_duration
-    return {
-        "user_query": clean_query,
-        "research_data": [],
-        "search_results": "",
-        "action_result": "",
-        "detected_action": detected_action,
-        "execution_tracker": tracker,
-        "compressed_research": "",
-        "routing_metadata": {
-            "mode": "command_only",
-            "reason": "explicit_command",
-            "intent_packet": intent_packet.to_dict() if intent_packet else None
-        },
-        "pending_action_notice": pending_action_notice,
-        "tokens": ic_tokens
-    }
 
 
-def is_pure_greeting(text: str) -> bool:
-    t = (text or "").lower().strip()
-    t = t.removeprefix("/").removeprefix("!")
-    for char in "?!.,":
-        t = t.replace(char, "")
-    t = t.strip()
+
+
+
+
+
+
+
+
     
-    greetings = {
-        "hi", "hello", "hey", "how are you", "how's it going", "how you doing", 
-        "how doing", "yo", "hi buddy", "hey buddy", "hello buddy", "good morning", 
-        "good afternoon", "good evening"
-    }
-    return t in greetings
 
 
-def is_deterministic_faq_query(query: str) -> bool:
-    t = (query or "").lower().strip()
-    t = t.removeprefix("/").removeprefix("!")
-    for char in "?!.,":
-        t = t.replace(char, "")
-    t = t.strip()
     
-    faq_keywords = (
-        "current time", "time in ist", "time here in ist", "what is the time", "what time is it",
-        "how old are you", "how old you are", "your age", "what is your age", "date of birth", "dob of babu",
-        "who are you", "tell me about yourself", "about yourself", "know about yourself", "about you", "tell me about you", "know about you",
-        "describe yourself", "introduce yourself", "your identity", "what is your name",
-        "your architecture", "tell me about your architecture", "how are you built", "how do you work",
-        "failures happened", "recent failures", "what are failures", "failures in last", "failures happened in last",
-        "system health", "status dashboard", "how are you doing", "what is your status", "health dashboard",
-        "current state", "your current state", "what is your current state", "system status", "system status dashboard",
-        "upgrades received", "recent upgrades", "what upgrades", "upgrades did you receive", "upgrades did you recieve", "upgrades in last",
-        "upgrade received", "recent upgrade", "what upgrade", "upgrade did you receive", "upgrade did you recieve", "upgrade in last",
-        "tradeoff", "tradeoffs", "architectural tradeoffs", "architectural tradeoff",
-        "highest impact", "largest impact", "biggest impact", "most impact",
-        "evolution", "evolve", "history", "timeline", "adr", "architecture decision",
-        "solve", "incident", "postmortem", "lesson", "milestone"
-    )
-    return any(k in t for k in faq_keywords)
 
 
-def has_multiple_tasks_or_requests(query: str, intent_packet_dict: Optional[dict] = None) -> bool:
-    import re
-    t = (query or "").lower().strip()
     
-    # 1. Check intent packet indicators for multiple actions or core departments
-    if intent_packet_dict:
-        allowed_depts = intent_packet_dict.get("allowed_departments", [])
-        allowed_actions = intent_packet_dict.get("allowed_actions", [])
         
-        # Core departments are everything except "pa" and non-mutating "execution"
-        mutating_actions = {
-            "send_email", "create_event", "log_to_sheet", "create_doc", 
-            "copy_photos_to_drive", "copy_contacts_to_drive", 
-            "send_slack", "create_task", "post_to_facebook", "generate_image"
-        }
-        has_mutating = any(act in allowed_actions for act in mutating_actions)
-        core_depts = [d for d in allowed_depts if d != "pa" and (d != "execution" or has_mutating)]
-        if len(core_depts) > 1:
-            return True
             
-        # Multiple actions requested (only count active mutating actions)
-        mutating_actions = {
-            "send_email", "create_event", "log_to_sheet", "create_doc", 
-            "copy_photos_to_drive", "copy_contacts_to_drive", 
-            "send_slack", "create_task", "post_to_facebook", "generate_image"
-        }
-        active_mutating_actions = [act for act in allowed_actions if act in mutating_actions]
-        if len(active_mutating_actions) > 1:
-            return True
             
-        # If we have an execution action and another informational/research department active
-        has_execution = len(active_mutating_actions) > 0
-        if has_execution and ("information" in allowed_depts or "research" in allowed_depts):
-            return True
 
-    # 2. Check text-based checks for conjunctions and multiple verbs/requests
-    conjunction_patterns = [r'\band\b', r'\balso\b', r'\bthen\b', r'\bplus\b', r'\balong with\b', r'\bas well as\b', r';']
-    has_conjunction = any(re.search(pat, t) for pat in conjunction_patterns)
     
-    if has_conjunction:
-        parts = re.split(r'\band\b|\balso\b|\bthen\b|\bplus\b|\balong with\b|\bas well as\b|;', t)
-        parts = [p.strip() for p in parts if p.strip()]
 
-        # Pure FAQ/identity keywords — queries made up entirely of these fragments
-        # are handled atomically by pa_node short-circuits from memory.
-        # They must NOT be flagged as multi-task even if conjunctions are present.
-        # e.g. "who are you and what you do best" → single identity FAQ.
-        pure_faq_keywords = (
-            "who are you", "what are you", "what do you do", "what you do",
-            "what you does", "what can you do", "what you can do",
-            "tell me about yourself", "about yourself", "about you", "tell me about you",
-            "describe yourself", "introduce yourself", "your identity", "what is your name",
-            "how old are you", "your age", "date of birth",
-            "what is the time", "current time", "time in ist",
-            "your architecture", "how do you work", "how are you built",
-            "your capabilities", "what you does best", "what you do best",
-            "what do you do best", "your strength", "your strengths", "best at",
-            "your specialty", "specialize", "specialise",
-        )
 
-        # Mutating / workspace / web-search keywords that require actual task execution
-        action_keywords = (
-            "send", "email", "mail", "create", "event", "calendar", "log", "sheet",
-            "spreadsheet", "document", "doc", "slack", "post", "facebook",
-            "search", "find", "look up", "lookup", "research", "fetch", "get me",
-        )
 
-        faq_part_count = 0
-        action_part_count = 0
-        for part in parts:
-            if len(part) < 4:
-                continue
-            is_faq_part = any(k in part for k in pure_faq_keywords)
-            is_action_part = any(k in part for k in action_keywords)
-            if is_faq_part and not is_action_part:
-                faq_part_count += 1
-            elif is_action_part:
-                action_part_count += 1
 
-        # If every sub-part is a pure FAQ fragment (no action keywords at all),
-        # this is a single-intent identity/FAQ query — do NOT flag as multi-task.
-        if action_part_count == 0 and faq_part_count >= 1:
-            pass  # fall through — not a multi-task request
-        else:
-            # Fall back to broad keyword check only for queries that mix FAQ + action,
-            # or for queries where none of the parts matched FAQ fragments.
-            valid_requests_count = 0
-            request_keywords = (
-                "current time", "time in ist", "what time", "what is the time",
-                "how old", "your age", "date of birth", "dob", "who are you", "about yourself",
-                "system health", "status dashboard", "system status", "upgrades", "upgrade",
-                "tradeoff", "highest impact", "evolution", "evolve", "history", "timeline",
-                "send", "email", "mail", "create", "event", "calendar", "log", "sheet", "spreadsheet",
-                "document", "doc", "slack", "post", "facebook", "search", "find", "look up", "lookup",
-                "tell", "check", "show",
-            )
-            for part in parts:
-                if len(part) < 4 and any(k in part for k in request_keywords):
-                    valid_requests_count += 1
-            if valid_requests_count > 1:
-                return True
             
-    # 3. Check for multiple distinct FAQ/system query categories in the same query
-    faq_types_present = set()
-    if any(k in t for k in ("current time", "time in ist", "time here in ist", "what is the time", "what time is it")):
-        faq_types_present.add("time")
-    if any(k in t for k in ("how old are you", "how old you are", "your age", "what is your age", "date of birth", "dob of babu")):
-        faq_types_present.add("age")
-    if any(k in t for k in ("who are you", "tell me about yourself", "about yourself", "your identity", "what is your name")):
-        faq_types_present.add("identity")
-    if any(k in t for k in ("system health", "status dashboard", "health dashboard", "system status", "health status", "health")):
-        faq_types_present.add("health")
-    if any(k in t for k in ("upgrades", "upgrade", "adr", "tradeoff", "highest impact", "evolution", "evolve", "history", "timeline", "incident", "architecture", "built")):
-        faq_types_present.add("system")
         
-    if len(faq_types_present) > 1:
-        return True
 
-    # 4. Check if there is an FAQ query keyword AND a workspace/web search requirement
-    has_faq = any(k in t for k in (
-        "current time", "time in ist", "what is the time", "what time is it",
-        "how old are you", "your age", "date of birth", "dob of babu",
-        "who are you", "tell me about yourself", "your identity", "what is your name",
-        "system health", "status dashboard", "system status",
-        "upgrades", "upgrade", "tradeoff", "highest impact", "evolution", "history", "timeline"
-    ))
-    if has_faq:
-        if requires_workspace_access(query) or requires_web_search(query):
-            return True
             
-    return False
 
 
-def route_after_router(state: BabuState) -> str:
-    notice = state.get("pending_action_notice", "")
-    if notice:
-        return "pending"
     
-    query = state.get("user_query", "")
-    routing_metadata = state.get("routing_metadata") or {}
-    intent_packet_dict = routing_metadata.get("intent_packet")
     
-    query_category = None
-    if intent_packet_dict:
-        query_category = intent_packet_dict.get("query_category")
         
-    # Deterministic AKS/FAQ/system queries short-circuit BEFORE private-category plan-forcing.
-    # These queries are answered from the database or in-memory with zero LLM tokens.
-    # Note: has_multiple_tasks_or_requests() now correctly exempts all-FAQ conjunction queries
-    # (e.g. "who are you and what you do best") from the multi-task flag.
-    is_faq = is_pure_greeting(query) or is_deterministic_faq_query(query)
-    is_multi = has_multiple_tasks_or_requests(query, intent_packet_dict)
-    if is_faq and not is_multi:
-        print(f"[ROUTE AFTER ROUTER] Deterministic FAQ/greeting detected for query: '{query}'. Short-circuiting directly to PA node.", flush=True)
-        return "pa"
-
-    # SYSTEM_INFORMATION + FAQ: even if multi-task check fired (edge cases), still route
-    # identity/capability queries directly to pa_node so short-circuits handle them for free.
-    # Only let non-FAQ SYSTEM_INFORMATION queries (e.g. deep ADR lookups) go to plan.
-    if query_category == "SYSTEM_INFORMATION" and is_faq:
-        print(f"[ROUTE AFTER ROUTER] SYSTEM_INFORMATION FAQ query detected ('{query}'). Routing to PA short-circuit.", flush=True)
-        return "pa"
-
-    # Only force plan route for private queries that are NOT deterministic FAQ/AKS.
-    PRIVATE_QUERY_TYPES = ("BUSINESS_INFORMATION", "PERSONAL_INFORMATION", "SYSTEM_INFORMATION")
-    if query_category in PRIVATE_QUERY_TYPES:
-        print(f"[ROUTE AFTER ROUTER] Private category '{query_category}' detected. Disabling PA direct response bypass and forcing plan route.", flush=True)
-        return "plan"
-
-    return "plan"
 
 
-def is_simple_query(text: str) -> bool:
-    t = (text or "").lower().strip()
-    # Remove common command prefixes
-    t = t.removeprefix("/").removeprefix("!")
+
+
+
     
-    # Common greetings, basic phrases, and stats
-    greetings = {"hi", "hello", "hey", "good morning", "good afternoon", "good evening", "how are you", "help", "clear", "stats", "model"}
-    if t in greetings or len(t) < 15:
-        return True
-    return False
 
 
-def requires_workspace_access(query: str) -> bool:
-    t = query.lower()
-    pattern = r'\b(mail|email|gmail|sheet|sheets|spreadsheet|spreadsheets|calendar|calendars|event|events|meeting|meetings|slack|contact|contacts|photos|drive)\b'
-    return bool(re.search(pattern, t))
 
 
-def get_babu_age_string() -> str:
-    from datetime import datetime, timezone
-    dob = datetime(2026, 5, 27, tzinfo=timezone.utc)
-    now = datetime.now(timezone.utc)
-    diff = now - dob
-    days = diff.days
-    if days < 0:
-        return "recently launched"
     
-    years = days // 365
-    remaining_days = days % 365
-    months = remaining_days // 30
-    remaining_days = remaining_days % 30
     
-    parts = []
-    if years > 0:
-        parts.append(f"{years} year" + ("s" if years > 1 else ""))
-    if months > 0:
-        parts.append(f"{months} month" + ("s" if months > 1 else ""))
-    if remaining_days > 0 or not parts:
-        parts.append(f"{remaining_days} day" + ("s" if remaining_days > 1 else ""))
         
-    return " and ".join(parts) if len(parts) == 2 else ", ".join(parts)
 
 
-def get_dynamic_self_identity() -> str:
-    """Retrieve the operational identity of the system based on the Runtime Index."""
-    try:
-        # Determine enabled services
-        enabled_services = []
-        if os.environ.get("TELEGRAM_BOT_TOKEN"):
-            enabled_services.append("Telegram Interface")
-        if os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN"):
-            enabled_services.append("Facebook Publishing")
-        if is_google_configured():
-            enabled_services.append("Google Workspace")
-        enabled_services.append("Web Dashboard")
         
-        services_str = ", ".join(enabled_services) if enabled_services else "None"
         
-        identity_text = (
-            f"=== 👤 IDENTITY INDEX ===\n"
-            f"**Name:** Project BABU (Behavioral Autonomous Bureaucratic Utility)\n"
-            f"**Version:** 3.5.0\n"
-            f"**Purpose:** Next-generation AI agentic assistant designed to automate research, analysis, writing, and Google Workspace execution tasks using a decentralized swarm architecture.\n\n"
-            f"**Capabilities:**\n"
-            f"- Active PA Model: `{CURRENT_PA_MODEL}`\n"
-            f"- Active Department Model: `{CURRENT_DEPT_MODEL}`\n"
-            f"- Enabled Services: {services_str}\n\n"
-            f"**Architecture:**\n"
-            f"LangGraph-based decentralized swarm framework:\n"
-            f"- Router Node: Evaluates query intent & directs routing.\n"
-            f"- Planner Node: Generates topologically sorted execution DAGs.\n"
-            f"- Task Engine: Orchestrates task status transitions.\n"
-            f"- Swarm Departments: Research, Information, Analysis, Writing, Execution.\n"
-            f"- Governance Gatekeepers: Pre-Execution Gatekeeper, Post-Execution Validator, and Epistemic Immune System.\n"
-            f"- Cache layer: E[Temp] compiled templates."
-        )
-        return identity_text
-    except Exception as e:
-        print(f"[DYNAMIC IDENTITY ERROR] {e}", flush=True)
-        return "I am **Project BABU**, a governed multi-agent assistant. (Identity details currently unavailable)."
 
 
-def get_system_health_dashboard() -> str:
-    """Generate a comprehensive real-time System Health & Self-Audit Dashboard."""
-    import os
-    import json
-    import time
-    from datetime import datetime, timezone
-    import requests
     
-    PRICING_TABLE = {
-        "gemini-2.5-pro": (1.25, 5.00),
-        "gemini-2.5-flash": (0.075, 0.30),
-        "gemini-1.5-pro": (1.25, 5.00),
-        "gemini-1.5-flash": (0.075, 0.30),
-        "llama-3.3-70b-versatile": (0.59, 0.79),
-        "llama-3.1-70b-versatile": (0.59, 0.79),
-        "llama-3.1-8b-instant": (0.05, 0.08),
-        "llama3-70b-8192": (0.59, 0.79),
-        "llama3-8b-8208": (0.05, 0.08),
-        "gpt-4o": (2.50, 10.00),
-        "gpt-4o-mini": (0.150, 0.600),
-        "o1-mini": (3.00, 12.00)
-    }
     
-    def get_token_costs(model_name: str) -> tuple[float, float]:
-        if not model_name:
-            return 0.15 / 1_000_000, 0.60 / 1_000_000
-        m_lower = model_name.lower().strip()
-        for key, rates in PRICING_TABLE.items():
-            if key in m_lower:
-                return rates[0] / 1_000_000, rates[1] / 1_000_000
-        return 0.15 / 1_000_000, 0.60 / 1_000_000
 
-    def parse_db_timestamp(ts_str):
-        if not ts_str:
-            return None
-        try:
-            cleaned = ts_str.strip()
-            if "." in cleaned:
-                parts = cleaned.split(".")
-                sec_part = parts[1]
-                suffix = ""
-                if sec_part.endswith("Z"):
-                    suffix = "Z"
-                    sec_part = sec_part[:-1]
-                elif "+" in sec_part:
-                    sec_part, suffix = sec_part.split("+", 1)
-                    suffix = "+" + suffix
-                sec_part = sec_part[:6] # microsecond limit
-                cleaned = parts[0] + "." + sec_part + suffix
-            if cleaned.endswith("Z"):
-                cleaned = cleaned[:-1] + "+00:00"
-            return datetime.fromisoformat(cleaned)
-        except Exception:
-            return None
 
-    def format_last_success(last_time):
-        if not last_time:
-            return "Never"
-        diff = time.time() - last_time
-        if diff < 60:
-            return "<1 min ago"
-        mins = int(diff // 60)
-        if mins < 60:
-            return f"{mins} min ago"
-        hours = int(mins // 60)
-        if hours < 24:
-            return f"{hours} hours ago"
-        return f"{int(hours // 24)} days ago"
 
-    try:
-        conn, is_pg = get_db_connection()
-        cursor = conn.cursor()
         
-        # 1. Goal counts
-        cursor.execute("SELECT COUNT(DISTINCT goal_id) FROM execution_ledger WHERE event_type = 'GOAL_COMPLETED'")
-        completed_goals = cursor.fetchone()[0] or 0
         
-        cursor.execute("SELECT COUNT(DISTINCT goal_id) FROM execution_ledger WHERE event_type = 'GOAL_FAILED'")
-        failed_goals = cursor.fetchone()[0] or 0
         
-        total_goals = completed_goals + failed_goals
-        success_rate = (completed_goals / total_goals * 100) if total_goals > 0 else 100.0
         
-        # 2. Tokens, Cost, Governance Blocks, and failures
-        cursor.execute("SELECT event_type, metadata FROM execution_ledger")
-        rows = cursor.fetchall()
         
-        total_tokens = 0
-        total_cost = 0.0
-        gov_blocks = 0
-        last_failure = "None recently"
         
-        for ev_type, meta_str in rows:
-            if ev_type in ("AUDIT_PRE_FAIL", "AUDIT_POST_FAIL", "PLANNER_CONSTRAINT_VIOLATION"):
-                gov_blocks += 1
             
-            if ev_type in ("EXECUTION_FAIL", "AUDIT_PRE_FAIL", "AUDIT_POST_FAIL", "PLANNER_CONSTRAINT_VIOLATION"):
-                if last_failure == "None recently":
-                    last_failure = f"{ev_type}"
-                    if meta_str:
-                        try:
-                            meta = json.loads(meta_str)
-                            reason = meta.get("reason") or meta.get("error") or meta.get("details") or ""
-                            if reason:
-                                last_failure += f" ({reason[:60]})"
-                        except Exception:
-                            pass
             
-            if meta_str:
-                try:
-                    meta = json.loads(meta_str)
-                    tokens = meta.get("tokens")
-                    if tokens and isinstance(tokens, dict):
-                        prompt = tokens.get("prompt", 0) or 0
-                        completion = tokens.get("completion", 0) or 0
-                        total_t = tokens.get("total", 0) or (prompt + completion)
-                        total_tokens += total_t
                         
-                        model_name = meta.get("model", "")
-                        p_rate, c_rate = get_token_costs(model_name)
-                        total_cost += (prompt * p_rate) + (completion * c_rate)
-                except Exception:
-                    pass
 
-        # Rolling success rates (Last 100 goals and Last 24 hours)
-        cursor.execute("""
-            SELECT timestamp, goal_id, event_type 
-            FROM execution_ledger 
-            WHERE event_type IN ('GOAL_COMPLETED', 'GOAL_FAILED') 
-            ORDER BY event_id DESC
-        """)
-        goal_rows = cursor.fetchall()
         
-        goals_seen = {}
-        for ts_str, gid, ev_type in goal_rows:
-            if gid not in goals_seen:
-                goals_seen[gid] = (ts_str, ev_type == "GOAL_COMPLETED")
                 
-        parsed_goals = []
-        for gid, (ts_str, succ) in goals_seen.items():
-            dt = parse_db_timestamp(ts_str)
-            parsed_goals.append((dt, succ))
             
-        parsed_goals.sort(key=lambda x: x[0] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
         
-        # Last 100
-        last_100 = parsed_goals[:100]
-        completed_100 = sum(1 for dt, succ in last_100 if succ)
-        total_100 = len(last_100)
-        success_rate_100 = (completed_100 / total_100 * 100) if total_100 > 0 else 100.0
         
-        # Last 24h
-        now_utc = datetime.now(timezone.utc)
-        last_24h = [g for g in parsed_goals if g[0] and (now_utc - g[0]).total_seconds() <= 86400]
-        completed_24h = sum(1 for dt, succ in last_24h if succ)
-        total_24h = len(last_24h)
-        success_rate_24h = (completed_24h / total_24h * 100) if total_24h > 0 else 100.0
 
-        # Unresolved Failures Check
-        cursor.execute("""
-            SELECT event_type, timestamp, metadata 
-            FROM execution_ledger 
-            WHERE event_type IN ('EXECUTION_FAIL', 'AUDIT_PRE_FAIL', 'AUDIT_POST_FAIL', 'PLANNER_CONSTRAINT_VIOLATION') 
-            ORDER BY event_id DESC LIMIT 1
-        """)
-        last_fail_row = cursor.fetchone()
         
-        cursor.execute("""
-            SELECT timestamp 
-            FROM execution_ledger 
-            WHERE event_type = 'GOAL_COMPLETED' 
-            ORDER BY event_id DESC LIMIT 1
-        """)
-        last_comp_row = cursor.fetchone()
         
-        last_failure_type = None
-        last_failure_ts = None
-        last_failure_reason = ""
         
-        if last_fail_row:
-            last_failure_type = last_fail_row[0]
-            last_failure_ts = parse_db_timestamp(last_fail_row[1])
-            if last_fail_row[2]:
-                try:
-                    meta = json.loads(last_fail_row[2])
-                    last_failure_reason = meta.get("reason") or meta.get("error") or meta.get("details") or ""
-                except Exception:
-                    pass
         
-        last_comp_ts = parse_db_timestamp(last_comp_row[0]) if last_comp_row else None
         
-        is_unresolved = False
-        if last_failure_ts:
-            if not last_comp_ts or last_failure_ts > last_comp_ts:
-                is_unresolved = True
 
-        if is_unresolved:
-            failures_status_str = "DEGRADED (Active issues detected)"
-            failures_nodes_str = (
-                f"- {last_failure_type or 'System Error'}: {last_failure_reason or 'No details'}\n"
-                f"  * Status: Active (Unresolved)\n"
-                f"  * Timestamp: {last_fail_row[1] if last_fail_row else 'Unknown'}"
-            )
-        else:
-            failures_status_str = "All systems operational"
-            failures_nodes_str = "- No active issues detected"
-            if last_fail_row:
-                failures_nodes_str += f"\n- Last failure: {last_failure_type} ({last_failure_reason})\n  * Status: Resolved (Subsequent goals succeeded)"
 
-        # Last goal query
-        cursor.execute("SELECT metadata FROM execution_ledger WHERE event_type = 'GOAL_RECEIVED' ORDER BY event_id DESC LIMIT 1")
-        last_goal_row = cursor.fetchone()
-        last_goal = "None"
-        if last_goal_row and last_goal_row[0]:
-            try:
-                meta = json.loads(last_goal_row[0])
-                last_goal = meta.get("query") or meta.get("goal") or "System awareness check"
-            except Exception:
-                pass
                 
-        # Last completed goal query
-        cursor.execute("SELECT metadata FROM execution_ledger WHERE event_type = 'GOAL_COMPLETED' ORDER BY event_id DESC LIMIT 1")
-        last_completed_row = cursor.fetchone()
-        last_completed = "None"
-        if last_completed_row and last_completed_row[0]:
-            try:
-                meta = json.loads(last_completed_row[0])
-                last_completed = meta.get("query") or meta.get("goal") or "System awareness check"
-            except Exception:
-                pass
 
-        cursor.close()
-        conn.close()
-        db_status = "ONLINE"
-    except Exception as e:
-        db_status = f"OFFLINE ({str(e)[:40]})"
-        total_goals = completed_goals = failed_goals = gov_blocks = 0
-        success_rate = success_rate_100 = success_rate_24h = 100.0
-        total_tokens = 0
-        total_cost = 0.0
-        last_goal = last_completed = "Unknown (DB Offline)"
-        last_failure = "Unknown (DB Offline)"
-        failures_status_str = f"DB Connection Failure: {str(e)[:40]}"
-        failures_nodes_str = f"- Error connecting to database: {str(e)}"
 
-    # Check Transport/Services status
-    global LAST_TELEGRAM_SUCCESS_TIME, LAST_FB_SUCCESS_TIME, LAST_GOOGLE_SUCCESS_TIME, LAST_WEB_SUCCESS_TIME
 
-    # Telegram
-    telegram_configured = bool(os.environ.get("TELEGRAM_BOT_TOKEN"))
-    telegram_operational = False
-    telegram_reason = "Not configured"
-    if telegram_configured:
-        if tg_application and getattr(tg_application, "running", False):
-            try:
-                token = os.environ.get("TELEGRAM_BOT_TOKEN")
-                r = requests.get(f"https://api.telegram.org/bot{token}/getMe", timeout=1.5)
-                if r.status_code == 200:
-                    telegram_operational = True
-                    telegram_reason = "Running & connected"
-                    LAST_TELEGRAM_SUCCESS_TIME = time.time()
-                else:
-                    telegram_reason = f"API error (HTTP {r.status_code})"
-            except Exception as e:
-                telegram_reason = f"API unreachable: {str(e)[:25]}"
-        else:
-            telegram_reason = "Polling not active"
 
-    # Facebook
-    fb_configured = bool(os.environ.get("FACEBOOK_PAGE_ID") and os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN"))
-    fb_operational = False
-    fb_reason = "Not configured"
-    if fb_configured:
-        try:
-            page_id = os.environ.get("FACEBOOK_PAGE_ID")
-            page_token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN")
-            r = requests.get(f"https://graph.facebook.com/v19.0/{page_id}?access_token={page_token}", timeout=1.5)
-            if r.status_code == 200:
-                fb_operational = True
-                fb_reason = "API authorized"
-                LAST_FB_SUCCESS_TIME = time.time()
-            else:
-                fb_reason = f"API error (HTTP {r.status_code})"
-        except Exception as e:
-            fb_reason = f"API unreachable: {str(e)[:25]}"
 
-    # Google Workspace
-    google_configured = is_google_configured()
-    google_operational = False
-    google_reason = "Not configured"
-    if google_configured:
-        try:
-            from google_service import get_google_creds
-            creds = get_google_creds()
-            if creds and (creds.valid or creds.refresh_token):
-                google_operational = True
-                google_reason = "OAuth Authorized"
-                LAST_GOOGLE_SUCCESS_TIME = time.time()
-            else:
-                google_reason = "Token expired/invalid"
-        except Exception as e:
-            google_reason = f"Auth check failed: {str(e)[:25]}"
 
-    # Web Dashboard
-    web_configured = True
-    web_operational = False
-    web_reason = "Server thread not active"
-    for th in threading.enumerate():
-        if th.name == "web_dashboard_health_server" and th.is_alive():
-            web_operational = True
-            web_reason = "Running"
-            LAST_WEB_SUCCESS_TIME = time.time()
-            break
 
-    # Calculate uptime
-    uptime_sec = time.time() - BOT_START_TIME
-    days = int(uptime_sec // 86400)
-    hours = int((uptime_sec % 86400) // 3600)
-    mins = int((uptime_sec % 3600) // 60)
-    secs = int(uptime_sec % 60)
-    uptime_parts = []
-    if days > 0:
-        uptime_parts.append(f"{days}d")
-    if hours > 0:
-        uptime_parts.append(f"{hours}h")
-    if mins > 0:
-        uptime_parts.append(f"{mins}m")
-    uptime_parts.append(f"{secs}s")
-    uptime_str = " ".join(uptime_parts)
 
-    block_rate = (gov_blocks / total_goals * 100) if total_goals > 0 else 0.0
-    age_str = get_babu_age_string()
 
-    dashboard = (
-        f"=== 📊 SYSTEM HEALTH & SELF-AUDIT DASHBOARD ===\n\n"
-        f"**System Health Status**\n"
-        f"- Overall Health: {failures_status_str}\n\n"
-        f"**Identity**\n"
-        f"- Name: Project BABU\n"
-        f"- Version: 3.5.0\n"
-        f"- System Age: {age_str}\n"
-        f"- Current Process Uptime: {uptime_str}\n\n"
-        f"**Capabilities**\n"
-        f"- Active PA Model: `{CURRENT_PA_MODEL}`\n"
-        f"- Active Department Model: `{CURRENT_DEPT_MODEL}`\n\n"
-        f"**Services & Transport Layers**\n"
-        f"- Telegram:\n"
-        f"  * Configured: {'Yes' if telegram_configured else 'No'}\n"
-        f"  * Operational: {'Yes' if telegram_operational else 'No'}\n"
-        f"  * Reason: {telegram_reason}\n"
-        f"  * Last Success: {format_last_success(LAST_TELEGRAM_SUCCESS_TIME)}\n"
-        f"- Facebook Publishing:\n"
-        f"  * Configured: {'Yes' if fb_configured else 'No'}\n"
-        f"  * Operational: {'Yes' if fb_operational else 'No'}\n"
-        f"  * Reason: {fb_reason}\n"
-        f"  * Last Success: {format_last_success(LAST_FB_SUCCESS_TIME)}\n"
-        f"- Google Workspace:\n"
-        f"  * Configured: {'Yes' if google_configured else 'No'}\n"
-        f"  * Operational: {'Yes' if google_operational else 'No'}\n"
-        f"  * Reason: {google_reason}\n"
-        f"  * Last Success: {format_last_success(LAST_GOOGLE_SUCCESS_TIME)}\n"
-        f"- Web Dashboard:\n"
-        f"  * Configured: Yes\n"
-        f"  * Operational: {'Yes' if web_operational else 'No'}\n"
-        f"  * Reason: {web_reason}\n"
-        f"  * Last Success: {format_last_success(LAST_WEB_SUCCESS_TIME)}\n\n"
-        f"**Telemetry & Goals**\n"
-        f"- Goals Received: {total_goals}\n"
-        f"- Completed Goals: {completed_goals}\n"
-        f"- Failed Goals: {failed_goals}\n"
-        f"- Governance Blocks: {gov_blocks}\n"
-        f"- Block Rate: {block_rate:.1f}%\n"
-        f"- Lifetime Success Rate: {success_rate:.1f}%\n"
-        f"- Last 100 Goals Success Rate: {success_rate_100:.1f}%\n"
-        f"- Last 24h Success Rate: {success_rate_24h:.1f}%\n"
-        f"- Tokens Processed: {total_tokens:,}\n"
-        f"- Cost Incurred: ${total_cost:,.4f}\n\n"
-        f"**Recent Activity**\n"
-        f"- Last Goal: {last_goal}\n"
-        f"- Last Completed Goal: {last_completed}\n"
-        f"- Last Failure: {last_failure}\n\n"
-        f"**Failure Nodes**\n"
-        f"- Status: {failures_status_str}\n"
-        f"{failures_nodes_str}"
-    )
-    return dashboard
 
-def get_babu_self_context(session_id: str = "default") -> str:
-    from datetime import datetime, timezone
-    now_utc = datetime.now(timezone.utc)
-    import sys
     
-    age_str = get_babu_age_string()
     
-    k0_ctx = retrieve_k0_memory(session_id)
-    k0_part = f"{k0_ctx}\n\n" if k0_ctx else ""
     
-    return f"""{k0_part}=== BABU SELF CONTEXT ===
-- Name: Project BABU (Behavioral Autonomous Bureaucratic Utility)
-- Date of Birth (Creation): May 27, 2026 (Launch epoch)
-- Age: {age_str} (exactly { (now_utc - datetime(2026, 5, 27, tzinfo=timezone.utc)).days } days since creation)
-- Purpose: Next-generation AI agentic assistant designed to automate research, analysis, writing, and Google Workspace execution tasks using a decentralized swarm architecture.
-- Architecture: LangGraph-based decentralized swarm framework.
-  * Router Node: Evaluates query intent and directs requests.
-  * Planner Node: Generates execution DAGs (GoalGraph) topologically sorted.
-  * Task Engine: Orchestrates TaskDTO status states.
-  * Departments: Research, Information, Analysis, Writing, Execution.
-  * Governance: Bipartite Auditor (PreExecutionGatekeeper, PostExecutionValidator) and Epistemic Immune System.
-  * Compiled Cognition: E[Temp] trusted templates for speed-up match caching.
-- Operating Environment: Python {sys.version.split()[0]} on Windows.
-- Authoritative Knowledge: Automated tax, compliance (PF, GST, CSC services), and e-governance assistant.
-"""
 
 
-def is_system_aware_query(query: str) -> bool:
-    """Determine if a query is related to BABU's codebase, architecture, templates, governance, or self-identity."""
-    q = query.lower()
-    keywords = {
-        "etemp", "governance", "auditor", "anti-pattern", "failures", "telemetry",
-        "self-awareness", "self-rag", "architecture", "codebase", "immune lesson",
-        "why did this task fail", "why did my task fail", "why did task fail",
-        "how does babu work", "how do you work", "bipartite auditor", "what governance rule",
-        "what recurring problems", "what fixes were previously applied",
-        "about yourself", "know about yourself", "describe yourself", "about you", "tell me about you", "know about you",
-        "introduce yourself", "who are you", "what is your name", "your identity",
-        "how old are you", "your age", "date of birth", "dob of babu",
-        "adr", "architecture decision", "tradeoff", "lessons learned", "evolution",
-        "architecture report", "system upgrades", "gemini chosen", "dynamic imports", "runtime_index",
-        "status of last goal", "last goal status", "current goal", "pending action", "pending goal", "system status", "status of goal"
-    }
-    if any(kw in q for kw in keywords):
-        return True
+
         
-    # Heuristics for implicit system queries
-    if "you " in q or "your " in q or "you've" in q or "did you" in q:
-        system_terms = ["upgrade", "update", "code", "system", "feature", "recieve", "receive", "new capability"]
-        if any(term in q for term in system_terms):
-            return True
             
-    return False
 
 
-def requires_web_search(query: str) -> bool:
-    t = query.lower().strip()
-    greetings = {"hi", "hello", "hey", "good morning", "good afternoon", "good evening", "how are you", "help", "clear", "stats", "model"}
-    if t in greetings or len(t) < 10:
-        return False
         
-    # If it is a local profile fact lookup, we don't need web search (unless they explicitly ask to search the web)
-    if is_profile_relevant_query(query):
-        # Only require web search if they explicitly use web search keywords
-        if not any(kw in t for kw in ("search the web", "search google", "web search", "google search", "wikipedia", "search online")):
-            return False
-
-    # Do not require web search for ARIA internal / self-awareness questions or deterministic FAQ queries
-    if is_system_aware_query(query) or is_deterministic_faq_query(query):
-        if not any(kw in t for kw in ("search the web", "search google", "web search", "google search", "wikipedia", "search online")):
-            return False
-
-    web_patterns = [
-        r'\b(search|web|google|wikipedia|wiki|ddg|duckduckgo)\b',
-        r'\b(weather|temperature|forecast|climate)\b',
-        r'\b(news|headlines|current affairs|stock|price|market)\b',
-        r'\b(match|matches|score|scores|cricket|football|sports|game|games)\b',
-        r'\b(current|latest|recent|upcoming|newest|today|now)\b',
-        r'\b(who is|who was|what is|what are|where is|when is|how to|why did)\b'
-    ]
-    return any(re.search(pat, t) for pat in web_patterns)
 
 
-def retrieve_system_memory_via_sql(query: str) -> str:
-    """Retrieve system memory context directly from database tables using SQL instead of RAG."""
-    conn, is_pg = get_db_connection()
-    cursor = conn.cursor()
-    context_parts = []
-    q_lower = query.lower()
+
+
     
-    # 1. User Identity & Profiles
-    if any(k in q_lower for k in ("who is", "profile", "identity", "about me", "preferences", "interest")):
-        try:
-            profile_text = get_user_profile_text("FULL")
-            if profile_text:
-                context_parts.append(f"=== K3 - USER IDENTITY & PROFILES ===\n{profile_text}")
-        except Exception as e:
-            print(f"[SQL MEMORY ERROR] Failed to fetch profile: {e}", flush=True)
 
-    # 2. Goals
-    if any(k in q_lower for k in ("goal", "query", "run", "request", "task list", "dag")):
-        try:
-            if is_pg:
-                cursor.execute("""
-                    SELECT timestamp, goal_id, event_type, metadata
-                    FROM execution_ledger
-                    WHERE event_type = 'GOAL_RECEIVED'
-                    ORDER BY event_id DESC
-                    LIMIT 5
-                """)
-            else:
-                cursor.execute("""
-                    SELECT timestamp, goal_id, event_type, metadata
-                    FROM execution_ledger
-                    WHERE event_type = 'GOAL_RECEIVED'
-                    ORDER BY event_id DESC
-                    LIMIT 5
-                """)
-            rows = cursor.fetchall()
-            if rows:
-                part = "=== K2 - SYSTEM RUNTIME GOALS ===\n"
-                for r in rows:
-                    part += f"[{r[0]}] Goal ID: {r[1]} | Details: {r[3]}\n"
-                context_parts.append(part)
-        except Exception as e:
-            print(f"[SQL MEMORY ERROR] Failed to fetch goals: {e}", flush=True)
             
-    # 3. Failures / Rejections / Errors / Warnings
-    if any(k in q_lower for k in ("fail", "error", "reject", "violation", "why did", "problem", "warn")):
-        try:
-            if is_pg:
-                cursor.execute("""
-                    SELECT timestamp, goal_id, task_id, event_type, metadata
-                    FROM execution_ledger
-                    WHERE event_type IN ('AUDIT_PRE_FAIL', 'AUDIT_POST_FAIL', 'EXECUTION_FAIL', 'PLANNER_CONSTRAINT_VIOLATION')
-                    ORDER BY event_id DESC
-                    LIMIT 5
-                """)
-            else:
-                cursor.execute("""
-                    SELECT timestamp, goal_id, task_id, event_type, metadata
-                    FROM execution_ledger
-                    WHERE event_type IN ('AUDIT_PRE_FAIL', 'AUDIT_POST_FAIL', 'EXECUTION_FAIL', 'PLANNER_CONSTRAINT_VIOLATION')
-                    ORDER BY event_id DESC
-                    LIMIT 5
-                """)
-            rows = cursor.fetchall()
-            if rows:
-                part = "=== K2 - SYSTEM RUNTIME FAILURES ===\n"
-                for r in rows:
-                    part += f"[{r[0]}] Goal: {r[1]} | Task: {r[2] or '-'} | Event: {r[3]} | Details: {r[4]}\n"
-                context_parts.append(part)
-        except Exception as e:
-            print(f"[SQL MEMORY ERROR] Failed to fetch failures: {e}", flush=True)
             
-    # 4. Timeline / Chronology / What happened / What changed / What is unresolved
-    if any(k in q_lower for k in ("timeline", "happen", "change", "unresolved", "recent", "chronology", "status", "history")):
-        try:
-            if is_pg:
-                cursor.execute("""
-                    SELECT timestamp, event_category, summary, outcome, cause, effect, resolution, confidence
-                    FROM babu_temporal_timeline
-                    ORDER BY event_id DESC
-                    LIMIT 10
-                """)
-            else:
-                cursor.execute("""
-                    SELECT timestamp, event_category, summary, outcome, cause, effect, resolution, confidence
-                    FROM babu_temporal_timeline
-                    ORDER BY event_id DESC
-                    LIMIT 10
-                """)
-            rows = cursor.fetchall()
-            if rows:
-                part = "=== K2 - SYSTEM RUNTIME TIMELINE ===\n"
-                for r in rows:
-                    part += f"[{r[0]}] [{r[1]}] {r[2]} | Outcome: {r[3] or '-'} | Cause: {r[4] or '-'} | Effect: {r[5] or '-'} | Resolution: {r[6] or '-'} | Confidence: {r[7] or '-'}\n"
-                context_parts.append(part)
-        except Exception as e:
-            print(f"[SQL MEMORY ERROR] Failed to fetch timeline: {e}", flush=True)
             
-    # 5. Rules / Anti-patterns / Immune rules
-    if any(k in q_lower for k in ("rule", "anti-pattern", "immune", "lesson", "pattern", "governance")):
-        try:
-            cursor.execute("SELECT key, data FROM system_memory WHERE key LIKE 'anti_pattern_%' OR key = 'immune_rules'")
-            rows = cursor.fetchall()
-            if rows:
-                part = "=== K5 - SYSTEM ARCHITECTURE ANTI-PATTERNS ===\n"
-                for r in rows:
-                    part += f"[{r[0]}]: {r[1]}\n"
-                context_parts.append(part)
-        except Exception as e:
-            print(f"[SQL MEMORY ERROR] Failed to fetch rules: {e}", flush=True)
             
-    # 6. Templates
-    if any(k in q_lower for k in ("template", "etemp", "promoted", "compiled")):
-        try:
-            cursor.execute("SELECT template_id, template_signature, status, execution_count, success_count FROM trusted_templates")
-            rows = cursor.fetchall()
-            if rows:
-                part = "=== K4 - SYSTEM EXECUTION TEMPLATES ===\n"
-                for r in rows:
-                    part += f"Template ID: {r[0]} | Sig: {r[1]} | Status: {r[2]} | Execs: {r[3]} | Successes: {r[4]}\n"
-                context_parts.append(part)
-        except Exception as e:
-            print(f"[SQL MEMORY ERROR] Failed to fetch templates: {e}", flush=True)
             
-    # 7. Architecture Decisions & Knowledge (AKS)
-    if any(k in q_lower for k in ("adr", "architecture", "tradeoff", "postmortem", "lesson", "evolution", "upgrades", "gemini", "dynamic import", "runtime index", "supersede", "impact_score", "milestone", "hierarchy")):
-        try:
-            cursor.execute("""
-                SELECT record_id, record_type, title, phase, problem, decision, reason, outcome, tradeoff, impact_score, supersedes, status, timestamp 
-                FROM architecture_knowledge ORDER BY record_id ASC
-            """)
-            rows = cursor.fetchall()
-            if rows:
-                part = "=== K5 - ARCHITECTURE KNOWLEDGE SYSTEM (AKS) ===\n"
-                for r in rows:
-                    part += (
-                        f"[{r[1]}] ID: {r[0]} | Title: {r[2]} | Phase: {r[3]} | Status: {r[11]} | Impact Score: {r[9]}\n"
-                        f"- Problem: {r[4]}\n"
-                        f"- Decision: {r[5]}\n"
-                        f"- Reason: {r[6]}\n"
-                        f"- Outcome: {r[7]}\n"
-                        f"- Trade-off: {r[8] or 'None'}\n"
-                        f"- Supersedes: {r[10] or 'None'}\n"
-                        f"- Date: {r[12]}\n\n"
-                    )
-                context_parts.append(part.strip())
-        except Exception as e:
-            print(f"[SQL MEMORY ERROR] Failed to fetch architecture knowledge: {e}", flush=True)
             
-    cursor.close()
-    conn.close()
-    return "\n\n".join(context_parts)
 
 
-def planner_node(state: BabuState):
-    """Decompose user goal into a structured GoalGraph."""
-    import time
-    from datetime import datetime, timezone
-    try:
-        from .planner import plan_goal, build_walk_graph, classify_intent, _build_fallback_graph
-    except ImportError:
-        from planner import plan_goal, build_walk_graph, classify_intent, _build_fallback_graph
         
-    query = state["user_query"]
-    history_text = state.get("history_text", "")
-    session_id = state.get("session_id", "default")
     
-    active_goal = state.get("active_goal") or {}
-    pre_goal_id = active_goal.get("goal_id")
     
-    log_temporal_event(
-        event_category="GOAL_RECEIVED",
-        summary=f"Received goal: {query[:80]}",
-        outcome="SUCCESS",
-        metadata={"session_id": session_id, "goal_id": pre_goal_id}
-    )
     
-    is_profile = is_profile_relevant_query(query)
-    # is_system gates the SII RAG block. Exclude pure FAQ/identity queries even if
-    # is_system_aware_query() fires on them — they are handled from memory in pa_node
-    # (K1 Identity short-circuits) and there are no ADR books covering identity.
-    is_system = is_system_aware_query(query) and not is_deterministic_faq_query(query)
-    profile_text = get_user_profile_text() if is_profile else ""
     
-    # 0. Load BABU Self Context if system query
-    self_ctx = ""
-    if is_system:
-        self_ctx = get_babu_self_context(session_id)
-        profile_text = (profile_text + "\n\n" + self_ctx).strip()
     
-    # 1. Retrieve system memory context via SQL first if system/self-aware query
-    sql_context = ""
-    if is_system:
-        sql_context = retrieve_system_memory_via_sql(query)
-        if sql_context:
-            profile_text = (profile_text + "\n\n" + sql_context).strip()
             
-    # 2. System Index Layer — route query to targeted ADRs + books, then retrieve
-    retrieved = []
-    sii_routing = {}
-    if is_system:
-        # ── 2a. Route via System Information Index ──────────────────────
-        try:
-            from .system_index import route_query as sii_route_query
-        except ImportError:
-            from system_index import route_query as sii_route_query
 
-        sii_routing = sii_route_query(query)
-        matched_books  = sii_routing.get("books", [])
-        matched_adrs   = sii_routing.get("adrs", [])
-        query_mode     = sii_routing.get("query_mode", "SYSTEM_INFORMATION")
-        matched_comp   = sii_routing.get("matched_component")
-        matched_layer  = sii_routing.get("matched_layer")
 
-        print(
-            f"[SII] Query routed | mode={query_mode} | "
-            f"adrs={matched_adrs} | books={matched_books} | "
-            f"component={matched_comp} | layer={matched_layer}",
-            flush=True
-        )
 
-        # ── 2b. Targeted RAG retrieval using resolved books ─────────────
-        # Always trigger RAG for system queries (not only for doc keywords).
-        try:
-            from .rag_storage import retrieve_knowledge
-        except ImportError:
-            from rag_storage import retrieve_knowledge
 
-        rag_start = time.time()
 
-        if matched_books:
-            # Targeted: restrict to matched ADR books + system_index collection
-            retrieved = retrieve_knowledge(
-                query,
-                collections=["adr_books", "system_index", "babu_docs", "engineering_history"],
-                sources=matched_books + ["System_Information_Index.md"],
-            )
-        else:
-            # Fallback: search across all internal system collections
-            retrieved = retrieve_knowledge(
-                query,
-                collections=["adr_books", "system_index", "babu_docs", "engineering_history"],
-            )
 
-        rag_end = time.time()
-        rag_latency = round((rag_end - rag_start) * 1000, 2)
 
-        hit = len(retrieved) > 0
-        retrieved_tokens = sum(len(x["chunk_text"]) // 4 for x in retrieved) if hit else 0
 
-        # ── 2c. Log rich RAG_RETRIEVAL event ───────────────────────────
-        log_execution_ledger_event(
-            session_id=session_id,
-            goal_id=pre_goal_id or "G-PLAN",
-            task_id=None,
-            department=None,
-            event_type="RAG_RETRIEVAL",
-            state_before=None,
-            state_after=None,
-            metadata={
-                "query": query,
-                "system_query": True,
-                "query_mode": query_mode,
-                "matched_component": matched_comp,
-                "matched_layer": matched_layer,
-                "matched_adrs": matched_adrs,
-                "matched_books": matched_books,
-                "retrieval_requests": 1,
-                "retrieval_hits": 1 if hit else 0,
-                "retrieval_misses": 0 if hit else 1,
-                "retrieval_latency_ms": rag_latency,
-                "retrieved_tokens": retrieved_tokens,
-                "collections_accessed": list(set(x["collection"] for x in retrieved)) if hit else [],
-            }
-        )
-        log_temporal_event(
-            event_category="RAG_RETRIEVAL",
-            summary=f"[SII] {query_mode} | books={matched_books} | '{query[:50]}'",
-            outcome="SUCCESS" if hit else "FAIL",
-            metadata={"hits": len(retrieved), "latency_ms": rag_latency, "query_mode": query_mode}
-        )
 
-        # ── 2d. Inject retrieved evidence into planner context ──────────
-        if hit:
-            context_str = f"\n\n=== SYSTEM_INDEX_DOCUMENT_CONTEXT [mode={query_mode}] ===\n"
-            if matched_adrs:
-                context_str += f"Resolved ADRs: {', '.join(matched_adrs)}\n"
-            if matched_books:
-                context_str += f"Evidence from: {', '.join(matched_books)}\n"
-            context_str += "\n"
-            for item in retrieved:
-                context_str += f"[{item['collection']} / {item['source']} - {item['title']}]:\n{item['chunk_text']}\n\n"
-            context_str += "=== END OF SYSTEM_INDEX_DOCUMENT_CONTEXT ===\n"
-            profile_text = (profile_text + "\n" + context_str).strip()
             
-    print(f"[PLANNER NODE] Planning goal for query: '{query[:50]}' (goal_id: {pre_goal_id})", flush=True)
     
-    # 1. Intent Governance stage
-    ic_start_time = time.time()
-    ic_start_iso = datetime.now(timezone.utc).isoformat()
     
-    routing_metadata = state.get("routing_metadata") or {}
-    intent_packet_dict = routing_metadata.get("intent_packet")
-    if intent_packet_dict:
-        try:
-            from .planner import IntentPacket
-        except ImportError:
-            from planner import IntentPacket
-        intent_packet = IntentPacket.from_dict(intent_packet_dict)
-        print(f"[PLANNER NODE] Reusing pre-classified intent packet (category: {intent_packet.query_category})", flush=True)
-    else:
-        intent_packet = classify_intent(query, history_text, model_name=CURRENT_PA_MODEL)
         
-    ic_end_time = time.time()
-    ic_end_iso = datetime.now(timezone.utc).isoformat()
-    ic_latency_ms = round((ic_end_time - ic_start_time) * 1000, 2)
-    ic_latency_sec = round(ic_end_time - ic_start_time, 4)
 
-    # Log INTENT_CLASSIFICATION event
-    ic_tokens = getattr(intent_packet, "tokens", None) or {"prompt": 0, "completion": 0, "total": 0}
-    ic_model = getattr(intent_packet, "model", None) or CURRENT_DEPT_MODEL or "unknown"
-    p_ic, c_ic = get_token_costs(ic_model)
-    ic_cost = (ic_tokens.get("prompt", 0) * p_ic) + (ic_tokens.get("completion", 0) * c_ic)
     
-    log_execution_ledger_event(
-        session_id=session_id,
-        goal_id=pre_goal_id or "G-PLAN",
-        task_id=None,
-        department=None,
-        event_type="INTENT_CLASSIFICATION",
-        state_before=None,
-        state_after="CLASSIFIED",
-        metadata={
-            "query": query,
-            "event_start_time": ic_start_iso,
-            "event_end_time": ic_end_iso,
-            "latency_ms": ic_latency_ms,
-            "latency": ic_latency_sec,
-            "tokens": ic_tokens,
-            "cost": round(ic_cost, 6),
-            "model": ic_model,
-        }
-    )
 
-    plan_start_time = time.time()
-    plan_start_iso = datetime.now(timezone.utc).isoformat()
 
-    # --- Step 1: E[Temp] Template Lookup (Priority over fast-track) ---
-    template = None
-    is_compatible = False
-    sig = ""
     
-    # E[Temp] Telemetry vbabubles initialization
-    template_lookup_attempted = True
-    template_candidates_found = 0
-    template_selected = None
-    template_confidence = None
-    template_rejected_reason = None
-    template_execution_used = False
-    template_tokens_saved = 0
 
-    try:
-        from .governance import check_constraint_compatibility
-    except ImportError:
-        from governance import check_constraint_compatibility
         
-    flow_order = ["research", "information", "analysis", "writing", "execution", "pa"]
-    depts = [d for d in flow_order if d in intent_packet.allowed_departments]
-    sig = ":".join(depts)
-    if "execution" in depts and intent_packet.allowed_actions:
-        sorted_actions = sorted(intent_packet.allowed_actions)
-        sig += ":" + ":".join(sorted_actions)
 
-    print(f"[PLANNER NODE] Template signature built for lookup: {sig}", flush=True)
     
-    conn, is_pg = get_db_connection()
-    try:
-        cursor = conn.cursor()
         
-        # Query total candidates for telemetry
-        if is_pg:
-            cursor.execute(
-                "SELECT COUNT(*) FROM trusted_templates WHERE template_signature = %s AND status = 'ACTIVE'",
-                (sig,)
-            )
-        else:
-            cursor.execute(
-                "SELECT COUNT(*) FROM trusted_templates WHERE template_signature = ? AND status = 'ACTIVE'",
-                (sig,)
-            )
-        template_candidates_found = cursor.fetchone()[0]
         
-        if template_candidates_found > 0:
-            if is_pg:
-                cursor.execute(
-                    "SELECT template_id, goal_graph_json, status FROM trusted_templates WHERE template_signature = %s AND status = 'ACTIVE'",
-                    (sig,)
-                )
-            else:
-                cursor.execute(
-                    "SELECT template_id, goal_graph_json, status FROM trusted_templates WHERE template_signature = ? AND status = 'ACTIVE'",
-                    (sig,)
-                )
-            row = cursor.fetchone()
-            if row:
-                template = {
-                    "template_id": row[0],
-                    "goal_graph_json": row[1],
-                    "status": row[2]
-                }
-        cursor.close()
-    except Exception as db_err:
-        print(f"[PLANNER DB ERROR] Failed to query trusted_templates: {db_err}", flush=True)
-        template_rejected_reason = f"Database query error: {db_err}"
-    finally:
-        conn.close()
 
-    if not template and not template_rejected_reason:
-        template_rejected_reason = "No ACTIVE template found for signature in database"
 
-    if template:
-        is_compatible = check_constraint_compatibility(query, template)
-        if is_compatible:
-            try:
-                from .task_engine import GoalGraph
-            except ImportError:
-                from task_engine import GoalGraph
             
-            try:
-                graph_dict = json.loads(template["goal_graph_json"])
-                # Use template's graph but override ID and goal
-                graph_dict["goal_id"] = pre_goal_id
-                graph_dict["goal"] = query
-                graph = GoalGraph.from_dict(graph_dict)
-                graph.planner_status = "TEMPLATE_MATCH"
-                print(f"[PLANNER NODE] E[Temp] Muscle Memory Hit! Using template {template['template_id']} for signature {sig}", flush=True)
                 
-                # Update telemetry for successful hit
-                template_selected = template["template_id"]
-                template_confidence = 1.0
-                template_execution_used = True
-                template_tokens_saved = 2300
-            except Exception as parse_err:
-                print(f"[PLANNER NODE] Failed to load template goal graph: {parse_err}. Falling back to dynamic planner.", flush=True)
-                template = None
-                is_compatible = False
-                template_rejected_reason = f"Parsing error: {parse_err}"
-        else:
-            template_rejected_reason = "Constraint compatibility checks failed (modifiers, negations, or slots mismatch)"
 
-    # --- Step 2: Fallback gates if no active/compatible template is matched ---
-    if not template or not is_compatible:
-        # 2a. Bounded Governance Gate: Clarification fallback on low confidence
-        if intent_packet.confidence < 0.65:
-            print(f"[INTENT GOVERNANCE] Low confidence ({intent_packet.confidence} < 0.65) -> bypassing planner and returning AMBIGUOUS_QUERY fallback.", flush=True)
-            graph = _build_fallback_graph(
-                query,
-                goal_id=pre_goal_id,
-                goal_type="NEW",
-                planner_status="AMBIGUOUS_QUERY",
-                intent_packet=intent_packet.to_dict()
-            )
-        # 2b. Simple Local Lookup (No web search or other complex intents are active)
-        elif intent_packet.lookup and not (intent_packet.research or intent_packet.generate or intent_packet.execute or requires_workspace_access(query) or requires_web_search(query)) and not has_multiple_tasks_or_requests(query, intent_packet.to_dict()):
-            PRIVATE_QUERY_TYPES = ("BUSINESS_INFORMATION", "PERSONAL_INFORMATION", "SYSTEM_INFORMATION")
-            if intent_packet.query_category in PRIVATE_QUERY_TYPES:
-                print(f"[PLANNER NODE] Private query category '{intent_packet.query_category}' detected → Disabling fast-track simple lookup shortcut.", flush=True)
-                graph = plan_goal(
-                    query=query,
-                    history_text=history_text,
-                    profile_text=profile_text,
-                    model_name=CURRENT_DEPT_MODEL,
-                    goal_id=pre_goal_id,
-                    is_correction=False,
-                    last_goal_text=None,
-                    intent_packet=intent_packet,
-                    session_id=session_id,
-                )
-            else:
-                print(f"[PLANNER NODE] Fast-tracking simple lookup/websearch query (lookup={intent_packet.lookup}, websearch={intent_packet.websearch}) directly to PA response", flush=True)
-                graph = build_walk_graph(query, goal_id=pre_goal_id)
-                graph.planner_status = "WALK"
-        else:
-            # Check if this query is a correction referencing a recent workflow
-            is_correction = False
-            last_goal_text = None
-            last_graph = get_last_goal_graph(session_id)
-            if last_graph:
-                last_goal_text = last_graph.get("goal")
-                # If the escalation router classified this as a workflow escalation, AND it doesn't explicitly start with a command trigger keyword,
-                # it is a corrective query referencing the last goal.
-                t_clean = query.lower().strip()
-                has_command_trigger = (
-                    t_clean.startswith("/") or 
-                    t_clean.startswith("!") or 
-                    t_clean.startswith("launch") or 
-                    t_clean.startswith("sprint") or 
-                    t_clean.startswith("postnow")
-                )
-                if should_escalate_to_workflow(query, history_text=history_text) and not has_command_trigger:
-                    is_correction = True
-                    print(f"[PLANNER NODE] Correction detected. Previous goal: '{last_goal_text}'", flush=True)
 
-            graph = plan_goal(
-                query=query,
-                history_text=history_text,
-                profile_text=profile_text,
-                model_name=CURRENT_DEPT_MODEL,
-                goal_id=pre_goal_id,
-                is_correction=is_correction,
-                last_goal_text=last_goal_text,
-                intent_packet=intent_packet,
-                session_id=session_id,
-            )
 
-    plan_end_time = time.time()
-    plan_end_iso = datetime.now(timezone.utc).isoformat()
-    plan_latency_ms = round((plan_end_time - plan_start_time) * 1000, 2)
-    plan_latency_sec = round(plan_end_time - plan_start_time, 4)
     
-    # Store in graph so we can access it during execution completion
-    if getattr(graph, "planner_status", "") in ("TEMPLATE_MATCH", "WALK", "FAST_TRACK"):
-        graph.planning_tokens = {"prompt": 0, "completion": 0, "total": 0}
-    else:
-        graph.planning_tokens = getattr(graph, "planning_tokens", None) or {"prompt": 1800, "completion": 500, "total": 2300}
     
-    # Log GOAL_CREATED lifecycle event
-    log_execution_ledger_event(
-        session_id=session_id,
-        goal_id=graph.goal_id,
-        task_id=None,
-        department=None,
-        event_type="GOAL_CREATED",
-        state_before="NONE",
-        state_after="ACTIVE",
-        metadata={
-            "query": query,
-            "goal": graph.goal,
-            "planner_status": graph.planner_status
-        }
-    )
     
-    if getattr(graph, "planner_status", "") in ("TEMPLATE_MATCH", "WALK", "FAST_TRACK"):
-        plan_tokens = {"prompt": 0, "completion": 0, "total": 0}
-        plan_cost = 0.0
-        has_actual_tokens = True
-    else:
-        has_actual_tokens = bool(getattr(graph, "planning_tokens", None))
-        plan_tokens = getattr(graph, "planning_tokens", None) or {"prompt": 1800, "completion": 500, "total": 2300}
-        p_plan, c_plan = get_token_costs(CURRENT_DEPT_MODEL)
-        plan_cost = (plan_tokens.get("prompt", 0) * p_plan) + (plan_tokens.get("completion", 0) * c_plan)
     
-    log_execution_ledger_event(
-        session_id=session_id,
-        goal_id=graph.goal_id,
-        task_id=None,
-        department=None,
-        event_type="PLANNING",
-        state_before=None,
-        state_after="PLANNED",
-        metadata={
-            "query": query,
-            "graph": graph.to_dict(),
-            "planner_status": graph.planner_status,
-            "tokens": plan_tokens,
-            "cost": round(plan_cost, 6),
-            "model": CURRENT_DEPT_MODEL,
-            "is_estimated": not has_actual_tokens,
-            "event_start_time": plan_start_iso,
-            "event_end_time": plan_end_iso,
-            "latency_ms": plan_latency_ms,
-            "latency": plan_latency_sec
-        }
-    )
     
-    tracker = state.get("execution_tracker") or {}
-    tracker["planner_duration"] = plan_latency_sec
     
-    total_planner_tokens = {
-        "prompt": ic_tokens.get("prompt", 0) + plan_tokens.get("prompt", 0),
-        "completion": ic_tokens.get("completion", 0) + plan_tokens.get("completion", 0),
-        "total": ic_tokens.get("total", 0) + plan_tokens.get("total", 0)
-    }
         
-    # Log TEMPLATE_LOOKUP_TELEMETRY event
-    log_execution_ledger_event(
-        session_id=session_id,
-        goal_id=graph.goal_id,
-        task_id=None,
-        department=None,
-        event_type="TEMPLATE_LOOKUP_TELEMETRY",
-        metadata={
-            "template_lookup_attempted": template_lookup_attempted,
-            "template_candidates_found": template_candidates_found,
-            "template_selected": template_selected,
-            "template_confidence": template_confidence,
-            "template_rejected_reason": template_rejected_reason,
-            "template_execution_used": template_execution_used,
-            "planner_tokens": plan_tokens,
-            "template_tokens_saved": template_tokens_saved
-        }
-    )
     
-    log_temporal_event(
-        event_category="GOAL_PLANNED",
-        summary=f"Goal planned using {graph.planner_status} strategy: {graph.goal[:80]}",
-        outcome="SUCCESS",
-        metadata={
-            "session_id": session_id,
-            "goal_id": graph.goal_id,
-            "planner_status": graph.planner_status,
-            "tasks_count": len(graph.tasks)
-        }
-    )
         
-    routing_meta = state.get("routing_metadata") or {}
-    routing_meta["sql_context"] = sql_context
-    routing_meta["retrieved_rag"] = retrieved
-
-    ret_dict = {
-        "goal_graph": graph.to_dict(), 
-        "execution_tracker": tracker, 
-        "tokens": total_planner_tokens,
-        "routing_metadata": routing_meta
-    }
-    if is_system:
-        ret_dict["compressed_research"] = (self_ctx + "\n\n" + sql_context).strip()
-    return ret_dict
 
 
-def task_executor_node(state: BabuState):
-    """Executes the task DAG using TaskEngine and Department Heads."""
-    import time
-    from datetime import datetime, timezone
-    try:
-        from .task_engine import TaskEngine, GoalGraph, TaskState
-        from .departments import get_department_head
-        from .auditor import BipartiteAuditor
-    except ImportError:
-        from task_engine import TaskEngine, GoalGraph, TaskState
-        from departments import get_department_head
-        from auditor import BipartiteAuditor
+
     
-    start_time = time.time()
-    session_id = state.get("session_id", "default")
     
-    graph_dict = state.get("goal_graph")
-    if not graph_dict:
-        try:
-            from .planner import build_action_graph
-        except ImportError:
-            from planner import build_action_graph
-        detected_action = state.get("detected_action")
-        query = state["user_query"]
-        active_goal = state.get("active_goal") or {}
-        pre_goal_id = active_goal.get("goal_id")
-        if detected_action:
-            graph = build_action_graph(query, detected_action, goal_id=pre_goal_id)
-            graph_dict = graph.to_dict()
-        else:
-            return {"action_result": "No executable action found.", "final_brief": "Execution failed: no action found."}
             
-    goal_graph = GoalGraph.from_dict(graph_dict)
-    engine = TaskEngine(goal_graph)
-    auditor = BipartiteAuditor(llm=llm_dept)
     
-    is_template_match = (goal_graph.planner_status == "TEMPLATE_MATCH")
-    if is_template_match:
-        try:
-            from .governance import micro_audit_dag
-        except ImportError:
-            from governance import micro_audit_dag
-        passed_micro = micro_audit_dag(goal_graph.to_dict())
-        if not passed_micro:
-            print(f"[EXECUTOR] Micro-audit failed for template goal DAG: {goal_graph.goal_id}", flush=True)
-            for t in goal_graph.tasks:
-                engine.mark_failed(t.task_id, "Micro-audit failed")
                 
-    print(f"[EXECUTOR] Executing goal DAG: {goal_graph.goal_id}", flush=True)
     
-    # Log DEPENDENCY_WAIT for all downstream tasks initially
-    for task in goal_graph.tasks:
-        if task.depends_on:
-            log_execution_ledger_event(
-                session_id=session_id,
-                goal_id=goal_graph.goal_id,
-                task_id=task.task_id,
-                department=task.department,
-                event_type="DEPENDENCY_WAIT",
-                state_before="PENDING",
-                state_after="PENDING",
-                metadata={"depends_on": task.depends_on}
-            )
             
-    def track_cascading_blocks(action_fn, *args, **kwargs):
-        pre_blocked = {t.task_id for t in engine.goal.tasks if t.state == TaskState.BLOCKED}
-        action_fn(*args, **kwargs)
-        post_blocked = {t.task_id for t in engine.goal.tasks if t.state == TaskState.BLOCKED}
         
-        newly_blocked = post_blocked - pre_blocked
-        for b_tid in newly_blocked:
-            b_task = engine._task_map[b_tid]
-            log_execution_ledger_event(
-                session_id=session_id,
-                goal_id=goal_graph.goal_id,
-                task_id=b_tid,
-                department=b_task.department,
-                event_type="DEPENDENCY_BLOCKED",
-                state_before="PENDING",
-                state_after="BLOCKED",
-                metadata={"blocked_by": args[0] if args else "unknown", "reason": "dependency failure propagation"}
-            )
     
-    execution_log = state.get("execution_log") or []
     
-    shared_resources = {
-        "user_query": state["user_query"]
-    }
     
-    total_audit_tokens = {"prompt": 0, "completion": 0, "total": 0}
     
-    # Execution loop
-    while not engine.is_goal_complete() and not engine.is_goal_blocked():
-        ready_tasks = engine.get_ready_tasks()
-        if not ready_tasks:
-            break
             
-        for task in ready_tasks:
-            # Token Budget Check
-            accumulated_goal_tokens = state.get("tokens", {}).get("total", 0)
-            accumulated_task_tokens = 0
-            for entry in execution_log:
-                accumulated_goal_tokens += entry.get("tokens", {}).get("total", 0)
-                if entry.get("task_id") == task.task_id:
-                    accumulated_task_tokens += entry.get("tokens", {}).get("total", 0)
                 
-            is_ok, budget_reason = engine.verify_token_budget(task.task_id, accumulated_task_tokens, accumulated_goal_tokens)
-            if not is_ok:
-                print(f"[EXECUTOR] Token budget exhausted: {budget_reason}", flush=True)
-                track_cascading_blocks(engine.mark_cancelled, task.task_id, f"Token Budget Exhausted: {budget_reason}")
-                execution_log.append({
-                    "task_id": task.task_id,
-                    "objective": task.objective,
-                    "department": task.department,
-                    "error": f"Token Budget Exhausted: {budget_reason}",
-                    "status": "CANCELLED",
-                    "tokens": {"prompt": 0, "completion": 0, "total": 0}
-                })
-                continue
                 
-            engine.mark_running(task.task_id)
             
-            # Time pre-execution audit
-            pre_start_time = time.time()
-            pre_start_iso = datetime.now(timezone.utc).isoformat()
             
-            # Layer 5 Bipartite Auditor: Pre-Execution Gatekeeper check
-            log_execution_ledger_event(
-                session_id=session_id,
-                goal_id=goal_graph.goal_id,
-                task_id=task.task_id,
-                department=task.department,
-                event_type="AUDIT_PRE",
-                state_before="RUNNING",
-                state_after="AUDITING_PRE",
-                metadata={"objective": task.objective}
-            )
-            if is_template_match:
-                passed_pre = True
-                reason_pre = "Bypassed via template match micro-audit"
-            else:
-                passed_pre, reason_pre = auditor.audit_pre(task)
             
-            pre_end_time = time.time()
-            pre_end_iso = datetime.now(timezone.utc).isoformat()
-            pre_latency_ms = round((pre_end_time - pre_start_time) * 1000, 2)
-            pre_latency_sec = round(pre_end_time - pre_start_time, 4)
             
-            if not passed_pre:
-                print(f"[EXECUTOR] Pre-execution audit blocked task {task.task_id}: {reason_pre}", flush=True)
-                log_execution_ledger_event(
-                    session_id=session_id,
-                    goal_id=goal_graph.goal_id,
-                    task_id=task.task_id,
-                    department=task.department,
-                    event_type="AUDIT_PRE_FAIL",
-                    state_before="AUDITING_PRE",
-                    state_after="FAILED",
-                    metadata={
-                        "objective": task.objective,
-                        "reason": reason_pre,
-                        "event_start_time": pre_start_iso,
-                        "event_end_time": pre_end_iso,
-                        "latency_ms": pre_latency_ms,
-                        "latency": pre_latency_sec,
-                        "tokens": {"prompt": 0, "completion": 0, "total": 0},
-                        "cost": 0.0,
-                        "model": "rules_engine"
-                    }
-                )
-                log_temporal_event(
-                    event_category="AUDIT_PRE_FAIL",
-                    summary=f"Pre-execution audit blocked task {task.task_id} [{task.department}]: {reason_pre[:80]}",
-                    outcome="FAIL",
-                    metadata={"session_id": session_id, "goal_id": goal_graph.goal_id, "task_id": task.task_id, "reason": reason_pre},
-                    cause=reason_pre,
-                    effect=f"Task {task.task_id} execution aborted; cascading blocks triggered for downstream tasks.",
-                    resolution="Align planner constraints with the intent classifier capability boundaries.",
-                    confidence=0.0
-                )
-                track_cascading_blocks(engine.mark_failed, task.task_id, f"Pre-execution Audit Blocked: {reason_pre}")
-                execution_log.append({
-                    "task_id": task.task_id,
-                    "objective": task.objective,
-                    "department": task.department,
-                    "error": f"Pre-execution Audit Blocked: {reason_pre}",
-                    "status": "FAILED"
-                })
-                # Add to tracker even on failure
-                tracker = state.get("execution_tracker") or {}
-                task_lats = tracker.get("task_latencies") or []
-                task_lats.append({
-                    "task_id": task.task_id,
-                    "dept": task.department,
-                    "worker_ms": 0.0,
-                    "audit_pre_ms": pre_latency_ms,
-                    "audit_post_ms": 0.0
-                })
-                tracker["task_latencies"] = task_lats
-                continue
                 
-            log_execution_ledger_event(
-                session_id=session_id,
-                goal_id=goal_graph.goal_id,
-                task_id=task.task_id,
-                department=task.department,
-                event_type="AUDIT_PRE_PASS",
-                state_before="AUDITING_PRE",
-                state_after="RUNNING",
-                metadata={
-                    "objective": task.objective,
-                    "event_start_time": pre_start_iso,
-                    "event_end_time": pre_end_iso,
-                    "latency_ms": pre_latency_ms,
-                    "latency": pre_latency_sec,
-                    "tokens": {"prompt": 0, "completion": 0, "total": 0},
-                    "cost": 0.0,
-                    "model": "rules_engine"
-                }
-            )
                 
-            dept_head = get_department_head(task.department)
             
-            # Inject upstream results into context
-            completed_results = engine.get_completed_results()
-            task.context["upstream_results"] = [
-                {
-                    "task_id": tid,
-                    "result": get_department_head(engine._task_map[tid].department).compress_result_for_downstream(res),
-                    "department": engine._task_map[tid].department,
-                    "objective": engine._task_map[tid].objective
-                }
-                for tid, res in completed_results.items()
-                if tid in task.depends_on
-            ]
             
-            # If the task is an execution task, we MUST ask the user for approval
-            # with the fully resolved parameters (including upstream findings!)
-            if task.department == "execution":
-                action = task.context.get("action", "")
-                try:
-                    from .governance import get_constitution
-                except ImportError:
-                    from governance import get_constitution
-                mandatory_approvals = get_constitution("mandatory_human_approval", [])
                 
-                if action in mandatory_approvals:
-                    task.context["approved"] = False
-                elif action in ("search_sheet", "search_gmail"):
-                    task.context["approved"] = True
-                if not task.context.get("approved"):
-                    action = task.context.get("action", "")
-                    params = task.context.get("params", {})
                     
-                    # Resolve params with upstream research/writing text
-                    upstream_texts = [
-                        item["result"] for item in task.context.get("upstream_results", [])
-                    ]
-                    upstream_text = "\n\n".join(upstream_texts) if upstream_texts else ""
                     
-                    # Call execution department head _resolve_params method dynamically
-                    resolved_params = dept_head._resolve_params(params, upstream_text)
                     
-                    # Save in pending action lock
-                    with _pending_actions_lock:
-                        _pending_actions[session_id] = {
-                            "action": action,
-                            "params": resolved_params,
-                            "task_id": task.task_id,
-                            "goal_id": goal_graph.goal_id
-                        }
-                    db_save_pending_action(session_id, _pending_actions[session_id])
                         
-                    # Format a beautiful preview of the action plan!
-                    preview_fields = {k: v for k, v in resolved_params.items() if k not in ("body", "content", "caption")}
-                    fields_str = "\n".join(f"  • {k.capitalize()}: {v}" for k, v in preview_fields.items())
-                    body_preview = resolved_params.get("body", resolved_params.get("content", resolved_params.get("caption", "")))
                     
-                    preview = fields_str
-                    if body_preview:
-                        preview += f"\n\n**Draft Content:**\n{body_preview}"
                         
-                    pending_action_notice = (
-                        f"Action authorization required.\n\n"
-                        f"Proposed action: **{action}**\n"
-                        f"{preview}\n\n"
-                        "Reply with '1' / 'approve' to execute, or '0' / 'cancel' to reject."
-                    )
                     
-                    duration = round(time.time() - start_time, 2)
-                    tracker = state.get("execution_tracker") or {}
-                    tracker["task_manager_duration"] = duration
                     
-                    log_execution_ledger_event(
-                        session_id=session_id,
-                        goal_id=goal_graph.goal_id,
-                        task_id=task.task_id,
-                        department=task.department,
-                        event_type="WAITING_FOR_APPROVAL",
-                        state_before="RUNNING",
-                        state_after="WAITING",
-                        metadata={"action": action, "params": resolved_params}
-                    )
                     
-                    node_tokens = {"prompt": 0, "completion": 0, "total": 0}
-                    for entry in execution_log:
-                        t = entry.get("tokens") or {"prompt": 0, "completion": 0, "total": 0}
-                        node_tokens["prompt"] += t.get("prompt", 0)
-                        node_tokens["completion"] += t.get("completion", 0)
-                        node_tokens["total"] += t.get("total", 0)
                         
-                    return {
-                        "goal_graph": engine.goal.to_dict(),
-                        "execution_log": execution_log,
-                        "final_brief": pending_action_notice,
-                        "action_result": "",
-                        "execution_tracker": tracker,
-                        "pending_action_notice": pending_action_notice,
-                        "tokens": node_tokens
-                    }
             
-            exec_latency_ms = 0.0
-            exec_latency = 0.0
-            t_dispatch_start_iso = datetime.now(timezone.utc).isoformat()
-            t_dispatch_end_iso = t_dispatch_start_iso
-            try:
-                # Dispatch task to the department head
-                log_execution_ledger_event(
-                    session_id=session_id,
-                    goal_id=goal_graph.goal_id,
-                    task_id=task.task_id,
-                    department=task.department,
-                    event_type="EXECUTION_START",
-                    state_before="RUNNING",
-                    state_after="RUNNING",
-                    metadata={"objective": task.objective}
-                )
-                log_temporal_event(
-                    event_category="TASK_DISPATCHED",
-                    summary=f"Dispatched task {task.task_id} [{task.department}] - {task.objective[:80]}",
-                    outcome="SUCCESS",
-                    metadata={"session_id": session_id, "goal_id": goal_graph.goal_id, "task_id": task.task_id, "department": task.department}
-                )
                 
-                t_dispatch_start = time.time()
-                t_dispatch_start_iso = datetime.now(timezone.utc).isoformat()
-                result, task_tokens = dept_head.dispatch(task, shared_resources, llm_dept)
-                t_dispatch_end = time.time()
-                t_dispatch_end_iso = datetime.now(timezone.utc).isoformat()
-                exec_latency = round(t_dispatch_end - t_dispatch_start, 2)
-                exec_latency_ms = round((t_dispatch_end - t_dispatch_start) * 1000, 2)
                 
-                p_rate, c_rate = get_token_costs(CURRENT_DEPT_MODEL)
-                exec_cost = (task_tokens.get("prompt", 0) * p_rate) + (task_tokens.get("completion", 0) * c_rate)
                 
-                log_execution_ledger_event(
-                    session_id=session_id,
-                    goal_id=goal_graph.goal_id,
-                    task_id=task.task_id,
-                    department=task.department,
-                    event_type="EXECUTION_DONE",
-                    state_before="RUNNING",
-                    state_after="RUNNING",
-                    metadata={
-                        "objective": task.objective,
-                        "latency": exec_latency,
-                        "latency_ms": exec_latency_ms,
-                        "event_start_time": t_dispatch_start_iso,
-                        "event_end_time": t_dispatch_end_iso,
-                        "tokens": task_tokens,
-                        "cost": round(exec_cost, 6),
-                        "model": CURRENT_DEPT_MODEL,
-                        "result_preview": (result or "")[:500],
-                        "is_estimated": False
-                    }
-                )
                 
-                # Layer 5 Bipartite Auditor: Post-Execution Validator check
-                log_execution_ledger_event(
-                    session_id=session_id,
-                    goal_id=goal_graph.goal_id,
-                    task_id=task.task_id,
-                    department=task.department,
-                    event_type="AUDIT_POST",
-                    state_before="RUNNING",
-                    state_after="AUDITING_POST",
-                    metadata={"objective": task.objective}
-                )
                 
-                post_start_time = time.time()
-                post_start_iso = datetime.now(timezone.utc).isoformat()
-                if is_template_match:
-                    passed_post = True
-                    audit_result = "Bypassed via template match micro-audit"
-                    audit_tokens = {"prompt": 0, "completion": 0, "total": 0}
-                else:
-                    passed_post, audit_result = auditor.audit_post(task, result)
-                    audit_tokens = getattr(auditor, "last_tokens", {"prompt": 0, "completion": 0, "total": 0})
-                    if type(audit_tokens).__name__ in ("MagicMock", "Mock") or not isinstance(audit_tokens, dict):
-                        audit_tokens = {"prompt": 0, "completion": 0, "total": 0}
                 
-                post_end_time = time.time()
-                post_end_iso = datetime.now(timezone.utc).isoformat()
-                post_latency_ms = round((post_end_time - post_start_time) * 1000, 2)
-                post_latency_sec = round(post_end_time - post_start_time, 4)
                 
-                # Accumulate auditor tokens
-                total_audit_tokens["prompt"] += audit_tokens.get("prompt", 0)
-                total_audit_tokens["completion"] += audit_tokens.get("completion", 0)
-                total_audit_tokens["total"] += audit_tokens.get("total", 0)
                 
-                post_cost = (audit_tokens.get("prompt", 0) * p_rate) + (audit_tokens.get("completion", 0) * c_rate)
                 
-                # Update tracker with granular task latencies
-                tracker = state.get("execution_tracker") or {}
-                task_lats = tracker.get("task_latencies") or []
-                task_lats.append({
-                    "task_id": task.task_id,
-                    "dept": task.department,
-                    "worker_ms": exec_latency_ms,
-                    "audit_pre_ms": pre_latency_ms,
-                    "audit_post_ms": post_latency_ms
-                })
-                tracker["task_latencies"] = task_lats
                 
-                if not passed_post:
-                    print(f"[EXECUTOR] Post-execution audit failed task {task.task_id}: {audit_result}", flush=True)
-                    log_execution_ledger_event(
-                        session_id=session_id,
-                        goal_id=goal_graph.goal_id,
-                        task_id=task.task_id,
-                        department=task.department,
-                        event_type="AUDIT_POST_FAIL",
-                        state_before="AUDITING_POST",
-                        state_after="FAILED",
-                        metadata={
-                            "objective": task.objective,
-                            "audit_result": audit_result,
-                            "tokens": audit_tokens,
-                            "cost": round(post_cost, 6),
-                            "model": CURRENT_DEPT_MODEL,
-                            "is_estimated": False,
-                            "event_start_time": post_start_iso,
-                            "event_end_time": post_end_iso,
-                            "latency_ms": post_latency_ms,
-                            "latency": post_latency_sec
-                        }
-                    )
-                    log_temporal_event(
-                        event_category="AUDIT_POST_FAIL",
-                        summary=f"Post-execution audit failed task {task.task_id} [{task.department}]: {audit_result[:80]}",
-                        outcome="FAIL",
-                        metadata={"session_id": session_id, "goal_id": goal_graph.goal_id, "task_id": task.task_id, "reason": audit_result},
-                        cause=f"Post-audit checklist failure: {audit_result}",
-                        effect=f"Task {task.task_id} marked as failed; cascading blocks triggered for downstream tasks.",
-                        resolution="Refine worker result format or checklist requirements.",
-                        confidence=0.0
-                    )
-                    track_cascading_blocks(engine.mark_failed, task.task_id, f"Post-execution Audit Failed: {audit_result}")
-                    execution_log.append({
-                        "task_id": task.task_id,
-                        "objective": task.objective,
-                        "department": task.department,
-                        "error": f"Post-execution Audit Failed: {audit_result}",
-                        "status": "FAILED",
-                        "tokens": task_tokens
-                    })
-                    # Log failure to the immune system to learn from errors!
-                    if goal_graph.goal_type != "CORRECTION":
-                        try:
-                            from .memory import log_execution_failure
-                        except ImportError:
-                            from memory import log_execution_failure
-                        log_execution_failure(
-                            domain=f"department.{task.department}",
-                            method=task.objective,
-                            exception_msg=f"Post-execution Audit Failed: {audit_result}",
-                            goal=goal_graph.goal,
-                            intent_packet=goal_graph.intent_packet
-                        )
-                    else:
-                        print(f"[IMMUNE SYSTEM GATE] Bypassing failure logging for CORRECTION goal execution failure to prevent database noise.", flush=True)
-                else:
-                    log_execution_ledger_event(
-                        session_id=session_id,
-                        goal_id=goal_graph.goal_id,
-                        task_id=task.task_id,
-                        department=task.department,
-                        event_type="AUDIT_POST_PASS",
-                        state_before="AUDITING_POST",
-                        state_after="COMPLETED",
-                        metadata={
-                            "objective": task.objective,
-                            "audit_result": audit_result,
-                            "tokens": audit_tokens,
-                            "cost": round(post_cost, 6),
-                            "model": CURRENT_DEPT_MODEL,
-                            "is_estimated": False,
-                            "event_start_time": post_start_iso,
-                            "event_end_time": post_end_iso,
-                            "latency_ms": post_latency_ms,
-                            "latency": post_latency_sec
-                        }
-                    )
-                    audit_metrics = task.context.get("audit_metrics") or {}
-                    log_temporal_event(
-                        event_category="TASK_COMPLETED",
-                        summary=f"Completed task {task.task_id} [{task.department}] - {task.objective[:80]}",
-                        outcome="SUCCESS",
-                        metadata={"session_id": session_id, "goal_id": goal_graph.goal_id, "task_id": task.task_id, "department": task.department},
-                        cause="Task completed worker dispatch successfully with post-audit pass.",
-                        effect="Engine marking task completed and checking downstream dependencies.",
-                        resolution="Task resolved successfully.",
-                        confidence=audit_metrics.get("confidence", 1.0)
-                    )
                     
-                    # Track newly ready tasks unlocked by completing this task
-                    pre_ready = {t.task_id for t in engine.get_ready_tasks()}
-                    engine.mark_completed(task.task_id, audit_result)
-                    post_ready = {t.task_id for t in engine.get_ready_tasks()}
                     
-                    newly_ready = post_ready - pre_ready
-                    for n_tid in newly_ready:
-                        n_task = engine._task_map[n_tid]
-                        log_execution_ledger_event(
-                            session_id=session_id,
-                            goal_id=goal_graph.goal_id,
-                            task_id=n_tid,
-                            department=n_task.department,
-                            event_type="DEPENDENCY_SATISFIED",
-                            state_before="PENDING",
-                            state_after="READY",
-                            metadata={"satisfied_by": task.task_id}
-                        )
                         
-                    execution_log.append({
-                        "task_id": task.task_id,
-                        "objective": task.objective,
-                        "department": task.department,
-                        "result": audit_result,
-                        "status": "SUCCESS",
-                        "tokens": task_tokens
-                    })
-                    # Register success to heal the immune system!
-                    try:
-                        from .memory import register_successful_execution
-                    except ImportError:
-                        from memory import register_successful_execution
-                    register_successful_execution(domain=f"department.{task.department}")
-                    if task.department == "execution" and task.context.get("action"):
-                        register_successful_execution(domain=f"action.{task.context['action']}")
-            except Exception as e:
-                t_dispatch_end = time.time()
-                t_dispatch_end_iso = datetime.now(timezone.utc).isoformat()
-                exec_latency = round(t_dispatch_end - t_dispatch_start, 2)
-                exec_latency_ms = round((t_dispatch_end - t_dispatch_start) * 1000, 2)
-                err_msg = str(e)
-                print(f"[EXECUTOR ERROR] Task {task.task_id} failed: {err_msg}", flush=True)
                 
-                # Update tracker even on failure
-                tracker = state.get("execution_tracker") or {}
-                task_lats = tracker.get("task_latencies") or []
-                task_lats.append({
-                    "task_id": task.task_id,
-                    "dept": task.department,
-                    "worker_ms": exec_latency_ms,
-                    "audit_pre_ms": pre_latency_ms,
-                    "audit_post_ms": 0.0
-                })
-                tracker["task_latencies"] = task_lats
                 
-                log_execution_ledger_event(
-                    session_id=session_id,
-                    goal_id=goal_graph.goal_id,
-                    task_id=task.task_id,
-                    department=task.department,
-                    event_type="EXECUTION_FAIL",
-                    state_before="RUNNING",
-                    state_after="FAILED",
-                    metadata={
-                        "objective": task.objective,
-                        "error": err_msg,
-                        "latency": exec_latency,
-                        "latency_ms": exec_latency_ms,
-                        "event_start_time": t_dispatch_start_iso,
-                        "event_end_time": t_dispatch_end_iso,
-                        "tokens": {"prompt": 0, "completion": 0, "total": 0},
-                        "cost": 0.0,
-                        "model": CURRENT_DEPT_MODEL
-                    }
-                )
-                track_cascading_blocks(engine.mark_failed, task.task_id, err_msg)
-                execution_log.append({
-                    "task_id": task.task_id,
-                    "objective": task.objective,
-                    "department": task.department,
-                    "error": err_msg,
-                    "status": "FAILED",
-                    "tokens": {"prompt": 0, "completion": 0, "total": 0}
-                })
-                # Log failure to the immune system to learn from errors!
-                if goal_graph.goal_type != "CORRECTION":
-                    try:
-                        from .memory import log_execution_failure
-                    except ImportError:
-                        from memory import log_execution_failure
-                    log_execution_failure(
-                        domain=f"department.{task.department}",
-                        method=task.objective,
-                        exception_msg=f"Task Execution Exception: {err_msg}",
-                        goal=goal_graph.goal,
-                        intent_packet=goal_graph.intent_packet
-                    )
-                else:
-                    print(f"[IMMUNE SYSTEM GATE] Bypassing failure logging for CORRECTION goal execution failure to prevent database noise.", flush=True)
                 
-    # Update tracker
-    duration = round(time.time() - start_time, 2)
-    tracker = state.get("execution_tracker") or {}
-    tracker["executor_duration"] = duration
-    tracker["task_manager_duration"] = duration
     
-    start_time_float = tracker.get("start_time", start_time)
-    goal_start_iso = datetime.fromtimestamp(start_time_float, timezone.utc).isoformat()
-    goal_end_iso = datetime.now(timezone.utc).isoformat()
-    goal_duration = time.time() - start_time_float
-    goal_latency_ms = round(goal_duration * 1000, 2)
-    goal_latency_sec = round(goal_duration, 4)
     
-    # Calculate goal tokens & costs cumulative summary
-    total_goal_tokens = {"prompt": 0, "completion": 0, "total": 0}
-    ic_tokens = (goal_graph.intent_packet or {}).get("tokens") or {"prompt": 0, "completion": 0, "total": 0}
-    plan_tokens = goal_graph.planning_tokens or {"prompt": 0, "completion": 0, "total": 0}
     
-    tasks_tokens = {"prompt": 0, "completion": 0, "total": 0}
-    for entry in execution_log:
-        t = entry.get("tokens") or {"prompt": 0, "completion": 0, "total": 0}
-        tasks_tokens["prompt"] += t.get("prompt", 0)
-        tasks_tokens["completion"] += t.get("completion", 0)
-        tasks_tokens["total"] += t.get("total", 0)
         
-    total_goal_tokens["prompt"] = ic_tokens.get("prompt", 0) + plan_tokens.get("prompt", 0) + tasks_tokens.get("prompt", 0) + total_audit_tokens.get("prompt", 0)
-    total_goal_tokens["completion"] = ic_tokens.get("completion", 0) + plan_tokens.get("completion", 0) + tasks_tokens.get("completion", 0) + total_audit_tokens.get("completion", 0)
-    total_goal_tokens["total"] = total_goal_tokens["prompt"] + total_goal_tokens["completion"]
     
-    ic_model = (goal_graph.intent_packet or {}).get("model") or CURRENT_DEPT_MODEL or "unknown"
-    p_ic, c_ic = get_token_costs(ic_model)
-    cost_ic = (ic_tokens.get("prompt", 0) * p_ic) + (ic_tokens.get("completion", 0) * c_ic)
     
-    p_plan, c_plan = get_token_costs(CURRENT_DEPT_MODEL)
-    cost_plan = (plan_tokens.get("prompt", 0) * p_plan) + (plan_tokens.get("completion", 0) * c_plan)
     
-    p_work, c_work = get_token_costs(CURRENT_DEPT_MODEL)
-    cost_workers = (tasks_tokens.get("prompt", 0) * p_work) + (tasks_tokens.get("completion", 0) * c_work)
-    cost_audit = (total_audit_tokens.get("prompt", 0) * p_work) + (total_audit_tokens.get("completion", 0) * c_work)
     
-    total_goal_cost = cost_ic + cost_plan + cost_workers + cost_audit
     
-    final_brief = engine.get_execution_summary()
     
-    # Goal lifecycle outcomes logging
-    if engine.is_goal_complete():
-        is_graceful_recovery = (goal_graph.planner_status not in ("SUCCESS", "TEMPLATE_MATCH", "FAST_TRACK", "WALK", None, ""))
-        log_execution_ledger_event(
-            session_id=session_id,
-            goal_id=goal_graph.goal_id,
-            task_id=None,
-            department=None,
-            event_type="GOAL_COMPLETED",
-            state_before="ACTIVE",
-            state_after="COMPLETED",
-            metadata={
-                "latency_sec": goal_latency_sec,
-                "latency_ms": goal_latency_ms,
-                "event_start_time": goal_start_iso,
-                "event_end_time": goal_end_iso,
-                "tokens": total_goal_tokens,
-                "cost": round(total_goal_cost, 6),
-                "model": CURRENT_DEPT_MODEL,
-                "summary": final_brief[:1000],
-                "graceful_recovery": is_graceful_recovery,
-                "planner_status": goal_graph.planner_status
-            }
-        )
-        if is_graceful_recovery:
-            log_execution_ledger_event(
-                session_id=session_id,
-                goal_id=goal_graph.goal_id,
-                task_id=None,
-                department=None,
-                event_type="RECOVERY_REGISTERED",
-                state_before="DEGRADED",
-                state_after="COMPLETED",
-                metadata={
-                    "planner_status": goal_graph.planner_status,
-                    "recovery_mechanism": "Conversational assistant fallback graph",
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-            )
-            print(f"[EXECUTOR] GRACEFUL RECOVERY REGISTERED: Planner failed with status {goal_graph.planner_status}, but execution completed successfully.", flush=True)
-    elif engine.is_goal_blocked() or not engine.is_goal_complete():
-        log_execution_ledger_event(
-            session_id=session_id,
-            goal_id=goal_graph.goal_id,
-            task_id=None,
-            department=None,
-            event_type="GOAL_FAILED",
-            state_before="ACTIVE",
-            state_after="FAILED",
-            metadata={
-                "latency_sec": goal_latency_sec,
-                "latency_ms": goal_latency_ms,
-                "event_start_time": goal_start_iso,
-                "event_end_time": goal_end_iso,
-                "tokens": total_goal_tokens,
-                "cost": round(total_goal_cost, 6),
-                "model": CURRENT_DEPT_MODEL,
-                "error": "Goal execution blocked or stalled"
-            }
-        )
         
-    # Store action result if there was an execution task
-    action_res = ""
-    for entry in execution_log:
-        if entry.get("department") == "execution" and entry.get("status") == "SUCCESS":
-            action_res = entry.get("result", "")
             
-    node_tokens = {"prompt": 0, "completion": 0, "total": 0}
-    for entry in execution_log:
-        t = entry.get("tokens") or {"prompt": 0, "completion": 0, "total": 0}
-        node_tokens["prompt"] += t.get("prompt", 0)
-        node_tokens["completion"] += t.get("completion", 0)
-        node_tokens["total"] += t.get("total", 0)
             
-    log_temporal_event(
-        event_category="GOAL_EXECUTED",
-        summary=f"Finished goal execution with status: {'COMPLETED' if engine.is_goal_complete() else 'FAILED'}",
-        outcome="SUCCESS" if engine.is_goal_complete() else "FAIL",
-        metadata={
-            "session_id": session_id,
-            "goal_id": goal_graph.goal_id,
-            "latency_ms": goal_latency_ms,
-            "cost": round(total_goal_cost, 6),
-            "is_goal_complete": engine.is_goal_complete()
-        }
-    )
              
-    return {
-        "goal_graph": engine.goal.to_dict(),
-        "execution_log": execution_log,
-        "final_brief": final_brief,
-        "action_result": action_res,
-        "execution_tracker": tracker,
-        "tokens": node_tokens
-    }
 
 
 SPRINT_AGENTS = [
@@ -4279,36 +1504,11 @@ LAUNCH_ROUND_2 = [
 ]
 
 
-def action_node(state: BabuState):
-    """Execute Google Workspace API actions after research runs, resolving research placeholders programmatically."""
-    import time
-    action_start = time.time()
-    action_data = state.get("detected_action")
-    if not action_data or "action" not in action_data:
-        tracker = state.get("execution_tracker") or {}
-        tracker["action_duration"] = 0.0
-        return {"action_result": "", "execution_tracker": tracker}
 
-    action = action_data["action"]
-    params = action_data.get("params", {})
     
-    # Grab compiled research context if any parameter needs it
-    research_text = ""
-    if state.get("research_data"):
-        research_text += "Research Reports:\n" + "\n\n".join(state["research_data"]) + "\n\n"
-    if state.get("search_results"):
-        research_text += "Live Web Search Results:\n" + state["search_results"]
         
-    resolved_params = resolve_action_params(params, research_text=research_text)
 
-    print(f"[GOOGLE] Executing reordered action={action} params={resolved_params}", flush=True)
-    ok, msg = execute_google_action(action, resolved_params)
-    print(f"[GOOGLE] Result: {ok} - {msg}", flush=True)
     
-    duration = round(time.time() - action_start, 2)
-    tracker = state.get("execution_tracker") or {}
-    tracker["action_duration"] = duration
-    return {"action_result": msg, "execution_tracker": tracker}
 
 
 def resolve_action_params(params: dict, research_text: str = "") -> dict:
@@ -4401,192 +1601,30 @@ def resolve_action_params(params: dict, research_text: str = "") -> dict:
     return resolved_params
 
 
-def task_manager_node(state: BabuState):
-    """Verify research reports and state legitimacy before authorizing tool execution."""
-    import time
-    tm_start = time.time()
-    detected = state.get("detected_action")
-    detected = sanitize_single_action_payload(detected)
-    active_goal = state.get("active_goal")
     
-    if not active_goal:
-        active_goal = {
-            "goal_id": "goal_" + datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S"),
-            "canonical_instruction": state["user_query"],
-            "status": "NEW",
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
         
-    if not detected:
-        print("[TASK MANAGER] No tool action detected. Bypassing validation.", flush=True)
-        active_goal["status"] = "COMPLETED"
         
-        duration = round(time.time() - tm_start, 2)
-        tracker = state.get("execution_tracker") or {}
-        tracker["task_manager_duration"] = duration
-        return {"active_goal": active_goal, "execution_tracker": tracker}
         
-    print(f"[TASK MANAGER] Auditing pending action: {detected['action']}...", flush=True)
     
-    action_name = detected["action"]
-    if action_name not in MAKE_ACTIONS:
-        active_goal["status"] = "BLOCKED"
-        duration = round(time.time() - tm_start, 2)
-        tracker = state.get("execution_tracker") or {}
-        tracker["task_manager_duration"] = duration
-        return {
-            "detected_action": None,
-            "active_goal": active_goal,
-            "action_result": f"Action blocked: unsupported action '{action_name}'.",
-            "execution_tracker": tracker
-        }
-    tool_domain = f"action.{action_name}"
-    # Fallback to general publisher domain if it is the Facebook publisher
-    if action_name == "facebook_publish" or "facebook" in action_name:
-        tool_domain = "social_media.facebook_publisher"
         
-    try:
-        from .memory import get_anti_pattern_rules
-    except ImportError:
-        from memory import get_anti_pattern_rules
-    tool_rules = get_anti_pattern_rules(tool_domain)
     
-    if tool_rules:
-        print(f"[TASK MANAGER] Auditing constraints for {tool_domain}:\n{tool_rules}", flush=True)
-        # If a persistent credential or OAuth block is logged, bypass execution to protect token limits
-        if any(word in tool_rules.lower() for word in ["expired", "invalid", "malformed", "bypassed", "quota"]):
-            print(f"[TASK MANAGER WARNING] Proactively bypassing '{action_name}' due to persistent historical failure.", flush=True)
-            active_goal["status"] = "BYPASSED"
             
-            duration = round(time.time() - tm_start, 2)
-            tracker = state.get("execution_tracker") or {}
-            tracker["task_manager_duration"] = duration
-            return {
-                "detected_action": None,
-                "active_goal": active_goal,
-                "action_result": f"Action bypassed by Task Manager due to persistent historical failures:\n{tool_rules}",
-                "execution_tracker": tracker
-            }
     
-    # Validate context-informed parameters
-    params = detected.get("params", {})
-    has_placeholder = any("[NEEDS_RESEARCH_CONTEXT]" in str(v) for v in params.values())
     
-    if has_placeholder:
-        # Check if research successfully compiled reports
-        has_research = len(state.get("research_data", [])) > 0 or len(state.get("search_results", "").strip()) > 0
-        if not has_research:
-            print("[TASK MANAGER WARNING] Action requires research context, but research_data is empty! Blocking execution.", flush=True)
-            active_goal["status"] = "BLOCKED"
             
-            duration = round(time.time() - tm_start, 2)
-            tracker = state.get("execution_tracker") or {}
-            tracker["task_manager_duration"] = duration
-            return {
-                "detected_action": None,
-                "active_goal": active_goal,
-                "action_result": "Action blocked by Task Manager: Missing required research context.",
-                "execution_tracker": tracker
-            }
-        else:
-            print("[TASK MANAGER SUCCESS] Research context validated. Authorizing action.", flush=True)
-            active_goal["status"] = "VERIFIED"
-    else:
-        print("[TASK MANAGER SUCCESS] Action requires no research context. Authorizing directly.", flush=True)
-        active_goal["status"] = "VERIFIED"
         
-    duration = round(time.time() - tm_start, 2)
-    tracker = state.get("execution_tracker") or {}
-    tracker["task_manager_duration"] = duration
-    return {"active_goal": active_goal, "execution_tracker": tracker}
 
 
-def research_dept(state: BabuState):
-    import time
-    research_start = time.time()
-    gear = state["gear"]
-    query = state["user_query"]
 
-    if gear == "WALK":
-        tracker = state.get("execution_tracker") or {}
-        tracker["research_duration"] = 0.0
-        return {"research_data": [], "search_results": "", "tokens": {"prompt": 0, "completion": 0, "total": 0}, "execution_tracker": tracker}
 
-    print(f"[SEARCH] {query[:60]}", flush=True)
-    search_ctx = web_search(query)
-    kb_ctx = search_knowledge(query)
-    profile_ctx = search_profile(query)
-    agent_tokens = []
 
-    def build_task_dto(name: str, role: str, extra_context: str = "") -> dict:
-        context = {
-            "query": query,
-            "datetime_utc": f"{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')} / {(datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).strftime('%Y-%m-%d %H:%M')} IST (Indian Standard Time)",
-            "constraints": ["be concise", "cite facts from context"],
-            "web_search": search_ctx or "",
-            "knowledge_base": kb_ctx or "",
-        }
-        if profile_ctx and any(k in query.lower() for k in ("my", "me", "profile", "family", "career", "education")):
-            context["profile_slice"] = profile_ctx
-        if extra_context:
-            context["prior_round_context"] = extra_context
-        return {
-            "agent": name,
-            "role": role,
-            "objective": f"Produce the {name.lower()} perspective for this query.",
-            "context": context,
-        }
 
-    def run_agent(name: str, role: str, extra_context: str = "") -> str:
-        import gc
-        if agent_tokens:
-            time.sleep(1.2)
 
-        try:
-            from .memory import get_anti_pattern_rules
-        except ImportError:
-            from memory import get_anti_pattern_rules
-        anti_patterns = get_anti_pattern_rules(f"swarm_agent.{name.lower()}")
-        task_dto = build_task_dto(name, role, extra_context=extra_context)
-        system = (
-            f"ARIA Swarm [{name}]: {role}\n\n"
-            "You receive a scoped task DTO. Use only the provided context and avoid speculation."
-        )
-        if anti_patterns:
-            system += f"\n\n{anti_patterns}"
 
-        user_prompt = f"Task DTO:\n{json.dumps(task_dto, ensure_ascii=False)}"
-        res = llm_dept.invoke([SystemMessage(content=system), HumanMessage(content=user_prompt)])
-        agent_tokens.append(extract_tokens(res))
-        gc.collect()
-        return f"[{name}] {res.content}"
 
-    if gear == "SPRINT":
-        reports = [run_agent(name, role) for name, role in SPRINT_AGENTS]
-        total_tokens = {"prompt": 0, "completion": 0, "total": 0}
-        for t in agent_tokens:
-            total_tokens["prompt"] += t["prompt"]
-            total_tokens["completion"] += t["completion"]
-            total_tokens["total"] += t["total"]
 
-        duration = round(time.time() - research_start, 2)
-        tracker = state.get("execution_tracker") or {}
-        tracker["research_duration"] = duration
-        return {"research_data": reports, "search_results": search_ctx, "tokens": total_tokens, "execution_tracker": tracker}
 
-    r1 = [run_agent(name, role) for name, role in LAUNCH_ROUND_1]
-    r1_ctx = "\n\n".join(r1)
-    r2 = [run_agent(name, role, extra_context=r1_ctx) for name, role in LAUNCH_ROUND_2]
-    total_tokens = {"prompt": 0, "completion": 0, "total": 0}
-    for t in agent_tokens:
-        total_tokens["prompt"] += t["prompt"]
-        total_tokens["completion"] += t["completion"]
-        total_tokens["total"] += t["total"]
 
-    duration = round(time.time() - research_start, 2)
-    tracker = state.get("execution_tracker") or {}
-    tracker["research_duration"] = duration
-    return {"research_data": r1 + r2, "search_results": search_ctx, "tokens": total_tokens, "execution_tracker": tracker}
 
 
 def deterministic_compress_reports(reports: List[str], max_chars: int = 2600) -> str:
@@ -4609,557 +1647,55 @@ def deterministic_compress_reports(reports: List[str], max_chars: int = 2600) ->
     return merged
 
 
-def department_synthesizer(state: BabuState):
-    reports = state.get("research_data", [])
-    return {"compressed_research": deterministic_compress_reports(reports)}
 
-def pa_node(state: BabuState):
-    import time
-    final_brief = state.get("final_brief")
-    if final_brief and "Respond directly to user query" in final_brief:
-        final_brief = None
-    research      = final_brief or state.get("compressed_research") or "\n\n".join(state.get("research_data", []))
-    history       = state.get("history_text", "")
-    action_result = state.get("action_result", "")
-    user_query    = state["user_query"]
-    pending_action_notice = state.get("pending_action_notice", "")
 
-    # Determine conversational vs workflow mode dynamically based on the planned graph
-    is_conversational = True
-    has_tasks = False
-    graph_dict = state.get("goal_graph")
-    if graph_dict:
-        tasks = graph_dict.get("tasks", [])
-        if len(tasks) > 1:
-            is_conversational = False
-        if len(tasks) >= 1:
-            has_tasks = True
 
-    # Soft Continuity: Suppress conversational history for fresh greetings to avoid residual bias
-    lowered_query = user_query.lower().strip().removeprefix("/").removeprefix("!")
-    for char in "?!.,":
-        lowered_query = lowered_query.replace(char, "")
-    lowered_query = lowered_query.strip()
     
-    intent_packet_dict = state.get("routing_metadata", {}).get("intent_packet")
-    is_multi_request = has_multiple_tasks_or_requests(user_query, intent_packet_dict)
     
-    # Deterministic FAQ short-circuits for high-frequency queries:
-    # 1. Current Time in IST
-    if not is_multi_request and any(k in lowered_query for k in ("current time", "time in ist", "time here in ist", "what is the time", "what time is it")):
-        from datetime import datetime, timezone, timedelta
-        now_utc = datetime.now(timezone.utc)
-        now_ist = now_utc + timedelta(hours=5, minutes=30)
-        time_response = f"The current time in Indian Standard Time (IST) is **{now_ist.strftime('%I:%M %p (%A, %B %d, %Y)')}**."
-        print(f"[PA NODE] Deterministic short-circuit for time query: '{user_query}'", flush=True)
-        return {"messages": state["messages"] + [AIMessage(content=time_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
 
-    # 2. How old are you? / date of birth of babu
-    if not is_multi_request and any(k in lowered_query for k in ("how old are you", "how old you are", "your age", "what is your age", "date of birth of babu", "babu birth", "babu creation", "dob of babu")):
-        age_str = get_babu_age_string()
-        age_response = f"I am **Project BABU** (Behavioral Autonomous Bureaucratic Utility). My date of birth is **May 27, 2026**. I have been active for **{age_str}**!"
-        print(f"[PA NODE] Deterministic short-circuit for age query: '{user_query}'", flush=True)
-        return {"messages": state["messages"] + [AIMessage(content=age_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
 
-    # 3. Who are you / Tell me about yourself
-    if not is_multi_request and any(k in lowered_query for k in ("who are you", "tell me about yourself", "about yourself", "know about yourself", "describe yourself", "introduce yourself", "your identity", "what is your name")):
-        identity_response = get_dynamic_self_identity()
-        print(f"[PA NODE] Deterministic short-circuit for identity query: '{user_query}'", flush=True)
-        return {"messages": state["messages"] + [AIMessage(content=identity_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
         
-    # 3.5 System Health Dashboard
-    if not is_multi_request and any(k in lowered_query for k in ("system health", "status dashboard", "how are you doing", "what is your status", "health dashboard", "current state", "your current state", "what is your current state", "system status", "system status dashboard")):
-        dashboard_response = get_system_health_dashboard()
-        print(f"[PA NODE] Deterministic short-circuit for health dashboard query: '{user_query}'", flush=True)
-        return {"messages": state["messages"] + [AIMessage(content=dashboard_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
 
-    # 3.6 Upgrades / ADR / Architecture Decisions / System Evolution / AKS
-    if any(k in lowered_query for k in ("upgrades received", "recent upgrades", "what upgrades", "upgrades did you receive", "upgrades did you recieve", "upgrades in last", "upgrade received", "recent upgrade", "what upgrade", "upgrade did you receive", "upgrade did you recieve", "upgrade in last", "adr", "architecture decision", "tradeoff", "tradeoffs", "lessons learned", "evolution", "upgrades", "upgrade", "gemini", "dynamic imports", "runtime_index", "postmortem", "lesson", "incident", "impact_score", "highest impact", "largest impact", "biggest impact", "most impact", "supersedes", "solve", "evolve", "hierarchy")):
-        conn, is_pg = get_db_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute("""
-                SELECT record_id, record_type, title, phase, problem, decision, reason, outcome, tradeoff, impact_score, supersedes, status, timestamp 
-                FROM architecture_knowledge ORDER BY record_id ASC
-            """)
-            rows = cursor.fetchall()
-            if rows:
-                # Case 1: Comparative / Highest Impact
-                if any(k in lowered_query for k in ("largest impact", "biggest impact", "highest impact", "most impact", "largest architectural impact")):
-                    sorted_by_impact = sorted(rows, key=lambda x: x[9] or 0, reverse=True)
-                    highest = sorted_by_impact[0]
-                    upgrades_response = (
-                        f"### 📈 Highest Architectural Impact Upgrade\n"
-                        f"The upgrade with the highest architectural impact score is **{highest[2]}** ({highest[0]}) with an **Impact Score of {highest[9]}**.\n\n"
-                        f"- **Type:** {highest[1]}\n"
-                        f"- **Problem:** {highest[4]}\n"
-                        f"- **Decision:** {highest[5]}\n"
-                        f"- **Reason:** {highest[6]}\n"
-                        f"- **Outcome:** {highest[7]}\n"
-                        f"- **Trade-off:** {highest[8]}"
-                    )
-                # Case 2: Tradeoffs
-                elif "tradeoff" in lowered_query:
-                    specific_row = None
-                    for r in rows:
-                        # check if query specifies imports or index
-                        if r[0].lower() in lowered_query or any(w in r[2].lower().split() for w in lowered_query.split() if len(w) > 3):
-                            specific_row = r
-                            break
-                    if specific_row:
-                        upgrades_response = (
-                            f"### ⚖️ Tradeoffs for {specific_row[2]} ({specific_row[0]})\n"
-                            f"For the decision to **{specific_row[5]}**, the tradeoffs are:\n"
-                            f"- **Memory savings:** {specific_row[7]}\n"
-                            f"- **vs:** {specific_row[8]}"
-                        )
-                    else:
-                        lines = ["### ⚖️ Architectural Tradeoffs\nHere are the tradeoffs for BABU's major decisions:\n"]
-                        for r in rows:
-                            lines.append(f"- **{r[2]}** ({r[0]}): {r[8] or 'None'}")
-                        upgrades_response = "\n".join(lines)
-                # Case 3: Evolution timeline
-                elif any(k in lowered_query for k in ("evolve", "evolution", "timeline", "history")):
-                    phases = {}
-                    for r in rows:
-                        ph = r[3] or "General"
-                        if ph not in phases:
-                            phases[ph] = []
-                        phases[ph].append(f"  * **{r[2]}** ({r[0]} - {r[1]}): {r[4]} -> Decision: {r[5]}")
                     
-                    lines = ["### 🚀 BABU ARCHITECTURAL EVOLUTION"]
-                    for ph in sorted(phases.keys()):
-                        lines.append(f"\n#### 📍 {ph}")
-                        lines.extend(phases[ph])
-                    upgrades_response = "\n".join(lines)
-                # Case 4: Specific problem / why query matching
-                else:
-                    specific_row = None
-                    for r in rows:
-                        # match record ID or title keywords
-                        title_words = [w.lower() for w in r[2].lower().split() if len(w) > 3]
-                        if r[0].lower() in lowered_query or any(w in lowered_query for w in title_words):
-                            specific_row = r
-                            break
                     
-                    if specific_row:
-                        upgrades_response = (
-                            f"### 📑 {specific_row[1]}: {specific_row[2]} ({specific_row[0]})\n"
-                            f"- **Problem Solved:** {specific_row[4]}\n"
-                            f"- **Decision:** {specific_row[5]}\n"
-                            f"- **Reason:** {specific_row[6]}\n"
-                            f"- **Outcome:** {specific_row[7]}\n"
-                            f"- **Tradeoff:** {specific_row[8] or 'None'}\n"
-                            f"- **Impact Score:** {specific_row[9]}"
-                        )
-                    else:
-                        # Fallback: List everything
-                        lines = [
-                            "### 🚀 BABU ARCHITECTURE KNOWLEDGE SYSTEM (AKS) & EVOLUTION",
-                            "Here are the documented records tracking the system's key upgrades, trade-offs, and design evolutions:\n"
-                        ]
-                        for r in rows:
-                            lines.append(
-                                f"#### 📑 **{r[0]}: {r[2]}** ({r[3]}) - *{r[11]}* [Type: {r[1]}, Impact: {r[9]}]\n"
-                                f"- **Problem:** {r[4]}\n"
-                                f"- **Decision:** {r[5]}\n"
-                                f"- **Reason:** {r[6]}\n"
-                                f"- **Outcome:** {r[7]}\n"
-                                f"- **Tradeoff:** {r[8]}\n"
-                                f"- **Date:** {r[12]}\n"
-                            )
-                        upgrades_response = "\n".join(lines)
-            else:
-                upgrades_response = "No architecture knowledge records have been recorded in the database."
-        except Exception as e:
-            upgrades_response = f"Failed to retrieve upgrades from database: {e}"
-        finally:
-            cursor.close()
-            conn.close()
-        print(f"[PA NODE] Dynamic short-circuit for upgrades/ADR query: '{user_query}'", flush=True)
-        return {"messages": state["messages"] + [AIMessage(content=upgrades_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
 
-    # 4. Tell me about your architecture
-    if not is_multi_request and any(k in lowered_query for k in ("your architecture", "tell me about your architecture", "how are you built", "how do you work")):
-        arch_response = (
-            "My architecture is a decentralized LangGraph-based swarm framework. It consists of:\n"
-            "1. **Strategic Planner & Intent Classifier**: Decomposes user queries and enforces capability boundaries.\n"
-            "2. **Task Engine**: Orchestrates execution DAGs topologically.\n"
-            "3. **Cognitive Departments**: Five specialized heads (**Research**, **Information**, **Analysis**, **Writing**, and **Execution**).\n"
-            "4. **Bipartite Auditor**: A dual-stage governance gatekeeper (`PreExecutionGatekeeper` and `PostExecutionValidator`) that ensures safety and compliance."
-        )
-        print(f"[PA NODE] Deterministic short-circuit for architecture query: '{user_query}'", flush=True)
-        return {"messages": state["messages"] + [AIMessage(content=arch_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
 
-    # 5. what are failures happened in last 5 days?
-    if not is_multi_request and any(k in lowered_query for k in ("failures happened", "recent failures", "what are failures", "failures in last", "failures happened in last")):
-        conn, is_pg = get_db_connection()
-        cursor = conn.cursor()
-        try:
-            if is_pg:
-                cursor.execute("""
-                    SELECT timestamp, goal_id, task_id, event_type, metadata
-                    FROM execution_ledger
-                    WHERE event_type IN ('AUDIT_PRE_FAIL', 'AUDIT_POST_FAIL', 'EXECUTION_FAIL', 'PLANNER_CONSTRAINT_VIOLATION')
-                    ORDER BY event_id DESC
-                    LIMIT 5
-                """)
-            else:
-                cursor.execute("""
-                    SELECT timestamp, goal_id, task_id, event_type, metadata
-                    FROM execution_ledger
-                    WHERE event_type IN ('AUDIT_PRE_FAIL', 'AUDIT_POST_FAIL', 'EXECUTION_FAIL', 'PLANNER_CONSTRAINT_VIOLATION')
-                    ORDER BY event_id DESC
-                    LIMIT 5
-                """)
-            rows = cursor.fetchall()
-            if rows:
-                lines = ["Here are the recent system failures recorded in the execution ledger:\n"]
-                for r in rows:
-                    ts = r[0][:19] if r[0] else "Unknown Time"
-                    goal = r[1]
-                    task = r[2] or "N/A"
-                    event = r[3]
-                    details = r[4]
-                    lines.append(f"• **{ts}** | Event: `{event}` | Goal: `{goal}` | Task: `{task}`\n  *Details*: {details}")
-                failures_response = "\n".join(lines)
-            else:
-                failures_response = "No system failures have been recorded in the execution ledger."
-        except Exception as e:
-            failures_response = f"Failed to retrieve failures log from database: {e}"
-        finally:
-            cursor.close()
-            conn.close()
             
-        print(f"[PA NODE] Deterministic short-circuit for failures query: '{user_query}'", flush=True)
-        return {"messages": state["messages"] + [AIMessage(content=failures_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
     
-    greetings = {
-        "hi", "hello", "hey", "how are you", "how's it going", "how you doing", 
-        "how doing", "yo", "hi buddy", "hey buddy", "hello buddy", "good morning", 
-        "good afternoon", "good evening"
-    }
-    is_fresh_greeting = lowered_query in greetings or any(lowered_query.startswith(g + " ") for g in greetings)
     
-    if not is_multi_request and is_fresh_greeting and not action_result:
-        profile = get_current_profile()
-        details = profile.get("personal_details", {}) if profile else {}
-        nickname = details.get("primary_nickname", "") or details.get("full_name", "Anshu")
-        import random
-        greeting_responses = [
-            f"Hello {nickname}! How can I help you today?",
-            f"Hi {nickname}! What can I do for you?",
-            f"Hey {nickname}! How's it going?",
-            f"Hello {nickname}! Hope you're having a great day. How can I assist you?",
-        ]
-        chosen_response = random.choice(greeting_responses)
-        print(f"[PA NODE] Deterministic chitchat short-circuit for greeting: '{user_query}'", flush=True)
-        response = AIMessage(content=chosen_response)
-        return {"messages": state["messages"] + [response], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
 
-    routing_metadata = state.get("routing_metadata") or {}
-    intent_packet_dict = routing_metadata.get("intent_packet")
-    category = None
-    if intent_packet_dict:
-        category = intent_packet_dict.get("query_category")
-    if not category:
-        try:
-            from .planner import classify_intent
-        except ImportError:
-            from planner import classify_intent
-        intent_packet = classify_intent(user_query, history, model_name=CURRENT_PA_MODEL)
-        category = intent_packet.query_category
 
-    # Extract all collected sources from the task execution log or goal graph.
-    sources = {}
-    graph_dict = state.get("goal_graph")
-    if graph_dict:
-        tasks = graph_dict.get("tasks", [])
-        for t in tasks:
-            t_ctx = t.get("context", {})
-            sc = t_ctx.get("scoped_context", {})
-            t_sources = sc.get("sources", {})
-            if isinstance(t_sources, dict):
-                for k, v in t_sources.items():
-                    if v:
-                        sources[k] = v
-            for k in ("profile_slice", "knowledge_base"):
-                if sc.get(k):
-                    sources[k] = sc[k]
 
-    # Enforcement of programmatic hard refusal check
-    if category == "BUSINESS_INFORMATION":
-        allowed_keys = ["AUTHORITY_MEMORY", "AUTHORITY_DATABASE", "AUTHORITY_LEDGER"]
-        has_local_source = False
-        for k in allowed_keys:
-            if sources.get(k):
-                has_local_source = True
-                break
-        for k in ("profile_slice", "knowledge_base"):
-            if k in sources and sources[k]:
-                has_local_source = True
-                break
         
-        if not has_local_source:
-            refusal_msg = "Mere paas aapke actual client records ka access nahi hai."
-            print(f"[PA NODE] Hard Refusal triggered: category is BUSINESS_INFORMATION with 0 local sources.", flush=True)
-            return {"messages": state["messages"] + [AIMessage(content=refusal_msg)], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
 
-    is_private = is_private_data_query(user_query, category)
 
-    if is_fresh_greeting or not is_conversational:
-        history = ""
 
-    if pending_action_notice:
-        response = AIMessage(content=pending_action_notice)
-        return {"messages": state["messages"] + [response], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
 
-    # Hard guard: if no action was executed this turn, never claim execution.
-    if not action_result and is_action_status_query(user_query):
-        response_text = "No action was executed in this turn."
-        if not is_conversational:
-            tracker = state.get("execution_tracker", {})
-            if tracker and "start_time" in tracker:
-                import time
-                tot = round(time.time() - tracker["start_time"], 2)
-                response_text += f"\n\nSwarm profile: Research {tracker.get('research_duration', 0.0)}s | Audit {tracker.get('task_manager_duration', 0.0)}s | Action {tracker.get('action_duration', 0.0)}s | Total {tot}s"
-        response = AIMessage(content=response_text)
-        return {"messages": state["messages"] + [response], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
 
-    # Deterministic short-circuit for basic profile facts.
-    if not is_multi_request and not action_result:
-        direct_fact = get_profile_fact_answer(user_query)
-        if direct_fact:
-            if not is_conversational:
-                tracker = state.get("execution_tracker", {})
-                if tracker and "start_time" in tracker:
-                    import time
-                    tot = round(time.time() - tracker["start_time"], 2)
-                    direct_fact += f"\n\nSwarm profile: Research {tracker.get('research_duration', 0.0)}s | Audit {tracker.get('task_manager_duration', 0.0)}s | Action {tracker.get('action_duration', 0.0)}s | Total {tot}s"
-            response = AIMessage(content=direct_fact)
-            return {"messages": state["messages"] + [response], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
 
-    # Dynamic L2/L3 profile retrieval fallback:
-    # If there's no research, query search_profile to fetch matching personal details.
-    if not research and not action_result:
-        profile_ctx = search_profile(state["user_query"])
-        if profile_ctx and ("[Local User Profile Matches]" in profile_ctx or "[Local User Profile" in profile_ctx):
-            research = profile_ctx
 
-    # Full profile injection for broad identity/family/business queries in conversational mode:
-    # search_profile keyword search is too narrow for general questions like "what do you know about me".
-    if not research and not action_result and is_profile_relevant_query(user_query):
-        full_profile = get_user_profile_text("FULL")
-        if full_profile:
-            research = full_profile
-            print(f"[PA NODE] Injecting full user profile for profile-relevant conversational query.", flush=True)
 
-    if is_conversational:
-        style = "[CONVERSATIONAL]\nBrief, warm, direct. Max two short paragraphs. Confirm any automation action clearly."
-    else:
-        style = "[WORKFLOW]\nStructured briefing: ## headers. Cover overview, findings, risks, outlook. End with one concrete recommendation. Dense and precise."
 
-    # Inject live temporal awareness for PA synthesis
-    from datetime import datetime, timezone, timedelta
-    now_utc_dt = datetime.now(timezone.utc)
-    now_ist_dt = now_utc_dt + timedelta(hours=5, minutes=30)
-    now_str = f"{now_utc_dt.strftime('%A, %d %B %Y, %H:%M UTC')} / {now_ist_dt.strftime('%A, %d %B %Y, %H:%M')} IST (Indian Standard Time)"
 
-    # Tiered Prompt Architecture
-    if is_conversational:
-        # Ultra-thin manifesto for casual conversational mode
-        profile = get_current_profile()
-        details = profile.get("personal_details", {}) if profile else {}
-        nickname = details.get("primary_nickname", "") or details.get("full_name", "Anshu")
-        manifesto = (
-            f"You are ARIA, a warm, direct, and helpful personal companion. Current date/time: {now_str}.\n"
-            f"Style: Warm, brief, natural human dialogue. Max two short paragraphs. Do not mention internal details.\n"
-            f"Recipient: You are talking directly to {nickname}.\n"
-            f"CRITICAL: If the user asks about their personal details, family, business, career, or background, you MUST use the information provided in [Internal Research] (which is retrieved from the authoritative local user profile).\n"
-            f"If the required personal/business/family information is NOT present in [Internal Research] or [Conversation History], DO NOT invent, infer, or hallucinate any details (such as occupation, business name, meetings, or clients). In such cases, politely and warmly state that you do not have that information in their profile yet."
-        )
-    else:
-        # Full Workflow Prompt
-        # Only inject the full user profile if the query is profile-relevant
-        if is_profile_relevant_query(user_query):
-            profile_text = get_user_profile_text("FULL")
-        else:
-            # Otherwise, use ultra-thin context just for username and style warmness
-            profile_text = get_user_profile_text("THIN")
-        profile_ctx = f"\n\nUser Profile:\n{profile_text}" if profile_text else ""
-        google_tools = ", ".join(MAKE_ACTIONS.keys())
-        google_ctx = f"\n\nGoogle Workspace active [{google_tools}]. Confirm any triggered actions clearly."
         
-        try:
-            from .memory import get_anti_pattern_rules
-        except ImportError:
-            from memory import get_anti_pattern_rules
-        pa_rules = get_anti_pattern_rules("pa")
 
-        manifesto = (
-            f"ARIA. Current date/time: {now_str}. Never reveal internal agents. {style}"
-            f" Use history for context, never repeat it verbatim."
-            f"{google_ctx}{profile_ctx}"
-        )
-        if not action_result:
-            manifesto += "\n\nCRITICAL: Do not claim any action was executed/sent/created in this turn unless [Automation Result] is explicitly present."
-        if pa_rules:
-            manifesto += "\n\n" + pa_rules
 
-    if is_private:
-        manifesto += (
-            "\n\nCRITICAL EPISTEMIC DIRECTIVES (AUTHORITY LEVELS):\n"
-            "- You must strictly answer based ONLY on the [AUTHORITATIVE SOURCES] provided in the context.\n"
-            "- AUTHORITY_MEMORY represents the local user profile; AUTHORITY_DATABASE represents the local knowledge base; AUTHORITY_LEDGER represents the system's ledger.\n"
-            "- Do NOT fabricate, assume, or generalize any business metrics, client details, transaction numbers, or claims not explicitly listed in these sources.\n"
-            "- If the requested details are not present, refuse the query or state that you do not have access to these records."
-        )
 
-    parts = []
-    if history:
-        parts.append(f"[Conversation History]\n{history}")
     
-    session_id = state.get("session_id", "default")
-    k0_ctx = retrieve_k0_memory(session_id)
-    if k0_ctx:
-        parts.append(f"[K0 Working Memory]\n{k0_ctx}")
 
-    parts.append(f"User: {state['user_query']}")
-    if action_result:
-        parts.append(f"[Automation Result]\n{action_result}")
-    if research:
-        parts.append(f"[Internal Research]\n{research}")
-    if sources:
-        import json
-        sources_str = "\n".join(f"- {k}: {json.dumps(v, ensure_ascii=False)}" for k, v in sources.items())
-        parts.append(f"[AUTHORITATIVE SOURCES]\n{sources_str}")
 
-    pa_start_time = time.time()
-    pa_start_iso = datetime.now(timezone.utc).isoformat()
-    response = llm_pa.invoke([SystemMessage(content=manifesto), HumanMessage(content="\n\n".join(parts))])
-    pa_end_time = time.time()
-    pa_end_iso = datetime.now(timezone.utc).isoformat()
-    pa_latency_ms = round((pa_end_time - pa_start_time) * 1000, 2)
-    pa_latency_sec = round(pa_end_time - pa_start_time, 4)
     
-    # Check for planner degradation and append warning card if active
-    if graph_dict and graph_dict.get("planner_status", "SUCCESS") not in ("SUCCESS", "WALK", "TEMPLATE_MATCH"):
-        p_status = graph_dict.get("planner_status")
-        reason_map = {
-            "RATE_LIMIT": "Planner rate-limited by Groq API limits (429)",
-            "NETWORK": "Planner encountered network timeout or connectivity issues",
-            "PROVIDER_ERROR": "Planner API provider returned an execution error",
-            "JSON_ERROR": "Planner LLM output could not be parsed as valid JSON",
-            "VALIDATION_ERROR": "Planner generated an invalid or cyclic task dependency graph"
-        }
-        reason_text = reason_map.get(p_status, "Planner encountered an unexpected exception")
-        degradation_notice = (
-            "\n\n---\n"
-            "⚠️ **WORKFLOW STATUS: DEGRADED**\n"
-            f"• **Reason**: {reason_text}\n"
-            "• **Capability Impact**: Multi-agent research planning & automation pipelines are temporarily unavailable\n"
-            "• **Fallback**: Active conversational assistant recovery mode"
-        )
-        response.content += degradation_notice
     
-    # Programmatic safeguard: ensure [IMAGE] tag is preserved in the response if found in action_result
-    if action_result and "[IMAGE]" in action_result:
-        # Check if the response already contains the image tag
-        if "[IMAGE]" not in response.content:
-            # Extract the complete [IMAGE] tag line from action_result
-            match = re.search(r'(\[IMAGE\]\s*url=[^\s\n]+(?:\s+caption=[^\n]+)?)', action_result)
-            if match:
-                response.content += "\n\n" + match.group(1)
                 
-    # ​​Performance Telemetry Footnote ​​
-    tracker = state.get("execution_tracker", {})
-    tracker["pa_duration"] = pa_latency_sec
-    if not is_conversational:
-        if tracker and "start_time" in tracker:
-            import time
-            tot = round(time.time() - tracker["start_time"], 2)
-            router_dur = tracker.get("router_duration", 0.0)
-            planner_dur = tracker.get("planner_duration", 0.0)
             
-            task_lats = tracker.get("task_latencies", [])
-            workers_dur = round(sum(t.get("worker_ms", 0.0) for t in task_lats) / 1000.0, 2)
-            audit_dur = round(sum(t.get("audit_pre_ms", 0.0) + t.get("audit_post_ms", 0.0) for t in task_lats) / 1000.0, 2)
             
-            telemetry_footnote = f"\n\nSwarm profile: Router {router_dur}s | Planner {planner_dur}s | Workers {workers_dur}s | Audit {audit_dur}s | PA {pa_latency_sec}s | Total {tot}s"
-            response.content += telemetry_footnote
                 
-    token_stats = extract_tokens(response)
-    p_rate, c_rate = get_token_costs(CURRENT_PA_MODEL)
-    pa_cost = (token_stats.get("prompt", 0) * p_rate) + (token_stats.get("completion", 0) * c_rate)
-    try:
-        goal_graph_dict = state.get("goal_graph") or {}
-        active_goal_dict = state.get("active_goal") or {}
-        g_id = goal_graph_dict.get("goal_id") or active_goal_dict.get("goal_id") or "G-WALK"
-        log_execution_ledger_event(
-            session_id=state.get("session_id", "default"),
-            goal_id=g_id,
-            task_id="T-PA",
-            department="pa",
-            event_type="PA_SYNTHESIS",
-            state_before="RUNNING",
-            state_after="COMPLETED",
-            metadata={
-                "query": user_query,
-                "tokens": token_stats,
-                "cost": round(pa_cost, 6),
-                "response_preview": response.content[:300],
-                "model": CURRENT_PA_MODEL,
-                "is_estimated": False,
-                "event_start_time": pa_start_iso,
-                "event_end_time": pa_end_iso,
-                "latency_ms": pa_latency_ms,
-                "latency": pa_latency_sec
-            }
-        )
-    except Exception as e:
-        print(f"[PA TELEMETRY WARNING] Failed to log PA ledger event: {e}", flush=True)
-    try:
-        try:
-            from .memory import log_workflow_event
-        except ImportError:
-            from memory import log_workflow_event
-        tracker = state.get("execution_tracker", {})
-        log_workflow_event(
-            session_id=state.get("session_id", "default"),
-            gear="DYNAMIC",
-            sequence=["router", "planner", "executor", "pa"] if not is_conversational else ["router", "pa"],
-            total_tokens=token_stats.get("total", 0),
-            latency_seconds=tracker.get("research_duration", 0.0) + tracker.get("task_manager_duration", 0.0) + tracker.get("action_duration", 0.0),
-            success=True,
-            note=state.get("user_query", "")[:160],
-        )
-    except Exception as e:
-        print(f"[WORKFLOW MEMORY WARNING] Failed to log workflow event: {e}", flush=True)
-
-    return {"messages": state["messages"] + [response], "tokens": token_stats, "execution_tracker": tracker}
 
 
-# â”€â”€ Graph â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-workflow = StateGraph(BabuState)
-workflow.add_node("router",       intent_router)
-workflow.add_node("planner",      planner_node)
-workflow.add_node("executor",     task_executor_node)
-workflow.add_node("pa",           pa_node)
 
-workflow.set_entry_point("router")
-workflow.add_conditional_edges("router", route_after_router, {
-    "plan": "planner",
-    "pending": "pa",
-    "pa": "pa",
-})
-workflow.add_edge("planner", "executor")
-workflow.add_edge("executor", "pa")
-workflow.add_edge("pa",           END)
-if checkpointer:
-    babu_brain = workflow.compile(checkpointer=checkpointer)
-else:
-    babu_brain = workflow.compile()
+# StateGraph is imported from .graph
+babu_brain = workflow.compile(checkpointer=checkpointer) if checkpointer else workflow.compile()
 
 
 # â”€â”€ Core invoke helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -7569,14 +4105,6 @@ def get_telemetry_data(limit=100) -> dict:
     dept_latencies = {}
     workflow_latencies = {}
     
-    def get_token_costs(model_name: str) -> tuple[float, float]:
-        if not model_name:
-            return 0.15 / 1_000_000, 0.60 / 1_000_000 # default fallback
-        m_lower = model_name.lower().strip()
-        for key, rates in PRICING_TABLE.items():
-            if key in m_lower:
-                return rates[0] / 1_000_000, rates[1] / 1_000_000
-        return 0.15 / 1_000_000, 0.60 / 1_000_000
 
     def get_provider(model_name: str) -> str:
         if not model_name:
@@ -8366,33 +4894,53 @@ class HealthHandler(BaseHTTPRequestHandler):
             with _pending_actions_lock:
                 pending = _pending_actions.pop(sid, None)
 
+            # Get pending first without popping
+            with _pending_actions_lock:
+                pending = _pending_actions.get(sid)
+
             if pending and is_generic_approve:
-                # Delete from DB immediately to prevent concurrent lookups
-                db_delete_pending_action(sid)
-                
                 action = pending.get("action", "")
-                params = resolve_action_params(pending.get("params", {}), research_text="")
+                try:
+                    from .auditor import get_service_class
+                except ImportError:
+                    from auditor import get_service_class
+                is_class_c = (get_service_class(action) == "C") if action else False
+                stage = pending.get("stage", "approval")
                 
-                log_execution_ledger_event(
-                    session_id=sid,
-                    goal_id=pending.get("goal_id", "default"),
-                    task_id=pending.get("task_id"),
-                    department="execution",
-                    event_type="APPROVAL_GRANTED",
-                    state_before="WAITING",
-                    state_after="RUNNING",
-                    metadata={"by": "web_text", "action": action, "params": params}
-                )
-                
-                ok, result_msg = execute_google_action(action, params)
-                if ok:
-                    reply = f"Action executed successfully.\n\n{result_msg}"
-                else:
-                    # Put it back on failure to allow retry
+                if is_class_c and stage == "approval":
+                    pending["stage"] = "confirmation"
                     with _pending_actions_lock:
                         _pending_actions[sid] = pending
                     db_save_pending_action(sid, pending)
-                    reply = f"Action execution failed.\n\n{result_msg}\n\nYou can type '1' / 'approve' again to retry, or '0' / 'cancel' to discard."
+                    reply = (
+                        f"⚠️ WARNING: Destructive Class C action detected.\n"
+                        f"Proposed action: **{action}**\n\n"
+                        f"Are you sure you want to proceed? Reply with 'confirm' or '2' to execute, or '0' / 'cancel' to reject."
+                    )
+                else:
+                    with _pending_actions_lock:
+                        pending = _pending_actions.pop(sid, None)
+                    if pending:
+                        db_delete_pending_action(sid)
+                        params = resolve_action_params(pending.get("params", {}), research_text="")
+                        log_execution_ledger_event(
+                            session_id=sid,
+                            goal_id=pending.get("goal_id", "default"),
+                            task_id=pending.get("task_id"),
+                            department="execution",
+                            event_type="APPROVAL_GRANTED",
+                            state_before="WAITING",
+                            state_after="RUNNING",
+                            metadata={"by": "web_text", "action": action, "params": params}
+                        )
+                        ok, result_msg = execute_google_action(action, params)
+                        if ok:
+                            reply = f"Action executed successfully.\n\n{result_msg}"
+                        else:
+                            with _pending_actions_lock:
+                                _pending_actions[sid] = pending
+                            db_save_pending_action(sid, pending)
+                            reply = f"Action execution failed.\n\n{result_msg}\n\nYou can type '2' / 'confirm' again to retry, or '0' / 'cancel' to discard." if is_class_c else f"Action execution failed.\n\n{result_msg}\n\nYou can type '1' / 'approve' again to retry, or '0' / 'cancel' to discard."
                 
                 # Check pending status
                 with _pending_actions_lock:
@@ -8585,10 +5133,21 @@ def get_post_keyboard() -> InlineKeyboardMarkup:
 
 
 def get_action_approval_keyboard(session_id: str) -> InlineKeyboardMarkup:
-    keyboard = [[
-        InlineKeyboardButton("Approve", callback_data=f"action_approve|{session_id}"),
-        InlineKeyboardButton("Cancel", callback_data=f"action_cancel|{session_id}")
-    ]]
+    sync_pending_actions()
+    with _pending_actions_lock:
+        pending = _pending_actions.get(session_id)
+    
+    stage = pending.get("stage", "approval") if pending else "approval"
+    if stage == "confirmation":
+        keyboard = [[
+            InlineKeyboardButton("Confirm", callback_data=f"action_approve|{session_id}"),
+            InlineKeyboardButton("Cancel", callback_data=f"action_cancel|{session_id}")
+        ]]
+    else:
+        keyboard = [[
+            InlineKeyboardButton("Approve", callback_data=f"action_approve|{session_id}"),
+            InlineKeyboardButton("Cancel", callback_data=f"action_cancel|{session_id}")
+        ]]
     return InlineKeyboardMarkup(keyboard)
 
 async def generate_and_send_preview(chat_id: int, bot, custom_topic: str = None, reply_to_message_id: int = None):
@@ -9330,44 +5889,113 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with _pending_actions_lock:
         pending = _pending_actions.get(session_id)
 
-    if pending and _is_approval_message(msg):
-        with _pending_actions_lock:
-            pending = _pending_actions.pop(session_id, None)
-        if pending:
-            # Delete from DB immediately to prevent concurrent lookups
-            db_delete_pending_action(session_id)
-            
-            action = pending.get("action", "")
-            params = resolve_action_params(pending.get("params", {}), research_text="")
-            
-            # Log approval event
-            log_execution_ledger_event(
-                session_id=session_id,
-                goal_id=pending.get("goal_id", "default"),
-                task_id=pending.get("task_id"),
-                department="execution",
-                event_type="APPROVAL_GRANTED",
-                state_before="WAITING",
-                state_after="RUNNING",
-                metadata={"by": "telegram_text", "action": action, "params": params}
-            )
-            
-            ok, result_msg = await asyncio.to_thread(execute_google_action, action, params)
-            if ok:
-                status = "Action executed successfully."
-                await update.message.reply_text(f"{status}\n\n{result_msg}")
-            else:
-                # Re-insert on failure to allow retry
-                with _pending_actions_lock:
-                    _pending_actions[session_id] = pending
-                db_save_pending_action(session_id, pending)
+    if pending:
+        action = pending.get("action", "")
+        try:
+            from .auditor import get_service_class
+        except ImportError:
+            from auditor import get_service_class
+        
+        is_class_c = (get_service_class(action) == "C") if action else False
+        stage = pending.get("stage", "approval")
+        
+        if is_class_c:
+            if stage == "approval":
+                if _is_approval_message(msg):
+                    pending["stage"] = "confirmation"
+                    with _pending_actions_lock:
+                        _pending_actions[session_id] = pending
+                    db_save_pending_action(session_id, pending)
+                    warning_msg = (
+                        f"⚠️ WARNING: Destructive Class C action detected.\n"
+                        f"Proposed action: **{action}**\n\n"
+                        f"Are you sure you want to proceed? Reply with 'confirm' or '2' to execute, or '0' / 'cancel' to reject."
+                    )
+                    await update.message.reply_text(warning_msg, reply_markup=get_action_approval_keyboard(session_id))
+                    return
+                elif _is_reject_message(msg):
+                    with _pending_actions_lock:
+                        _pending_actions.pop(session_id, None)
+                    db_delete_pending_action(session_id)
+                    await update.message.reply_text("Pending action cancelled.")
+                    return
+                else:
+                    await update.message.reply_text("You have a pending action approval. Reply with '1' / 'approve' to approve, or '0' / 'cancel' to discard.")
+                    return
+            elif stage == "confirmation":
+                t_clean = msg.lower().strip()
+                is_confirm = t_clean in ("confirm", "2", "yes", "proceed")
+                is_cancel = t_clean in ("0", "cancel", "reject", "stop", "no")
                 
-                status = "Action execution failed."
-                await update.message.reply_text(
-                    f"{status}\n\n{result_msg}\n\nYou can type '1' / 'approve' again to retry, or '0' / 'cancel' to discard.",
-                    reply_markup=get_action_approval_keyboard(session_id)
-                )
-            return
+                if is_confirm:
+                    with _pending_actions_lock:
+                        pending = _pending_actions.pop(session_id, None)
+                    if pending:
+                        db_delete_pending_action(session_id)
+                        params = resolve_action_params(pending.get("params", {}), research_text="")
+                        log_execution_ledger_event(
+                            session_id=session_id,
+                            goal_id=pending.get("goal_id", "default"),
+                            task_id=pending.get("task_id"),
+                            department="execution",
+                            event_type="APPROVAL_GRANTED",
+                            state_before="WAITING",
+                            state_after="RUNNING",
+                            metadata={"by": "telegram_text_confirm", "action": action, "params": params}
+                        )
+                        ok, result_msg = await asyncio.to_thread(execute_google_action, action, params)
+                        if ok:
+                            await update.message.reply_text(f"Action executed successfully.\n\n{result_msg}")
+                        else:
+                            with _pending_actions_lock:
+                                _pending_actions[session_id] = pending
+                            db_save_pending_action(session_id, pending)
+                            await update.message.reply_text(
+                                f"Action execution failed.\n\n{result_msg}\n\nYou can type '2' / 'confirm' again to retry, or '0' / 'cancel' to discard.",
+                                reply_markup=get_action_approval_keyboard(session_id)
+                            )
+                        return
+                elif is_cancel:
+                    with _pending_actions_lock:
+                        _pending_actions.pop(session_id, None)
+                    db_delete_pending_action(session_id)
+                    await update.message.reply_text("Pending action cancelled.")
+                    return
+                else:
+                    await update.message.reply_text(
+                        f"⚠️ WARNING: Destructive Class C action detected. Are you sure you want to proceed? Reply with 'confirm' or '2' to execute, or '0' / 'cancel' to reject.",
+                        reply_markup=get_action_approval_keyboard(session_id)
+                    )
+                    return
+        else:
+            if _is_approval_message(msg):
+                with _pending_actions_lock:
+                    pending = _pending_actions.pop(session_id, None)
+                if pending:
+                    db_delete_pending_action(session_id)
+                    params = resolve_action_params(pending.get("params", {}), research_text="")
+                    log_execution_ledger_event(
+                        session_id=session_id,
+                        goal_id=pending.get("goal_id", "default"),
+                        task_id=pending.get("task_id"),
+                        department="execution",
+                        event_type="APPROVAL_GRANTED",
+                        state_before="WAITING",
+                        state_after="RUNNING",
+                        metadata={"by": "telegram_text", "action": action, "params": params}
+                    )
+                    ok, result_msg = await asyncio.to_thread(execute_google_action, action, params)
+                    if ok:
+                        await update.message.reply_text(f"Action executed successfully.\n\n{result_msg}")
+                    else:
+                        with _pending_actions_lock:
+                            _pending_actions[session_id] = pending
+                        db_save_pending_action(session_id, pending)
+                        await update.message.reply_text(
+                            f"Action execution failed.\n\n{result_msg}\n\nYou can type '1' / 'approve' again to retry, or '0' / 'cancel' to discard.",
+                            reply_markup=get_action_approval_keyboard(session_id)
+                        )
+                    return
 
     if pending and _is_reject_message(msg):
         with _pending_actions_lock:
@@ -9700,44 +6328,66 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             session_id = data.split("|", 1)[1].strip()
             sync_pending_actions()
             with _pending_actions_lock:
-                pending = _pending_actions.pop(session_id, None)
+                pending = _pending_actions.get(session_id)
             if not pending:
                 await query.edit_message_text("No pending action found to approve.")
                 return
             
-            # Delete from DB immediately to prevent concurrent lookups
-            db_delete_pending_action(session_id)
-            
             action = pending.get("action", "")
-            params = resolve_action_params(pending.get("params", {}), research_text="")
+            try:
+                from .auditor import get_service_class
+            except ImportError:
+                from auditor import get_service_class
             
-            # Log approval event
-            log_execution_ledger_event(
-                session_id=session_id,
-                goal_id=pending.get("goal_id", "default"),
-                task_id=pending.get("task_id"),
-                department="execution",
-                event_type="APPROVAL_GRANTED",
-                state_before="WAITING",
-                state_after="RUNNING",
-                metadata={"by": "telegram_callback", "action": action, "params": params}
-            )
+            is_class_c = (get_service_class(action) == "C") if action else False
+            stage = pending.get("stage", "approval")
             
-            ok, result_msg = await asyncio.to_thread(execute_google_action, action, params)
-            if ok:
-                status = "Action executed successfully."
-                await query.edit_message_text(f"{status}\n\n{result_msg}")
-            else:
-                # Re-insert on failure to allow retry
+            if is_class_c and stage == "approval":
+                pending["stage"] = "confirmation"
                 with _pending_actions_lock:
                     _pending_actions[session_id] = pending
                 db_save_pending_action(session_id, pending)
                 
-                status = "Action execution failed."
-                await query.edit_message_text(
-                    f"{status}\n\n{result_msg}\n\nYou can click Approve again to retry, or Cancel.",
-                    reply_markup=get_action_approval_keyboard(session_id)
+                warning_msg = (
+                    f"⚠️ WARNING: Destructive Class C action detected.\n"
+                    f"Proposed action: **{action}**\n\n"
+                    f"Are you sure you want to proceed? Reply with 'confirm' or '2' to execute, or click Confirm below."
                 )
+                await query.edit_message_text(warning_msg, reply_markup=get_action_approval_keyboard(session_id))
+                return
+                
+            # Otherwise, pop and execute!
+            with _pending_actions_lock:
+                pending = _pending_actions.pop(session_id, None)
+            if pending:
+                db_delete_pending_action(session_id)
+                params = resolve_action_params(pending.get("params", {}), research_text="")
+                
+                log_execution_ledger_event(
+                    session_id=session_id,
+                    goal_id=pending.get("goal_id", "default"),
+                    task_id=pending.get("task_id"),
+                    department="execution",
+                    event_type="APPROVAL_GRANTED",
+                    state_before="WAITING",
+                    state_after="RUNNING",
+                    metadata={"by": "telegram_callback", "action": action, "params": params}
+                )
+                
+                ok, result_msg = await asyncio.to_thread(execute_google_action, action, params)
+                if ok:
+                    status = "Action executed successfully."
+                    await query.edit_message_text(f"{status}\n\n{result_msg}")
+                else:
+                    with _pending_actions_lock:
+                        _pending_actions[session_id] = pending
+                    db_save_pending_action(session_id, pending)
+                    
+                    status = "Action execution failed."
+                    await query.edit_message_text(
+                        f"{status}\n\n{result_msg}\n\nYou can click Confirm again to retry, or Cancel." if is_class_c else f"{status}\n\n{result_msg}\n\nYou can click Approve again to retry, or Cancel.",
+                        reply_markup=get_action_approval_keyboard(session_id)
+                    )
             return
 
         if data.startswith("action_cancel|"):

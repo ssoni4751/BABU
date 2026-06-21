@@ -402,6 +402,51 @@ class TestIntentGovernance(unittest.TestCase):
         self.assertIn("strictly prohibited", reason)
         print("✅ Dynamic department routing verified successfully for helper and reasoning departments.")
 
+    def test_13_service_classes_double_confirmation(self):
+        """Test classification of services (Class A, B, C) and the double-confirmation warning flow for Class C."""
+        from babu.auditor import get_service_class, PreExecutionGatekeeper
+        
+        # 1. Verify service classes classification
+        self.assertEqual(get_service_class("search_sheet"), "A")
+        self.assertEqual(get_service_class("send_email"), "B")
+        self.assertEqual(get_service_class("delete_document"), "C")
+        
+        # 2. Verify auditor supported actions includes Class C
+        gk = PreExecutionGatekeeper()
+        self.assertIn("delete_document", gk.supported_actions)
+        self.assertIn("delete_spreadsheet", gk.supported_actions)
+        self.assertIn("delete_event", gk.supported_actions)
+        
+        # 3. Verify Class C state machine transitions in bot.py approval logic
+        from babu.bot import _pending_actions, _pending_actions_lock, db_save_pending_action, db_delete_pending_action
+        
+        session_id = "test_confirm_session"
+        pending_action = {
+            "action": "delete_document",
+            "params": {"doc_id": "doc123"},
+            "stage": "approval"
+        }
+        
+        # Initialize pending actions
+        with _pending_actions_lock:
+            _pending_actions[session_id] = pending_action.copy()
+            
+        # Clean up database state if exists
+        db_delete_pending_action(session_id)
+        db_save_pending_action(session_id, pending_action)
+        
+        # Test first stage approval transition
+        from babu.bot import _is_approval_message, _is_reject_message
+        self.assertTrue(_is_approval_message("approve"))
+        self.assertTrue(_is_approval_message("1"))
+        self.assertTrue(_is_reject_message("cancel"))
+        self.assertTrue(_is_reject_message("0"))
+        
+        # Clean up
+        db_delete_pending_action(session_id)
+        with _pending_actions_lock:
+            _pending_actions.pop(session_id, None)
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -14,10 +14,10 @@ from typing import Optional
 
 try:
     from .rag_storage import store_knowledge_chunk, init_rag_db
-    from .bot import get_db_connection
+    from .services import get_db_connection
 except ImportError:
     from rag_storage import store_knowledge_chunk, init_rag_db
-    from bot import get_db_connection
+    from services import get_db_connection
 
 def chunk_markdown_by_headings(content: str) -> list[dict]:
     """Split markdown documents by section headings (# or ## or ###)."""

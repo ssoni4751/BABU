@@ -59,6 +59,22 @@ def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]
     return allowed_depts_set, set(allowed_actions)
 
 
+def get_service_class(action: str) -> str:
+    """Classify execution action into Service Class A, B, or C according to V2 Vision Draft."""
+    # Class A: Read-only services (Auto Approved)
+    class_a = {"search_sheet", "search_gmail", "search_image", "web_search", "wikipedia_search"}
+    # Class C: Destructive services (Preview -> Approval -> Confirmation -> Execute)
+    class_c = {"delete_document", "delete_spreadsheet", "delete_event", "mass_update", "bulk_delete"}
+    
+    if action in class_a:
+        return "A"
+    elif action in class_c:
+        return "C"
+    else:
+        # Default all other external mutating actions to Class B (Preview -> Approval -> Execute)
+        return "B"
+
+
 class PreExecutionGatekeeper:
     """Deterministic, rules-based checks. Executes at Layer 5 before task dispatch."""
 
@@ -77,7 +93,13 @@ class PreExecutionGatekeeper:
             "search_image",
             "search_gmail",
             "post_to_facebook",
-            "generate_image"
+            "generate_image",
+            # Class C Destructive actions
+            "delete_document",
+            "delete_spreadsheet",
+            "delete_event",
+            "mass_update",
+            "bulk_delete"
         }
 
     def audit(self, task: TaskDTO) -> Tuple[bool, str]:
@@ -126,7 +148,9 @@ class PreExecutionGatekeeper:
             google_actions = {
                 "send_email", "create_event", "log_to_sheet", "create_doc",
                 "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive",
-                "search_gmail"
+                "search_gmail",
+                # Class C Destructive Google actions
+                "delete_document", "delete_spreadsheet", "delete_event"
             }
             if action in google_actions and not is_google_configured():
                 return False, f"Google Workspace credentials not configured. Cannot run execution action '{action}'."

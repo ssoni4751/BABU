@@ -16,6 +16,11 @@ import hashlib
 import random
 from typing import Any, Optional, Union
 
+try:
+    from .services import get_db_connection
+except ImportError:
+    from services import get_db_connection
+
 # Define constraints
 MAX_RESULTS = 3
 MAX_RETRIEVED_TOKENS = 1200
@@ -93,10 +98,7 @@ def get_embedding(text: str) -> list[float]:
 
 def init_rag_db():
     """Register pgvector or SQLite schemas based on DATABASE_URL availability."""
-    try:
-        from .bot import get_db_connection
-    except ImportError:
-        from bot import get_db_connection
+
 
     conn, is_pg = get_db_connection()
     try:
@@ -150,10 +152,7 @@ def store_knowledge_chunk(collection: str, source: str, title: str, chunk_text: 
     vector = get_embedding(chunk_text)
     meta_dict = metadata or {}
 
-    try:
-        from .bot import get_db_connection
-    except ImportError:
-        from bot import get_db_connection
+
 
     conn, is_pg = get_db_connection()
     try:
@@ -200,10 +199,7 @@ def retrieve_knowledge(query: str, collections: Optional[list[str]] = None, top_
     query_vector = get_embedding(query)
     results = []
 
-    try:
-        from .bot import get_db_connection
-    except ImportError:
-        from bot import get_db_connection
+
 
     conn, is_pg = get_db_connection()
     try:

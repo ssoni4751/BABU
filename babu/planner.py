@@ -361,9 +361,9 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
                 system_query=packet.system_query
             )
         try:
-            from babu.bot import extract_tokens
+            from babu.services import extract_tokens
         except ImportError:
-            from bot import extract_tokens
+            from services import extract_tokens
         packet.tokens = extract_tokens(response)
         packet.model = model_name
         
