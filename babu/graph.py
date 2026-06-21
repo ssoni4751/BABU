@@ -29,7 +29,8 @@ try:
         add_tokens,
         log_execution_ledger_event,
         db_save_pending_action,
-        db_delete_pending_action
+        db_delete_pending_action,
+        get_current_profile
     )
     from .gateway import (
         is_pure_greeting,
@@ -63,7 +64,8 @@ except ImportError:
         add_tokens,
         log_execution_ledger_event,
         db_save_pending_action,
-        db_delete_pending_action
+        db_delete_pending_action,
+        get_current_profile
     )
     from gateway import (
         is_pure_greeting,
