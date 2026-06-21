@@ -65,9 +65,11 @@ def get_db_connection():
         url = DATABASE_URL
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql://", 1)
-        return psycopg2.connect(url), True
-    else:
-        return sqlite3.connect(DB_PATH), False
+        try:
+            return psycopg2.connect(url, connect_timeout=3), True
+        except Exception as e:
+            print(f"[DB WARNING] PostgreSQL unavailable; falling back to SQLite at {DB_PATH}: {e}", flush=True)
+    return sqlite3.connect(DB_PATH), False
 
 def get_token_costs(model_name: str) -> tuple[float, float]:
     if not model_name:
@@ -233,6 +235,9 @@ def get_current_profile() -> dict:
 def is_profile_relevant_query(query: str) -> bool:
     """Determine if a query is relevant to the user's personal details, business, or family graph."""
     q = query.lower()
+    public_knowledge_prefixes = ("what is ", "what are ", "how to ", "explain ", "definition of ", "tell me about ", "general ")
+    if q.startswith(public_knowledge_prefixes) and not any(marker in q for marker in (" my ", " me ", " mine", "my ")):
+        return False
     keywords = {
         "mother", "father", "wife", "son", "daughter", "brother", "sister", "family", "parent",
         "spouse", "mbabuge", "marriage", "uncle", "aunty", "nephew", "niece", "cousin",
@@ -246,6 +251,8 @@ def is_profile_relevant_query(query: str) -> bool:
 def is_private_data_query(query: str, category: Optional[str] = None) -> bool:
     if category in ("BUSINESS_INFORMATION", "PERSONAL_INFORMATION"):
         return True
+    if category == "PUBLIC_INFORMATION":
+        return False
     return is_profile_relevant_query(query)
 
 def get_user_profile_text(profile_type: str = "FULL") -> str:
@@ -539,7 +546,7 @@ def clean_search_query(query: str) -> str:
         t = re.sub(r'^(?:/[a-zA-Z0-9_]+|![a-zA-Z0-9_]+)\s*', '', t)
         
     # 2. Strip direct conversational leading verb triggers
-    t = re.sub(r'^(?i)\b(?:launch|sprint|walk|postnow|post|publish|run|execute|search|find|lookup|check|websearch|wikipedia)\b\s*', '', t)
+    t = re.sub(r'(?i)^\b(?:launch|sprint|walk|postnow|post|publish|run|execute|search|find|lookup|check|websearch|wikipedia)\b\s*', '', t)
     
     # 3. Strip conversational query suffixes/boilerplate
     t = re.sub(r'(?i)\b(?:please|plz|kindly|could you|can you|tell me|show me|about|details of|details for|status of)\b\s*', '', t)
@@ -786,6 +793,55 @@ def retrieve_system_memory_via_sql(query: str) -> str:
                 context_parts.append(part)
         except Exception as e:
             print(f"[SQL MEMORY ERROR] Failed to fetch timeline: {e}", flush=True)
+
+    if any(k in q_lower for k in ("anti-pattern", "anti pattern", "rule", "rules", "policy", "policies")):
+        try:
+            cursor.execute("SELECT key, data FROM system_memory WHERE key LIKE '%anti%' OR key LIKE '%rule%' ORDER BY key LIMIT 10")
+            rows = cursor.fetchall()
+            if rows:
+                part = "=== K4 - GOVERNANCE RULES & LESSONS ===\n"
+                for r in rows:
+                    part += f"{r[0]}: {r[1]}\n"
+                context_parts.append(part)
+        except Exception as e:
+            print(f"[SQL MEMORY ERROR] Failed to fetch system rules: {e}", flush=True)
+
+    if any(k in q_lower for k in ("template", "templates", "etemp", "trusted")):
+        try:
+            cursor.execute("SELECT template_id, template_signature, status, execution_count, success_count FROM trusted_templates ORDER BY template_id LIMIT 10")
+            rows = cursor.fetchall()
+            if rows:
+                part = "=== K4 - TRUSTED EXECUTION TEMPLATES ===\n"
+                for r in rows:
+                    part += f"{r[0]} | {r[1]} | {r[2]} | executions={r[3]} | successes={r[4]}\n"
+                context_parts.append(part)
+        except Exception as e:
+            print(f"[SQL MEMORY ERROR] Failed to fetch templates: {e}", flush=True)
+
+    if any(k in q_lower for k in ("adr", "architecture", "tradeoff", "postmortem", "lesson", "evolution", "upgrade", "milestone", "impact")):
+        try:
+            cursor.execute("""
+                SELECT record_id, record_type, title, phase, problem, decision, reason, outcome, tradeoff, impact_score, status, timestamp
+                FROM architecture_knowledge
+                ORDER BY impact_score DESC, record_id ASC
+                LIMIT 8
+            """)
+            rows = cursor.fetchall()
+            if rows:
+                part = "=== K5 - ARCHITECTURE KNOWLEDGE SYSTEM (AKS) ===\n"
+                for r in rows:
+                    part += (
+                        f"[{r[0]}] {r[2]} ({r[3] or 'General'}) | Type: {r[1]} | Status: {r[10]} | Impact: {r[9]}\n"
+                        f"- Problem: {r[4]}\n"
+                        f"- Decision: {r[5]}\n"
+                        f"- Reason: {r[6]}\n"
+                        f"- Outcome: {r[7]}\n"
+                        f"- Tradeoff: {r[8]}\n"
+                        f"- Timestamp: {r[11]}\n"
+                    )
+                context_parts.append(part)
+        except Exception as e:
+            print(f"[SQL MEMORY ERROR] Failed to fetch architecture knowledge: {e}", flush=True)
 
     cursor.close()
     conn.close()

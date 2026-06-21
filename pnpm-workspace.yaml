@@ -50,7 +50,7 @@ catalog:
   '@types/react': ^19.2.0
   '@types/react-dom': ^19.2.0
   '@vitejs/plugin-react': ^5.0.4
-  class-vbabunce-authority: ^0.7.1
+  class-variance-authority: ^0.7.1
   clsx: ^2.1.1
   drizzle-orm: ^0.45.2
   framer-motion: ^12.23.24
@@ -68,11 +68,27 @@ catalog:
 
 autoInstallPeers: false
 
+supportedArchitectures:
+  os:
+    - current
+    - linux
+    - win32
+  cpu:
+    - current
+    - x64
+  libc:
+    - current
+    - glibc
+    - musl
+
 onlyBuiltDependencies:
   - '@swc/core'
   - esbuild
   - msw
   - unrs-resolver
+
+allowBuilds:
+  esbuild: true
 
 overrides:
   # replit uses linux-x64 only, we can exclude all other platforms
@@ -95,7 +111,6 @@ overrides:
   "esbuild>@esbuild/sunos-x64": "-"
   "esbuild>@esbuild/win32-arm64": "-"
   "esbuild>@esbuild/win32-ia32": "-"
-  "esbuild>@esbuild/win32-x64": "-"
   "esbuild>@esbuild/aix-ppc64": '-'
   "esbuild>@esbuild/android-arm": '-'
   "esbuild>@esbuild/android-arm64": '-'
@@ -110,7 +125,6 @@ overrides:
   "lightningcss>lightningcss-linux-arm64-musl": "-"
   "lightningcss>lightningcss-linux-x64-musl": "-"
   "lightningcss>lightningcss-win32-arm64-msvc": "-"
-  "lightningcss>lightningcss-win32-x64-msvc": "-"
   "@tailwindcss/oxide>@tailwindcss/oxide-android-arm64": "-"
   "@tailwindcss/oxide>@tailwindcss/oxide-darwin-arm64": "-"
   "@tailwindcss/oxide>@tailwindcss/oxide-darwin-x64": "-"
@@ -119,7 +133,6 @@ overrides:
   "@tailwindcss/oxide>@tailwindcss/oxide-linux-arm64-gnu": "-"
   "@tailwindcss/oxide>@tailwindcss/oxide-linux-arm64-musl": "-"
   "@tailwindcss/oxide>@tailwindcss/oxide-win32-arm64-msvc": "-"
-  "@tailwindcss/oxide>@tailwindcss/oxide-win32-x64-msvc": "-"
   "@tailwindcss/oxide>@tailwindcss/oxide-linux-x64-musl": "-"
   "rollup>@rollup/rollup-android-arm-eabi": "-"
   "rollup>@rollup/rollup-android-arm64": "-"
@@ -144,7 +157,6 @@ overrides:
   "rollup>@rollup/rollup-win32-arm64-msvc": "-"
   "rollup>@rollup/rollup-win32-ia32-msvc": "-"
   "rollup>@rollup/rollup-win32-x64-gnu": "-"
-  "rollup>@rollup/rollup-win32-x64-msvc": "-"
   "@expo/ngrok-bin>@expo/ngrok-bin-darwin-arm64": "-"
   "@expo/ngrok-bin>@expo/ngrok-bin-darwin-x64": "-"
   "@expo/ngrok-bin>@expo/ngrok-bin-freebsd-ia32": "-"

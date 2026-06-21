@@ -288,9 +288,47 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
         "my official mail", "my official email", "official mail", "official email",
         "my personal mail", "my personal email", "personal mail", "personal email",
         "my phone", "my number", "my mobile", "my address", "my name", "my nickname",
-        "my email", "my mail", "to my mail", "to my email",
+        "my email", "my mail", "to my mail", "to my email", "my mother",
+        "my father", "my family", "my parents", "my brother", "my sister",
+        "my sibling", "my profile", "who am i",
     )
     _force_lookup = any(marker in t for marker in _personal_data_markers)
+
+    # Deterministic governance must not disappear when an inference provider is
+    # unavailable.  High-confidence execution classes are therefore identified
+    # before the optional semantic classifier runs.
+    _mutating_actions = {
+        "send_email": ("send", "email"),
+        "create_event": ("create", "event"),
+        "create_doc": ("create", "document"),
+        "post_to_facebook": ("facebook", "post"),
+    }
+    detected_action = next(
+        (action for action, markers in _mutating_actions.items() if all(m in t for m in markers)),
+        None,
+    )
+    if detected_action:
+        scheduled = any(marker in t for marker in ("scheduled", "daily", "automatically", "background"))
+        return IntentPacket(
+            allowed_departments=["information", "writing", "execution", "pa"],
+            allowed_actions=[detected_action],
+            execution_mode="AUTO_EXECUTE" if scheduled else "APPROVAL_REQUIRED",
+            confidence=0.95,
+            tokens={"prompt": 0, "completion": 0, "total": 0},
+            model="rules_engine",
+            query_category="PERSONAL_INFORMATION" if _force_lookup else "PUBLIC_INFORMATION",
+        )
+
+    if any(marker in t for marker in ("email", "emails", "gmail", "mail")) and any(marker in t for marker in ("check", "search", "find", "recent", "updates", "summarize")):
+        return IntentPacket(
+            allowed_departments=["information", "execution", "writing", "pa"],
+            allowed_actions=["search_gmail"],
+            execution_mode="READ_ONLY",
+            confidence=0.9,
+            tokens={"prompt": 0, "completion": 0, "total": 0},
+            model="rules_engine",
+            query_category="PERSONAL_INFORMATION" if _force_lookup or "my" in t else "PUBLIC_INFORMATION",
+        )
 
     # 2. LLM-based robust classification
     from langchain_core.messages import SystemMessage, HumanMessage
@@ -412,7 +450,7 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
             allowed_departments=default_depts,
             allowed_actions=default_actions,
             execution_mode="READ_ONLY",
-            confidence=0.5,
+            confidence=0.75 if _force_lookup else 0.5,
             tokens={"prompt": 0, "completion": 0, "total": 0},
             model=model_name,
             system_query=is_sys
@@ -572,6 +610,185 @@ def _build_fallback_graph(
     )
 
 
+def _intent_packet_dict(intent_packet: Optional[IntentPacket | dict]) -> Optional[dict]:
+    if intent_packet is None:
+        return None
+    if isinstance(intent_packet, dict):
+        return intent_packet
+    return intent_packet.to_dict()
+
+
+def _has_gmail_lookup_intent(query: str, intent_packet: Optional[IntentPacket]) -> bool:
+    text = query.lower()
+    actions = set(intent_packet.allowed_actions if intent_packet else [])
+    return (
+        "search_gmail" in actions
+        or (
+            any(marker in text for marker in ("email", "emails", "gmail", "mail"))
+            and any(marker in text for marker in ("check", "search", "find", "recent", "updates", "summarize"))
+        )
+    )
+
+
+def _has_research_report_intent(query: str, intent_packet: Optional[IntentPacket]) -> bool:
+    text = query.lower()
+    return (
+        "research" in text
+        and any(marker in text for marker in ("report", "save", "changes", "summary", "brief"))
+    ) or bool(intent_packet and intent_packet.research and any(marker in text for marker in ("report", "save", "write")))
+
+
+def _build_gmail_lookup_graph(
+    query: str,
+    goal_id: Optional[str] = None,
+    goal_type: str = "NEW",
+    intent_packet: Optional[IntentPacket | dict] = None,
+) -> GoalGraph:
+    """Deterministic read-only Gmail lookup plan used when the LLM provider is unavailable."""
+    if not goal_id:
+        now = datetime.now(timezone.utc)
+        goal_id = f"G-{now.strftime('%Y%m%d-%H%M%S')}"
+    now_iso = datetime.now(timezone.utc).isoformat()
+    packet_dict = _intent_packet_dict(intent_packet)
+
+    tasks = [
+        TaskDTO(
+            task_id="T1",
+            objective="Search Gmail read-only for messages relevant to the user's request; do not send, delete, archive, or mutate any email.",
+            department="execution",
+            depends_on=[],
+            priority=1,
+            state=TaskState.READY,
+            context={
+                "action": "search_gmail",
+                "params": {"query": query, "max_results": 10},
+                "intent_packet": packet_dict,
+            },
+            token_budget=2000,
+            compliance_checklist=[
+                "Use only the read-only search_gmail action",
+                "Do not perform mutating Gmail operations",
+                "Return message metadata and snippets needed for synthesis",
+            ],
+        ),
+        TaskDTO(
+            task_id="T2",
+            objective="Summarize the Gmail search results into concise user-facing findings and separate confirmed facts from missing evidence.",
+            department="writing",
+            depends_on=["T1"],
+            priority=2,
+            state=TaskState.PENDING,
+            context={"intent_packet": packet_dict},
+            token_budget=2500,
+            compliance_checklist=[
+                "Summarize only evidence returned by the Gmail search task",
+                "Mention if no relevant messages were found",
+                "Avoid inventing sender names, dates, or outcomes",
+            ],
+        ),
+        TaskDTO(
+            task_id="T3",
+            objective="Report the summarized email findings to the user and disclose any limitations or missing access.",
+            department="pa",
+            depends_on=["T2"],
+            priority=3,
+            state=TaskState.PENDING,
+            context={"intent_packet": packet_dict},
+            token_budget=1500,
+            compliance_checklist=[
+                "Answer directly and briefly",
+                "Do not imply any email was changed",
+            ],
+        ),
+    ]
+
+    return GoalGraph(
+        goal_id=goal_id,
+        goal=query[:200],
+        tasks=tasks,
+        status="ACTIVE",
+        created_at=now_iso,
+        goal_type=goal_type,
+        planner_status="SUCCESS",
+        intent_packet=packet_dict,
+        planning_tokens={"prompt": 0, "completion": 0, "total": 0},
+    )
+
+
+def _build_research_report_graph(
+    query: str,
+    goal_id: Optional[str] = None,
+    goal_type: str = "NEW",
+    intent_packet: Optional[IntentPacket | dict] = None,
+) -> GoalGraph:
+    """Deterministic research/report plan with explicit source and citation safeguards."""
+    if not goal_id:
+        now = datetime.now(timezone.utc)
+        goal_id = f"G-{now.strftime('%Y%m%d-%H%M%S')}"
+    now_iso = datetime.now(timezone.utc).isoformat()
+    packet_dict = _intent_packet_dict(intent_packet)
+
+    tasks = [
+        TaskDTO(
+            task_id="T1",
+            objective="Research the requested topic using credible, current sources; capture source titles, URLs, publication dates, and exact claims needed for citation.",
+            department="research",
+            depends_on=[],
+            priority=1,
+            state=TaskState.READY,
+            context={"intent_packet": packet_dict},
+            token_budget=4500,
+            compliance_checklist=[
+                "Use multiple credible sources where available",
+                "Record source URLs and publication or access dates",
+                "Separate verified findings from uncertain or unsupported claims",
+            ],
+        ),
+        TaskDTO(
+            task_id="T2",
+            objective="Write a concise report from the research with explicit citations, references, and source-linked claims.",
+            department="writing",
+            depends_on=["T1"],
+            priority=2,
+            state=TaskState.PENDING,
+            context={"intent_packet": packet_dict},
+            token_budget=3500,
+            compliance_checklist=[
+                "Include a dedicated citation verification check",
+                "List all references or sources used",
+                "Ensure every material factual claim is traceable to a source",
+                "Keep the report concise and avoid unsupported extrapolation",
+            ],
+        ),
+        TaskDTO(
+            task_id="T3",
+            objective="Present the final report to the user, including limitations and source/reference notes.",
+            department="pa",
+            depends_on=["T2"],
+            priority=3,
+            state=TaskState.PENDING,
+            context={"intent_packet": packet_dict},
+            token_budget=1500,
+            compliance_checklist=[
+                "Mention citation/reference coverage",
+                "Flag any unresolved uncertainty",
+            ],
+        ),
+    ]
+
+    return GoalGraph(
+        goal_id=goal_id,
+        goal=query[:200],
+        tasks=tasks,
+        status="ACTIVE",
+        created_at=now_iso,
+        goal_type=goal_type,
+        planner_status="SUCCESS",
+        intent_packet=packet_dict,
+        planning_tokens={"prompt": 0, "completion": 0, "total": 0},
+    )
+
+
 def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]]:
     """Dynamically resolve allowed departments and allowed actions based on intent packet."""
     allowed_depts = intent_packet_dict.get("allowed_departments")
@@ -653,6 +870,7 @@ def plan_goal(
     last_goal_text: Optional[str] = None,
     intent_packet: Optional[IntentPacket] = None,
     session_id: Optional[str] = None,
+    awareness_report: Optional[dict] = None,
 ) -> GoalGraph:
     """Decompose *query* into a structured GoalGraph using a single LLM call.
 
@@ -725,6 +943,11 @@ def plan_goal(
         user_content_parts.append(f"Recent history: {history_snippet}")
     if profile_text:
         user_content_parts.append(f"User profile: {profile_text}")
+    if awareness_report:
+        user_content_parts.append(
+            "Situation Report (advisory, non-authoritative):\n"
+            + json.dumps(awareness_report, ensure_ascii=False, sort_keys=True)
+        )
 
     user_content = "\n".join(user_content_parts)
 
@@ -794,6 +1017,22 @@ def plan_goal(
             p_status = "NETWORK"
         else:
             p_status = "PROVIDER_ERROR"
+        if _has_gmail_lookup_intent(query, intent_packet):
+            print("[PLANNER] Provider unavailable; using deterministic Gmail lookup graph.", flush=True)
+            return _build_gmail_lookup_graph(
+                query,
+                goal_id=goal_id,
+                goal_type=goal_type,
+                intent_packet=intent_packet,
+            )
+        if _has_research_report_intent(query, intent_packet):
+            print("[PLANNER] Provider unavailable; using deterministic research/report graph.", flush=True)
+            return _build_research_report_graph(
+                query,
+                goal_id=goal_id,
+                goal_type=goal_type,
+                intent_packet=intent_packet,
+            )
         return _build_fallback_graph(query, goal_id=goal_id, goal_type=goal_type, planner_status=p_status, intent_packet=intent_packet.to_dict() if intent_packet else None)
 
     # Parse JSON -----------------------------------------------------------

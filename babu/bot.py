@@ -42,6 +42,7 @@ try:
         get_token_costs,
         log_temporal_event,
         get_temporal_events,
+        log_execution_ledger_event,
         get_cached_search,
         store_cached_search,
         load_user_profile,
@@ -94,6 +95,7 @@ except ImportError:
         get_token_costs,
         log_temporal_event,
         get_temporal_events,
+        log_execution_ledger_event,
         get_cached_search,
         store_cached_search,
         load_user_profile,
@@ -676,7 +678,7 @@ def build_llm(model_name: str, temp: float):
     elif "/" in target_model or target_model.startswith("openrouter/"):
         clean_model = target_model.replace("openrouter/", "")
         if not openrouter_key:
-            raise ValueError("OPENROUTER_API_KEY is not configured in environment vbabubles.")
+            raise ValueError("OPENROUTER_API_KEY is not configured in environment variables.")
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(
             model=clean_model,
@@ -688,7 +690,7 @@ def build_llm(model_name: str, temp: float):
     # 3. OpenAI Native Support
     elif target_model.startswith("gpt-"):
         if not openai_key:
-            raise ValueError("OPENAI_API_KEY is not configured in environment vbabubles.")
+            raise ValueError("OPENAI_API_KEY is not configured in environment variables.")
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(model=target_model, temperature=temp, api_key=openai_key)
 

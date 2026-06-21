@@ -21,6 +21,14 @@ try:
 except ImportError:
     from services import get_db_connection
 
+
+def _get_db_connection():
+    try:
+        from . import bot as bot_module
+        return bot_module.get_db_connection()
+    except Exception:
+        return get_db_connection()
+
 # Define constraints
 MAX_RESULTS = 3
 MAX_RETRIEVED_TOKENS = 1200
@@ -100,7 +108,7 @@ def init_rag_db():
     """Register pgvector or SQLite schemas based on DATABASE_URL availability."""
 
 
-    conn, is_pg = get_db_connection()
+    conn, is_pg = _get_db_connection()
     try:
         cursor = conn.cursor()
         if is_pg:
@@ -154,7 +162,7 @@ def store_knowledge_chunk(collection: str, source: str, title: str, chunk_text: 
 
 
 
-    conn, is_pg = get_db_connection()
+    conn, is_pg = _get_db_connection()
     try:
         cursor = conn.cursor()
         if is_pg:
@@ -201,7 +209,7 @@ def retrieve_knowledge(query: str, collections: Optional[list[str]] = None, top_
 
 
 
-    conn, is_pg = get_db_connection()
+    conn, is_pg = _get_db_connection()
     try:
         cursor = conn.cursor()
         if is_pg:
@@ -310,7 +318,7 @@ def retrieve_knowledge(query: str, collections: Optional[list[str]] = None, top_
         keywords = [w.strip() for w in re.split(r'\W+', query) if len(w.strip()) > 3]
         if keywords:
             try:
-                conn, is_pg = get_db_connection()
+                conn, is_pg = _get_db_connection()
                 cursor = conn.cursor()
                 if is_pg:
                     like_clauses = " OR ".join(["chunk_text ILIKE %s" for _ in keywords])

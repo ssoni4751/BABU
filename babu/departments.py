@@ -71,8 +71,8 @@ class DepartmentHead:
             "constraints": task.context.get("constraints", []),
         }
 
-    def validate_schema_invbabunts(self, raw_result: str) -> None:
-        """Enforce strict structured output invbabunts for departments requiring JSON shapes.
+    def validate_schema_invariants(self, raw_result: str) -> None:
+        """Enforce strict structured output invariants for departments requiring JSON shapes.
 
         Raises ValueError on mismatch.
         """
@@ -123,8 +123,8 @@ class DepartmentHead:
         )
         raw_result, tokens = self._run_worker(task, scoped, llm)
         
-        # Enforce structural schema invbabunts
-        self.validate_schema_invbabunts(raw_result)
+        # Enforce structural schema invariants
+        self.validate_schema_invariants(raw_result)
         
         compressed = self.compress_result(raw_result)
         print(
@@ -143,6 +143,10 @@ class DepartmentHead:
         except ImportError:
             from workers import run_worker
         return run_worker(task, scoped_context, llm)
+
+    def validate_schema_invbabunts(self, raw_result: str) -> None:
+        """Backward-compatible alias for older tests/callers."""
+        return self.validate_schema_invariants(raw_result)
 
     def compress_result(self, raw: str, max_chars: int = 1500) -> str:
         """Deterministic compression: dedup lines, truncate."""
@@ -381,8 +385,8 @@ class WritingHead(DepartmentHead):
 
     name: str = "writing"
 
-    def validate_schema_invbabunts(self, raw_result: str) -> None:
-        """Enforce strict structured output invbabunts for writing department.
+    def validate_schema_invariants(self, raw_result: str) -> None:
+        """Enforce strict structured output invariants for writing department.
         Allow short outputs (e.g. social media posts / captions like "hi") as long as they are non-empty.
         """
         if not raw_result or not raw_result.strip():

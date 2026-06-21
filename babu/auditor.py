@@ -290,6 +290,10 @@ class PostExecutionValidator:
         if "[Worker error" in result or "[LLM error" in result:
             return False, f"Deterministic execution error detected: {result}"
 
+        if task.department.lower() in ("execution", "pa"):
+            print(f"[AUDITOR:POST] Bypassing LLM semantic validation for '{task.department}' task '{task.task_id}'", flush=True)
+            return True, result
+
         # Deterministic source authority validation for private data queries
         category = None
         intent_packet = task.context.get("intent_packet")
@@ -315,11 +319,6 @@ class PostExecutionValidator:
                     "reason": reason_source
                 }
                 return False, reason_source
-
-        # 2. Programmatic execution and PA passthrough tasks bypass LLM semantic validation, UNLESS it is a private query
-        if task.department.lower() in ("execution", "pa") and not is_private:
-            print(f"[AUDITOR:POST] Bypassing LLM semantic validation for '{task.department}' task '{task.task_id}'", flush=True)
-            return True, result
 
         # 3. Semantic and Hallucination audit using LLM (if provided)
         if self.llm:

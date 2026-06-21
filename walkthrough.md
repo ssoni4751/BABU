@@ -219,3 +219,51 @@ All commits pushed to: https://github.com/ssoni4751/ARIA.git (main branch)
 
   Live API test run     Run full pytest with real GROQ_API_KEY and GEMINI_API_KEY
                         to validate integration test pass rate in live environment
+
+---
+
+## 12. June 21, 2026 — BABU v2 Vision Alignment Upgrade
+
+This pass implemented the BABU v2 vision plan as an operational institution:
+
+- Added deterministic Awareness with a service registry, service health inspection,
+  and Situation Reports.
+- Reworked bootstrap into the required institutional sequence:
+  Constitution -> ROOT_INDEX -> Governance -> Configuration -> Infrastructure ->
+  Brain -> Awareness -> Planner -> Transports.
+- Added a hard Phase 8 transport gate so Telegram/HTTP-style transports cannot
+  open before institutional bootstrapping is complete.
+- Wired Awareness reports into the graph/router/planner path so planning receives
+  service state instead of guessing availability.
+- Added deterministic offline planner paths for read-only Gmail lookup and
+  research/report workflows, preserving governance even when model providers fail.
+- Repaired executor/auditor/task-engine API drift and restored execution ledger
+  lifecycle events.
+- Fixed RAG storage testability, SQL system-memory retrieval, PostgreSQL-to-SQLite
+  fallback behavior, public/private query classification, and immune-rule
+  deduplication.
+- Cleaned ARIA -> BABU rename collateral in frontend packages, CSS directives,
+  pnpm lockfile entries, TypeScript config, and source-facing messages.
+- Added default pytest collection safeguards for manual/live-service smoke scripts.
+- Added architecture regression tests for Awareness, service contracts,
+  bootstrap order, transport gating, and deterministic intent governance.
+
+### Files introduced
+
+  babu/awareness.py             Deterministic Awareness + service registry
+  test_vision_architecture.py   BABU v2 architecture regression tests
+  conftest.py                   Default pytest collection guard for live scripts
+
+### Verification after upgrade
+
+  Python:      135 passed
+  JS:          pnpm run typecheck passed
+  JS build:    pnpm run build passed
+
+### Operational notes
+
+- Node.js LTS was installed locally to run the JS verification gates.
+- pnpm workspace config now supports both Linux and Windows x64 native optional
+  packages so local Windows builds and Linux deployment locks can coexist.
+- Runtime-generated profile/routing JSON entries from tests were intentionally
+  left out of the commit because they are operational state, not upgrade code.

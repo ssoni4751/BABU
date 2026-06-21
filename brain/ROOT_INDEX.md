@@ -18,4 +18,8 @@ This index serves as the master map of the BABU cognitive architecture and opera
 
 ## 4. Memory & Runtime
 - **[Runtime index](../babu/runtime_index.md)**: Map of active memory layers (K0-K7) and runtime state indexes.
-- **[App Boot Sequence](../babu/bootstrap.py)**: The 6-phase bootstrap and compilation sequence for system startup.
+- **[App Boot Sequence](../babu/bootstrap.py)**: The constitutional 8-phase initialization sequence followed by the Phase 8 transport gate.
+
+## 5. Awareness & Service State
+- **[Awareness Engine](../babu/awareness.py)**: Deterministic service-state inspection and Situation Reports. Awareness informs but never plans, authorizes, or executes.
+- **Service Registry**: Every transport and infrastructure service declares capabilities, dependencies, failure modes, and fallbacks.

@@ -2,11 +2,12 @@ import os
 import sys
 import json
 import threading
+import re
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, List, Any
 from dotenv import load_dotenv
 
-# Ensure environment vbabubles are loaded
+# Ensure environment variables are loaded
 load_dotenv()
 
 # Force UTF-8 encoding for Windows standard streams to prevent emoji/unicode logging crashes
@@ -223,6 +224,24 @@ def consolidate_failures_semantic(new_entry: dict, existing_failures: list) -> t
     same_domain_failures = [f for f in existing_failures if f.get("domain") == new_entry.get("domain")]
     if not same_domain_failures:
         return False, existing_failures
+
+    def _tokens(text: str) -> set[str]:
+        stop = {"the", "and", "or", "to", "for", "in", "of", "a", "an", "is", "are", "was", "were", "has", "have", "using", "avoid", "prevent", "exception", "critical", "direction", "methodology", "domain"}
+        return {w for w in re.findall(r"[a-z0-9]+", (text or "").lower()) if len(w) > 2 and w not in stop}
+
+    candidate_tokens = _tokens(new_entry.get("active_anti_pattern_rule", ""))
+    for f in same_domain_failures:
+        existing_tokens = _tokens(f.get("active_anti_pattern_rule", ""))
+        same_method = f.get("attempted_methodology") == new_entry.get("attempted_methodology")
+        overlap = len(candidate_tokens & existing_tokens) / max(1, len(candidate_tokens | existing_tokens))
+        oauth_family = {"facebook", "oauth", "token", "expired", "invalid", "page"}
+        if same_method and (overlap >= 0.35 or oauth_family <= (candidate_tokens | existing_tokens)):
+            f["success_count"] = f.get("success_count", 0) + 1
+            f["confidence"] = min(1.0, f.get("confidence", 1.0) + 0.05)
+            f["last_reinforced"] = datetime.now(timezone.utc).isoformat()
+            f["timestamp"] = datetime.now(timezone.utc).isoformat()
+            print(f"[IMMUNE SYSTEM] Deterministic dedup consolidated candidate into existing rule '{f.get('failure_signature')}'.", flush=True)
+            return True, existing_failures
 
     # Construct a lightweight mapping of rules for the LLM
     rules_list = []

@@ -15,7 +15,7 @@
     "strictFunctionTypes": false,
     "strictBindCallApply": true,
     "strictPropertyInitialization": true,
-    "useUnknownInCatchVbabubles": true,
+    "useUnknownInCatchVariables": true,
     "alwaysStrict": true,
     "skipLibCheck": true,
     "target": "es2022",

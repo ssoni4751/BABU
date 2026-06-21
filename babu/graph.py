@@ -103,6 +103,7 @@ class BabuState(TypedDict):
     source_records: Optional[List[str]]
     conversation_reference: Optional[bool]
     is_deterministic_response: Optional[bool]
+    awareness_report: Optional[dict]
 
 def route_after_router(state: BabuState) -> str:
     notice = state.get("pending_action_notice", "")
@@ -142,6 +143,22 @@ def intent_router(state: BabuState):
     history_text = state.get("history_text", "")
     lowered = query.lower().strip()
     session_id = state.get("session_id", "default")
+
+    try:
+        from .awareness import AwarenessEngine, inspect_services
+        from .google_service import is_google_configured
+        statuses = inspect_services(os.environ, is_google_configured())
+        awareness_report = AwarenessEngine(statuses).create_report(
+            query,
+            constraints=("Human authority is supreme", "Governance precedes execution"),
+        ).to_dict()
+    except Exception as exc:
+        awareness_report = {
+            "objective": query,
+            "known_risks": (f"Awareness inspection failed: {exc}",),
+            "constraints": ("Human authority is supreme", "Governance precedes execution"),
+            "confidence": 0.0,
+        }
 
     clean_query = query
     t_lower = query.lower().strip()
@@ -277,6 +294,7 @@ def intent_router(state: BabuState):
             "intent_packet": intent_packet.to_dict() if intent_packet else None
         },
         "pending_action_notice": pending_action_notice,
+        "awareness_report": awareness_report,
         "tokens": ic_tokens
     }
 
@@ -584,6 +602,7 @@ def planner_node(state: BabuState):
                     last_goal_text=None,
                     intent_packet=intent_packet,
                     session_id=session_id,
+                    awareness_report=state.get("awareness_report"),
                 )
             else:
                 print(f"[PLANNER NODE] Fast-tracking simple lookup/websearch query (lookup={intent_packet.lookup}, websearch={intent_packet.websearch}) directly to PA response", flush=True)
@@ -617,6 +636,7 @@ def planner_node(state: BabuState):
                 last_goal_text=last_goal_text,
                 intent_packet=intent_packet,
                 session_id=session_id,
+                awareness_report=state.get("awareness_report"),
             )
 
     plan_end_time = time.time()
@@ -796,18 +816,30 @@ def task_executor_node(state: BabuState):
     execution_log = state.get("execution_log") or []
     
     while True:
-        task = engine.get_next_ready_task()
+        ready_tasks = engine.get_ready_tasks()
+        task = ready_tasks[0] if ready_tasks else None
         if not task:
             break
             
         print(f"[EXECUTOR] Dispatching task '{task.task_id}' [{task.department.upper()}]: {task.objective[:80]}", flush=True)
-        engine.update_task_state(task.task_id, TaskState.RUNNING)
+        engine.mark_running(task.task_id)
         
         pre_start_time = time.time()
         pre_start_iso = datetime.now(timezone.utc).isoformat()
+
+        log_execution_ledger_event(
+            session_id=session_id,
+            goal_id=goal_graph.goal_id,
+            task_id=task.task_id,
+            department=task.department,
+            event_type="AUDIT_PRE",
+            state_before="READY",
+            state_after="AUDITING_PRE",
+            metadata={"objective": task.objective, "event_start_time": pre_start_iso}
+        )
         
         # Pre-execution audit check
-        passed, reason = auditor.pre_gatekeeper.audit(task)
+        passed, reason = auditor.audit_pre(task)
         
         pre_end_time = time.time()
         pre_end_iso = datetime.now(timezone.utc).isoformat()
@@ -816,7 +848,7 @@ def task_executor_node(state: BabuState):
         
         if not passed:
             print(f"[EXECUTOR] Pre-execution audit FAILED for task '{task.task_id}': {reason}", flush=True)
-            engine.update_task_state(task.task_id, TaskState.FAILED, result=reason)
+            engine.mark_failed(task.task_id, reason)
             engine.goal.status = "FAILED"
             
             log_execution_ledger_event(
@@ -978,9 +1010,25 @@ def task_executor_node(state: BabuState):
         # Run worker
         worker_start_time = time.time()
         worker_start_iso = datetime.now(timezone.utc).isoformat()
+
+        log_execution_ledger_event(
+            session_id=session_id,
+            goal_id=goal_graph.goal_id,
+            task_id=task.task_id,
+            department=task.department,
+            event_type="EXECUTION_START",
+            state_before="RUNNING",
+            state_after="EXECUTING",
+            metadata={"objective": task.objective, "event_start_time": worker_start_iso}
+        )
         
         try:
-            worker_result, node_tokens = dept_head.run(task, llm_dept)
+            run_method = getattr(dept_head, "run", None)
+            dispatch_method = getattr(dept_head, "dispatch", None)
+            worker_payload = run_method(task, llm_dept) if callable(run_method) else None
+            if not (isinstance(worker_payload, tuple) and len(worker_payload) == 2):
+                worker_payload = dispatch_method(task, llm_dept) if callable(dispatch_method) else worker_payload
+            worker_result, node_tokens = worker_payload
             error_msg = None
         except Exception as e:
             worker_result = ""
@@ -994,7 +1042,7 @@ def task_executor_node(state: BabuState):
         
         if error_msg:
             print(f"[EXECUTOR] Exception in task '{task.task_id}': {error_msg}", flush=True)
-            engine.update_task_state(task.task_id, TaskState.FAILED, result=error_msg)
+            engine.mark_failed(task.task_id, error_msg)
             engine.goal.status = "FAILED"
             
             log_execution_ledger_event(
@@ -1028,6 +1076,26 @@ def task_executor_node(state: BabuState):
             goal_id=goal_graph.goal_id,
             task_id=task.task_id,
             department=task.department,
+            event_type="EXECUTION_DONE",
+            state_before="EXECUTING",
+            state_after="EXECUTED",
+            metadata={
+                "objective": task.objective,
+                "event_start_time": worker_start_iso,
+                "event_end_time": worker_end_iso,
+                "latency_ms": worker_latency_ms,
+                "latency": worker_latency_sec,
+                "tokens": node_tokens,
+                "cost": round(worker_cost, 6),
+                "model": CURRENT_DEPT_MODEL,
+            }
+        )
+
+        log_execution_ledger_event(
+            session_id=session_id,
+            goal_id=goal_graph.goal_id,
+            task_id=task.task_id,
+            department=task.department,
             event_type="EXECUTION",
             state_before="RUNNING",
             state_after="EXECUTED",
@@ -1047,8 +1115,19 @@ def task_executor_node(state: BabuState):
         # Post-execution Validation check
         post_start_time = time.time()
         post_start_iso = datetime.now(timezone.utc).isoformat()
+
+        log_execution_ledger_event(
+            session_id=session_id,
+            goal_id=goal_graph.goal_id,
+            task_id=task.task_id,
+            department=task.department,
+            event_type="AUDIT_POST",
+            state_before="EXECUTED",
+            state_after="AUDITING_POST",
+            metadata={"objective": task.objective, "event_start_time": post_start_iso}
+        )
         
-        passed_post, post_reason = auditor.post_validator.audit(task, worker_result)
+        passed_post, post_reason = auditor.audit_post(task, worker_result)
         
         post_end_time = time.time()
         post_end_iso = datetime.now(timezone.utc).isoformat()
@@ -1057,7 +1136,7 @@ def task_executor_node(state: BabuState):
         
         if not passed_post:
             print(f"[EXECUTOR] Post-execution audit FAILED for task '{task.task_id}': {post_reason}", flush=True)
-            engine.update_task_state(task.task_id, TaskState.FAILED, result=post_reason)
+            engine.mark_failed(task.task_id, post_reason)
             engine.goal.status = "FAILED"
             
             log_execution_ledger_event(
@@ -1119,7 +1198,7 @@ def task_executor_node(state: BabuState):
         )
         
         # Complete task successfully
-        engine.update_task_state(task.task_id, TaskState.COMPLETED, result=worker_result)
+        engine.mark_completed(task.task_id, worker_result)
         
         task_latencies = state.get("execution_tracker", {}).get("task_latencies") or []
         task_latencies.append({

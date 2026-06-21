@@ -594,7 +594,7 @@ def publish_to_facebook_page(image_path: str, caption: str) -> tuple[bool, str]:
     page_token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN")
     
     if not page_id or not page_token:
-        return False, "Missing FACEBOOK_PAGE_ID or FACEBOOK_PAGE_ACCESS_TOKEN in environment vbabubles."
+        return False, "Missing FACEBOOK_PAGE_ID or FACEBOOK_PAGE_ACCESS_TOKEN in environment variables."
         
     has_image = image_path and os.path.exists(image_path)
     

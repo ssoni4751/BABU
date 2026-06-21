@@ -32,7 +32,7 @@ else:
 CREDENTIALS_PATH = os.path.join(BASE_DIR, "credentials.json")
 TOKEN_PATH = os.path.join(BASE_DIR, "token.json")
 
-# Restore credentials/token from environment vbabubles if not present on disk
+# Restore credentials/token from environment variables if not present on disk
 if not os.path.exists(CREDENTIALS_PATH) and os.environ.get("GOOGLE_CREDENTIALS_JSON"):
     try:
         creds_data = os.environ.get("GOOGLE_CREDENTIALS_JSON").strip()

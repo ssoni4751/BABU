@@ -2,7 +2,7 @@
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
 
-@custom-vbabunt dark (&:is(.dark *));
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: hsl(var(--background));

@@ -5,7 +5,7 @@ const rawPort = process.env["PORT"];
 
 if (!rawPort) {
   throw new Error(
-    "PORT environment vbabuble is required but was not provided.",
+    "PORT environment variable is required but was not provided.",
   );
 }
 
