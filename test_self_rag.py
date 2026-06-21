@@ -11,7 +11,9 @@ sys.path.append(os.path.join(CURRENT_DIR, "babu"))
 
 from babu.rag_storage import init_rag_db, retrieve_knowledge, get_embeddings_model, MockEmbeddings
 from babu.rag_ingestion import run_full_ingestion
-from babu.bot import get_db_connection, get_telemetry_data, is_system_aware_query, requires_web_search, log_execution_ledger_event
+from babu.services import get_db_connection, log_execution_ledger_event
+from babu.gateway import is_system_aware_query, requires_web_search
+from babu.bot import get_telemetry_data
 
 class TestSelfRAG(unittest.TestCase):
 
@@ -197,7 +199,7 @@ class TestSelfRAG(unittest.TestCase):
 
     def test_06_retrieve_system_memory_via_sql(self):
         """Test retrieve_system_memory_via_sql retrieves profile, goals, failures, timeline, rules, templates."""
-        from babu.bot import retrieve_system_memory_via_sql
+        from babu.services import retrieve_system_memory_via_sql
         
         # Insert test records
         conn, is_pg = get_db_connection()

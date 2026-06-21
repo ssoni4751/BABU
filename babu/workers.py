@@ -1,5 +1,5 @@
 """
-workers.py — ARIA Narrow-Scope Workers
+workers.py — BABU Narrow-Scope Workers
 
 Narrow-scope workers receive a microscopic context and execute a single task.
 This keeps the worker LLM context clean, token-efficient, and highly focused.
@@ -77,7 +77,7 @@ def run_worker(task: TaskDTO, scoped_context: dict, llm: Any) -> tuple[str, dict
     is_private = is_private_data_query(task.objective, category)
 
     system = (
-        f"ARIA Worker [{task.department.upper()}]: Execute the task below.\n"
+        f"BABU Worker [{task.department.upper()}]: Execute the task below.\n"
         f"Use ONLY the provided context. Be extremely concise and factual. Do NOT assume, invent, or extrapolate facts.\n"
     )
     if is_private:

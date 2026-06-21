@@ -3,14 +3,14 @@ import sys
 from fpdf import FPDF
 
 IMAGE_PATH = r"C:\Users\LENOVO\.gemini\antigravity\brain\6d0c89f4-8e58-41cb-9549-ca0575e8a3a5\babu_flow_diagram_1780467365626.png"
-OUTPUT_PATH = r"c:\Users\LENOVO\.gemini\antigravity\scratch\Babu\ARIA_Architecture_and_Flow.pdf"
+OUTPUT_PATH = r"c:\Users\LENOVO\.gemini\antigravity\scratch\Babu\BABU_Architecture_and_Flow.pdf"
 
 class PDF(FPDF):
     def header(self):
         # Draw header on all pages except maybe cover or if skipped
         self.set_font("Helvetica", "B", 16)
         self.set_text_color(30, 41, 59) # Slate-800
-        self.cell(0, 10, "ARIA Cognitive OS", align="L")
+        self.cell(0, 10, "BABU Cognitive OS", align="L")
         self.set_font("Helvetica", "", 10)
         self.set_text_color(100, 116, 139) # Slate-500
         self.cell(0, 10, "Architecture & Information Flow Diagram", align="R", new_x="LMARGIN", new_y="NEXT")
@@ -22,7 +22,7 @@ class PDF(FPDF):
         self.set_y(-15)
         self.set_font("Helvetica", "I", 8)
         self.set_text_color(148, 163, 184) # Slate-400
-        self.cell(0, 10, f"ARIA Architecture Documentation - Page {self.page_no()}", align="C")
+        self.cell(0, 10, f"BABU Architecture Documentation - Page {self.page_no()}", align="C")
 
     def section_title(self, title):
         self.ln(4)
@@ -54,9 +54,9 @@ def generate_pdf():
     
     pdf.section_title("1. Architectural Overview")
     pdf.body(
-        "ARIA is built around a dynamic task-decomposition and execution framework designed to "
+        "BABU is built around a dynamic task-decomposition and execution framework designed to "
         "reconcile open-ended user inquiries with highly deterministic tool invocation and "
-        "rigorous compliance checks. Rather than executing a simple linear prompt chain, ARIA "
+        "rigorous compliance checks. Rather than executing a simple linear prompt chain, BABU "
         "compiles a directed acyclic graph (DAG) of specialized subtasks tailored to the user's specific intent."
     )
     
@@ -99,14 +99,14 @@ def generate_pdf():
     pdf.add_page()
     pdf.section_title("4. Memory & Database Callpoints")
     pdf.body(
-        "Memory inside ARIA is split into three separate scopes to balance execution speed, "
+        "Memory inside BABU is split into three separate scopes to balance execution speed, "
         "durability, and cognitive self-correction:\n\n"
         "1. SESSION CHECKPOINTS (SQLite / Supabase Postgres):\n"
         "State graph session memory is written at every node transition. This ensures that in-progress "
         "conversational states are not lost if the container restarts. The connection automatically "
         "ports from local SQLite to Supabase if the DATABASE_URL is configured in the environment.\n\n"
         "2. SYSTEM MEMORY & LEDGER (SQLite / Supabase Postgres):\n"
-        "ARIA writes telemetry records (prompt, completion, and total tokens used), goals, and "
+        "BABU writes telemetry records (prompt, completion, and total tokens used), goals, and "
         "detailed execution metrics for every task. These database operations are offloaded to "
         "asynchronous background threads to keep latency at zero for the end user.\n\n"
         "3. EPISTEMIC IMMUNE SYSTEM (failures.json):\n"

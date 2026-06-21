@@ -1,8 +1,8 @@
-# ARIA & Antigravity - Pair Programming Session Transcript
+# BABU & Antigravity - Pair Programming Session Transcript
 
 **Date:** 2026-05-24
 **Session ID:** `592b40b0-97b4-4126-ac4c-99fd0a65df0e`
-**Description:** Full pair programming transcript migrating the ARIA bot from Replit to Render, configuring direct Google Workspace APIs, implementing dynamic pathing, Google Contacts Syncing, and dynamic model switching with Gemini support.
+**Description:** Full pair programming transcript migrating the BABU bot from Replit to Render, configuring direct Google Workspace APIs, implementing dynamic pathing, Google Contacts Syncing, and dynamic model switching with Gemini support.
 
 ---
 
@@ -89,7 +89,7 @@ The project has been extracted to:
 ---
 
 ### 🔍 What we have extracted:
-The **ARIA (Adaptive Research Intelligence Assistant)** monorepo is fully intact:
+The **BABU (Adaptive Research Intelligence Assistant)** monorepo is fully intact:
 1. **Multi-Agent Backend (`babu/bot.py`)**: 
    * Orchestrated using **LangGraph + LangChain** with a **Groq (Llama 3)** backend.
    * Built-in dynamic router for three gears: **WALK** (1-step casual chat / automations), **SPRINT** (3-agent search swarm), and **LAUNCH** (6-agent deep swarm).
@@ -220,12 +220,12 @@ telegram bot key:  8604192307:AAH4slCPMvsB3UeH04CZwpDSmGDoj8gn70o
 
 I have updated the [`.env`](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Babu/.env) file with your Telegram Bot Token!
 
-To start the bot, we also need a **Groq API Key** (since ARIA's agents run on Groq's Llama 3 models). Without this key, the bot will crash when trying to contact the AI brain.
+To start the bot, we also need a **Groq API Key** (since BABU's agents run on Groq's Llama 3 models). Without this key, the bot will crash when trying to contact the AI brain.
 
 * **If you have a Groq API Key:** Please reply with it here, and I will add it to your `.env` file and launch the bot immediately!
 * **If you don't have one yet:** You can get one in less than a minute for free (no credit card required) at [**console.groq.com**](https://console.groq.com/). 
 
-Once you provide the key, we'll be ready to bring ARIA live!
+Once you provide the key, we'll be ready to bring BABU live!
 
 
 ### 👤 User (2026-05-24 06:36)
@@ -235,7 +235,7 @@ grok api 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
 
 ### 🤖 Antigravity Assistant (2026-05-24 06:37)
 
-### 🚀 ARIA is officially LIVE locally!
+### 🚀 BABU is officially LIVE locally!
 
 I have successfully updated your configuration and launched the backend. 
 
@@ -250,7 +250,7 @@ I ran an automated health check on your local server, and it responded successfu
 ```json
 {
   "status": "ok",
-  "bot": "ARIA",
+  "bot": "BABU",
   "features": ["memory", "web_search", "knowledge_base", "make_automation"],
   "make_configured": false
 }
@@ -279,7 +279,7 @@ its still no hook for Make.com
 
 ### 🤖 Antigravity Assistant (2026-05-24 06:39)
 
-To connect ARIA to **Make.com** for Google and Slack automations (such as sending emails, creating calendar events, or logging sheets), we need to set up a webhook trigger on Make.com and add the URL to your configuration.
+To connect BABU to **Make.com** for Google and Slack automations (such as sending emails, creating calendar events, or logging sheets), we need to set up a webhook trigger on Make.com and add the URL to your configuration.
 
 Here is the step-by-step guide on how to configure it:
 
@@ -288,12 +288,12 @@ Here is the step-by-step guide on how to configure it:
 ### Step 1: Create a Scenario on Make.com
 1. Log in to [**Make.com**](https://www.make.com/) and click **"Create a new scenario"** in the top right.
 2. Click the large `+` button, search for **"Webhooks"**, and select **"Custom Webhook"**.
-3. Click **"Add"** to create a new webhook, give it a name (e.g., "ARIA Telegram Bot"), and save.
+3. Click **"Add"** to create a new webhook, give it a name (e.g., "BABU Telegram Bot"), and save.
 4. Make.com will generate a unique URL for you (e.g., `https://hook.us1.make.com/xxxxxx`). **Copy this URL**.
 
 ---
 
-### Step 2: Add the URL to ARIA
+### Step 2: Add the URL to BABU
 Provide your Make.com Webhook URL to me here, or open your local [**`.env`**](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Babu/.env) file and paste it next to `MAKE_WEBHOOK_URL`:
 
 ```env
@@ -305,7 +305,7 @@ Once updated, I will automatically restart the bot for you to apply the changes!
 ---
 
 ### 💡 How the webhook works (Payload Structure):
-When you ask ARIA to perform an action (e.g. *"Babu, send an email to test@example.com saying Hello"*), ARIA's brain will detect the intent and POST a JSON payload to your Make.com webhook like this:
+When you ask BABU to perform an action (e.g. *"Babu, send an email to test@example.com saying Hello"*), BABU's brain will detect the intent and POST a JSON payload to your Make.com webhook like this:
 
 ```json
 {
@@ -340,7 +340,7 @@ here is the hook  https://hook.us2.make.com/8ndxnw7errp9jfwxs2ogg5t0d6tamolg
 
 ### 🤖 Antigravity Assistant (2026-05-24 06:43)
 
-### 🎉 Make.com Webhook is configured and ARIA is running!
+### 🎉 Make.com Webhook is configured and BABU is running!
 
 I have successfully updated your local config with the Make.com webhook URL and restarted your bot! 
 
@@ -351,7 +351,7 @@ I checked your local API health, and Make.com is now officially registered as **
 ```json
 {
   "status": "ok",
-  "bot": "ARIA",
+  "bot": "BABU",
   "features": ["memory", "web_search", "knowledge_base", "make_automation"],
   "make_configured": true
 }
@@ -363,7 +363,7 @@ I checked your local API health, and Make.com is now officially registered as **
 I saw in your Telegram logs that you previously tested a finance approval email:
 1. Go to Telegram and type:
    > *"Send an email to anshucomputerorai@gmail.com regarding approval for the finances of Rs. 10000"*
-2. ARIA will instantly process this, identify the `send_email` action, extract all relevant parameters (recipient, subject, body), and **send a POST request directly to your Make.com Webhook!**
+2. BABU will instantly process this, identify the `send_email` action, extract all relevant parameters (recipient, subject, body), and **send a POST request directly to your Make.com Webhook!**
 3. Look at your **Make.com Scenario Designer**—you should see a new execution bubble light up! You can use this captured payload to easily drag and drop a **Gmail** or **Google Sheets** action block to handle the actual delivery.
 
 You are completely set up and ready to automate. Let me know if there's anything else you would like to edit or add!
@@ -379,9 +379,9 @@ its showing error
 I see exactly what happened! 
 
 ### 🔍 The Bug:
-When you ran your automation command on Telegram, ARIA **successfully** processed it, triggered the action, and returned a success message containing the green checkmark emoji: **`✅ Action ... sent to Make.com successfully.`**
+When you ran your automation command on Telegram, BABU **successfully** processed it, triggered the action, and returned a success message containing the green checkmark emoji: **`✅ Action ... sent to Make.com successfully.`**
 
-However, under Windows, Python's default console encoding is configured to use a local character map (such as `cp1252`). When ARIA tried to print `✅` to the console log, Windows threw a **`charmap` codec UnicodeEncodeError** and crashed the script, which is why your Telegram bot replied with that error.
+However, under Windows, Python's default console encoding is configured to use a local character map (such as `cp1252`). When BABU tried to print `✅` to the console log, Windows threw a **`charmap` codec UnicodeEncodeError** and crashed the script, which is why your Telegram bot replied with that error.
 
 ---
 
@@ -500,7 +500,7 @@ I will check back in 30 seconds to see if the packages are installed successfull
 
 ### 🤖 Antigravity Assistant (2026-05-24 07:01)
 
-I have successfully completed the implementation of the **Direct Google Workspace Integration**! ARIA is now fully disconnected from Make.com and is ready to make direct local API calls on your behalf.
+I have successfully completed the implementation of the **Direct Google Workspace Integration**! BABU is now fully disconnected from Make.com and is ready to make direct local API calls on your behalf.
 
 Here is a summary of the files and artifacts I created to guide and track this work:
 * **[task.md](file:///C:/Users/LENOVO/.gemini/antigravity/brain/592b40b0-97b4-4126-ac4c-99fd0a65df0e/task.md)**: Tracks our development progress (all coding tasks are now complete!).
@@ -511,7 +511,7 @@ Here is a summary of the files and artifacts I created to guide and track this w
 ### 🟢 Current Bot Status
 The updated bot has been started and is actively listening for Telegram events and polling your chat!
 ```bash
---- ARIA IS LIVE | Memory | Web Search | Knowledge Base | Google Workspace (NOT configured) | WALK + SPRINT + LAUNCH ---
+--- BABU IS LIVE | Memory | Web Search | Knowledge Base | Google Workspace (NOT configured) | WALK + SPRINT + LAUNCH ---
 [HEALTH] Chat API + status on port 8080
 ```
 It is currently showing `Google Workspace (NOT configured)` because it is waiting for your credential file.
@@ -519,12 +519,12 @@ It is currently showing `Google Workspace (NOT configured)` because it is waitin
 ---
 
 ### 🔑 Final Activation (Your Part):
-To authorize ARIA to speak to your Google Account directly:
+To authorize BABU to speak to your Google Account directly:
 1. Follow the **OAuth Consent / Desktop ID setup steps** listed at the top of the **[Implementation Plan](file:///C:/Users/LENOVO/.gemini/antigravity/brain/592b40b0-97b4-4126-ac4c-99fd0a65df0e/implementation_plan.md)**.
 2. Download your **`credentials.json`** file and place it in the root folder of your project:
    `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\credentials.json`
 3. **Trigger an action on Telegram** (e.g., send the bot a message like *"Babu, send an email to anshucomputerorai@gmail.com saying Hello"*).
-4. **Complete the Login**: The first time you do this, the bot will launch a browser tab on your local machine. Simply log in to your Google Account, click **Allow**, and you are set! ARIA will save a local `token.json` file for permanent auto-refreshing authorization.
+4. **Complete the Login**: The first time you do this, the bot will launch a browser tab on your local machine. Simply log in to your Google Account, click **Allow**, and you are set! BABU will save a local `token.json` file for permanent auto-refreshing authorization.
 
 You have a completely free, lightning-fast direct Google Workspace agent now running locally! Let me know if you run into any issues during the Google Cloud credentials setup.
 
@@ -543,12 +543,12 @@ Here are the direct, step-by-step instructions to get your **`credentials.json`*
 ### Step 1: Create a Google Cloud Project
 1. Open your browser and go to the [**Google Cloud Console**](https://console.cloud.google.com/).
 2. In the top-left (next to the Google Cloud logo), click the **Project Dropdown** and click **"New Project"**.
-3. Name it **"ARIA Assistant"** and click **"Create"** (make sure the project is selected after it finishes creating).
+3. Name it **"BABU Assistant"** and click **"Create"** (make sure the project is selected after it finishes creating).
 
 ---
 
 ### Step 2: Enable the Google Workspace APIs
-We need to tell Google Cloud which tools ARIA is allowed to use. Go to the [**API Library page**](https://console.cloud.google.com/apis/library) and:
+We need to tell Google Cloud which tools BABU is allowed to use. Go to the [**API Library page**](https://console.cloud.google.com/apis/library) and:
 1. Search for **Gmail API** -> Click it -> Click **"Enable"**.
 2. Go back, search for **Google Calendar API** -> Click **"Enable"**.
 3. Go back, search for **Google Sheets API** -> Click **"Enable"**.
@@ -561,7 +561,7 @@ This tells Google who is running this desktop app:
 1. Go to the [**OAuth Consent Screen**](https://console.cloud.google.com/apis/credentials/consent).
 2. Choose **"External"** and click **"Create"**.
 3. Fill in just **three fields**:
-   * **App name**: Type `ARIA`
+   * **App name**: Type `BABU`
    * **User support email**: Choose your email from the dropdown list.
    * **Developer contact information**: Type your email address.
 4. Click **"Save and Continue"** at the bottom (skip Scopes by clicking **"Save and Continue"**).
@@ -574,13 +574,13 @@ This tells Google who is running this desktop app:
 1. Go to the [**Credentials Page**](https://console.cloud.google.com/apis/credentials).
 2. Click **"+ Create Credentials"** at the top and select **"OAuth client ID"**.
 3. For **Application type**, select **"Desktop app"**.
-4. Name it `ARIA Desktop Client` and click **"Create"**.
+4. Name it `BABU Desktop Client` and click **"Create"**.
 5. A window will pop up saying the Client was created. **Click "Download JSON"**.
 
 ---
 
 ### Step 5: Place the File in your Project Directory
-1. Move the downloaded JSON file into your ARIA folder:
+1. Move the downloaded JSON file into your BABU folder:
    📁 `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\`
 2. **Rename** the file to exactly **`credentials.json`** (make sure it's all lowercase).
 
@@ -588,7 +588,7 @@ This tells Google who is running this desktop app:
 
 ### Step 6: Test it on Telegram!
 As soon as you put the file in that directory, go to Telegram and send your bot a message, such as:
-> *"Send an email to anshucomputerorai@gmail.com saying Hello from ARIA!"*
+> *"Send an email to anshucomputerorai@gmail.com saying Hello from BABU!"*
 
 I will keep monitoring your local logs. As soon as you send that command, the bot will print a link in your terminal console to log in to your Google Account. Once authorized, it is permanent!
 
@@ -603,7 +603,7 @@ have a look
 You are in the perfect place! 
 
 1. Select **`Desktop app`** (the very last option in that dropdown list).
-2. Give it a name (like `ARIA Desktop Client`).
+2. Give it a name (like `BABU Desktop Client`).
 3. Click the **"Create"** button at the bottom of the page.
 4. Download the resulting JSON file.
 5. Move it into the `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\` folder and rename it to **`credentials.json`**.
@@ -621,7 +621,7 @@ jason file is ready have a look at directory
 The **`credentials.json`** file is perfectly in place, and the bot successfully recognized it upon startup! Your startup log now officially shows:
 
 ```bash
---- ARIA IS LIVE | Memory | Web Search | Knowledge Base | Google Workspace (active) | WALK + SPRINT + LAUNCH ---
+--- BABU IS LIVE | Memory | Web Search | Knowledge Base | Google Workspace (active) | WALK + SPRINT + LAUNCH ---
 [HEALTH] Chat API + status on port 8080
 ```
 
@@ -632,14 +632,14 @@ The **`credentials.json`** file is perfectly in place, and the bot successfully 
 To trigger the permanent login, go ahead and do this:
 
 1. **Go to Telegram** and send a command to your bot, such as:
-   > *"Send an email to anshucomputerorai@gmail.com saying Hello from ARIA!"*
+   > *"Send an email to anshucomputerorai@gmail.com saying Hello from BABU!"*
 2. **Watch your Browser**: The Python script running in the background will instantly **open a new Google Login tab** in your local browser.
 3. **Log in**:
    * Select your Google Account.
-   * Google might show a screen saying *"Google hasn't verified this app"* (this is normal for personal developer projects). Simply click **"Advanced"** in the bottom left, then click **"Go to ARIA (unsafe)"**, and click **"Allow"** / **"Continue"**.
+   * Google might show a screen saying *"Google hasn't verified this app"* (this is normal for personal developer projects). Simply click **"Advanced"** in the bottom left, then click **"Go to BABU (unsafe)"**, and click **"Allow"** / **"Continue"**.
 4. **Done!** The browser tab will say: *"The authentication flow has completed. You may close this window."*
 
-At that exact moment, ARIA will write your permanent **`token.json`** file and send the email directly. From that point on, it is completely automated and will never ask you to log in again!
+At that exact moment, BABU will write your permanent **`token.json`** file and send the email directly. From that point on, it is completely automated and will never ask you to log in again!
 
 Let me know as soon as the browser tab pops up and you complete the sign-in!
 
@@ -668,7 +668,7 @@ By running this directly in your terminal, it will open the browser sign-in imme
    ```powershell
    .venv\Scripts\python authenticate.py
    ```
-3. Your browser will instantly open. **Choose your Gmail account, click Advanced -> Go to ARIA (unsafe), and click Allow.**
+3. Your browser will instantly open. **Choose your Gmail account, click Advanced -> Go to BABU (unsafe), and click Allow.**
 4. Once the browser says *"Authentication completed"*, you will see a success message in your terminal.
 5. Save and close the terminal. 
 
@@ -718,7 +718,7 @@ Take your time!
 Once you add your email as a test user and finish the login screen, your terminal will print:
 `✅ SUCCESS: Authentication completed successfully!`
 
-Let me know as soon as that is done, and we will turn ARIA's brain back on!
+Let me know as soon as that is done, and we will turn BABU's brain back on!
 
 
 ### 👤 User (2026-05-24 07:28)
@@ -728,7 +728,7 @@ turn on
 
 ### 🤖 Antigravity Assistant (2026-05-24 07:30)
 
-### 🟢 ARIA is turned back ON and running live!
+### 🟢 BABU is turned back ON and running live!
 
 The bot is active and listening for your Telegram messages. 
 
@@ -866,7 +866,7 @@ Your logs are absolutely beautiful to look at. I saw that:
 2. **Gmail API is working perfectly**: The finance approval email was sent directly from your account successfully! 
 3. **Google Tasks API support has been added**: I saw you tried to set a task (*"Set a google task for tomorrow 12:00 PM for recovery protocol"*), which wasn't supported. 
 
-As per your request, **I have completely implemented Google Tasks API support into your ARIA backend!**
+As per your request, **I have completely implemented Google Tasks API support into your BABU backend!**
 
 ---
 
@@ -874,7 +874,7 @@ As per your request, **I have completely implemented Google Tasks API support in
 1. **Scopes Updated**: Added `https://www.googleapis.com/auth/tasks` to the scopes list in [**`babu/google_service.py`**](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Babu/babu/google_service.py).
 2. **Added Due-Date Parser**: Wrote `parse_task_due_date` which automatically translates expressions like `"tomorrow 12:00 PM"` into Google's strict RFC 3339 timestamp format.
 3. **Added Task Helper**: Created `create_google_task` using the official `'tasks'` API client (`v1`) to push new tasks directly to your default Google Tasks board.
-4. **Integrated with Router**: Connected `create_task` in the main execution router (`execute_google_action`) so that **any ARIA research agent** (Analyst, Strategist, etc.) can now natively create tasks!
+4. **Integrated with Router**: Connected `create_task` in the main execution router (`execute_google_action`) so that **any BABU research agent** (Analyst, Strategist, etc.) can now natively create tasks!
 5. **Smart Scope Detection**: Added a check to the authenticator so that if a new scope is added (like Google Tasks), it automatically detects it and prompts you to re-authenticate seamlessly!
 
 ---
@@ -907,14 +907,14 @@ It will now create it directly on your Google Tasks list! Let me know if everyth
 
 ### 🤖 Antigravity Assistant (2026-05-24 08:55)
 
-I see in the local logs that you sent the command on Telegram and it worked perfectly! ARIA has automatically opened the **Google Login tab** in your browser to request the new Tasks permission.
+I see in the local logs that you sent the command on Telegram and it worked perfectly! BABU has automatically opened the **Google Login tab** in your browser to request the new Tasks permission.
 
 ### 🏃 What you need to do right now:
 1. **Go to your web browser** (it should have opened a new tab).
 2. Choose your Gmail account (`ssoni4751@gmail.com`).
 3. Click **"Allow"** to authorize Google Tasks.
 
-As soon as you click Allow, ARIA will write your new `token.json` file, create the task on your account, and go live!
+As soon as you click Allow, BABU will write your new `token.json` file, create the task on your account, and go live!
 
 
 ### 👤 User (2026-05-24 09:05)
@@ -935,7 +935,7 @@ Your logs show that you successfully authorized Google Tasks, and the recovery p
 ---
 
 ### 2. Google Sheets "Invalid Value" error (Fixed!) 🛠️
-* **The issue:** When ARIA tried to search your Google Drive for a spreadsheet named **`Today's India Top Headlines`**, the single quote in **`Today's`** caused a syntax error in Google's search query (breaking the search string formatting).
+* **The issue:** When BABU tried to search your Google Drive for a spreadsheet named **`Today's India Top Headlines`**, the single quote in **`Today's`** caused a syntax error in Google's search query (breaking the search string formatting).
 * **The fix:** I have updated [**`babu/google_service.py`**](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/Babu/babu/google_service.py) to automatically escape single quotes (`Today\'s`) in search query names. This completely resolves the bug and prevents any search crashes!
 
 ---
@@ -997,20 +997,20 @@ have a look it did't saved the vedios
 
 This is a classic case of **AI hallucination**! 
 
-ARIA currently has access to **Gmail, Google Calendar, Sheets, Docs, Tasks, and Web Search**. However, ARIA **does not have access to your local computer's Photos App, local images, or local videos**. 
+BABU currently has access to **Gmail, Google Calendar, Sheets, Docs, Tasks, and Web Search**. However, BABU **does not have access to your local computer's Photos App, local images, or local videos**. 
 
-When you sent the message (*"Scan the photos app..."* or *"Fetch all videos..."*), ARIA's text generator tried to be extremely helpful and wrote a response *claiming* it completed the scan and upload, even though it does not have any tools to access your local photos or videos! 
+When you sent the message (*"Scan the photos app..."* or *"Fetch all videos..."*), BABU's text generator tried to be extremely helpful and wrote a response *claiming* it completed the scan and upload, even though it does not have any tools to access your local photos or videos! 
 
 ---
 
 ### 🛠️ How we can make this *actually* work:
 
-If you want ARIA to be able to upload files (like photos, PDFs, ID cards, or videos) from your computer to your Google Drive, we can easily add a **Local Directory Upload Tool**!
+If you want BABU to be able to upload files (like photos, PDFs, ID cards, or videos) from your computer to your Google Drive, we can easily add a **Local Directory Upload Tool**!
 
 If you tell me the **path of a folder on your computer** where you keep these files (for example: `C:\Users\LENOVO\Pictures` or `C:\Users\LENOVO\Desktop\MyVideos`), I can:
 1. Write a Python function in `google_service.py` that reads files from that local folder.
 2. Natively upload them to a new or existing folder on your **Google Drive** (like `ID Proofs` or `Videos`).
-3. Connect it to ARIA's router so when you say *"Upload all ID proofs"* or *"Save my local videos to Google Drive"*, it will **actually execute the upload** in less than 2 seconds!
+3. Connect it to BABU's router so when you say *"Upload all ID proofs"* or *"Save my local videos to Google Drive"*, it will **actually execute the upload** in less than 2 seconds!
 
 Would you like me to build this local folder upload tool for you? Just let me know the path to the folder on your computer!
 
@@ -1029,13 +1029,13 @@ Since your photos and videos are stored directly in your **Google Photos** accou
 ---
 
 ### 🛠️ What I have implemented:
-1. **Added Photos Scope**: Added the official Google Photos read-only scope `https://www.googleapis.com/auth/photoslibrary.readonly` to ARIA.
+1. **Added Photos Scope**: Added the official Google Photos read-only scope `https://www.googleapis.com/auth/photoslibrary.readonly` to BABU.
 2. **Added Media Sync Tool (`copy_google_photos_to_drive`)**:
    * Direct REST query to the Google Photos library.
    * **Intelligent category filters**: Automatically fetches items classified under `DOCUMENTS` (which includes ID cards, papers, receipts) or `VIDEO`.
    * **High-Res download**: Uses Google's high-resolution download engine (`=d` for images, `=dv` for videos) to pull full-res bytes.
    * **Drive Folder Integration**: Automatically searches Drive for the target folder name (e.g., `ID Proofs` or `Vedios`). If not found, it creates it, and then writes the files directly into it!
-3. **Updated Router Logic**: Taught ARIA's brain to recognize the `copy_photos_to_drive` action and extract the parameters (`category` and `folder_name`).
+3. **Updated Router Logic**: Taught BABU's brain to recognize the `copy_photos_to_drive` action and extract the parameters (`category` and `folder_name`).
 
 ---
 
@@ -1053,7 +1053,7 @@ Because we added the new Google Photos permission, we need to refresh your login
    ```powershell
    .venv\Scripts\python authenticate.py
    ```
-2. Your browser will open once. Log in and click **"Allow"** to grant ARIA permission to read your Google Photos.
+2. Your browser will open once. Log in and click **"Allow"** to grant BABU permission to read your Google Photos.
 
 ---
 
@@ -1096,7 +1096,7 @@ Open your terminal and run the authenticator script once. This will generate a n
 ```powershell
 .venv\Scripts\python authenticate.py
 ```
-*Your browser will open. Log in, click **Advanced ➡️ Go to ARIA (unsafe)**, and click **Allow**.*
+*Your browser will open. Log in, click **Advanced ➡️ Go to BABU (unsafe)**, and click **Allow**.*
 
 ---
 
@@ -1170,7 +1170,7 @@ To solve this completely, please do this **one final time**:
    ```powershell
    .venv\Scripts\python authenticate.py
    ```
-3. Your browser will open. **Log in and make sure to check the box that allows ARIA to "View your Google Photos library"** (Google might show it as a checkbox you need to tick before clicking Continue).
+3. Your browser will open. **Log in and make sure to check the box that allows BABU to "View your Google Photos library"** (Google might show it as a checkbox you need to tick before clicking Continue).
 4. Save and close the terminal.
 
 ---
@@ -1179,7 +1179,7 @@ To solve this completely, please do this **one final time**:
 Once that terminal shows success, go back to Telegram and run your command again:
 > *"Fetch all videos from photos app and save to google drive in a simple folder named Videos"*
 
-This time, the permissions will be 100% matched, and ARIA will successfully download and copy the actual videos to your Google Drive!
+This time, the permissions will be 100% matched, and BABU will successfully download and copy the actual videos to your Google Drive!
 
 
 ### 👤 User (2026-05-24 09:47)
@@ -1199,7 +1199,7 @@ When I looked inside your newly saved `token.json` file, the Google Photos permi
 In Google Cloud Console, you enabled the **Google Photos Ambient API** and the **Google Photos Picker API**. 
 
 However, you **must enable the Google Photos Library API**! 
-Because the **Google Photos Library API** is not enabled in your project, Google's login server **silently strips and blocks** the Photos permission during the login process, so ARIA never receives it in the `token.json` file!
+Because the **Google Photos Library API** is not enabled in your project, Google's login server **silently strips and blocks** the Photos permission during the login process, so BABU never receives it in the `token.json` file!
 
 ---
 
@@ -1272,7 +1272,7 @@ Google no longer allows third-party apps to scan or search a user's entire Googl
 
 Since Google's new 2025 policy blocks background scanning of Google Photos, the absolute best, most secure, and most reliable way to upload your ID Proofs and Videos is to use a **Local Folder Sync**!
 
-We can set up a local folder on your computer (e.g., `C:\Users\LENOVO\Desktop\ID_Proofs_Local`), and I will write a simple, direct sync tool so when you tell ARIA on Telegram to upload them, it will instantly fetch them from your local folder and push them to Google Drive!
+We can set up a local folder on your computer (e.g., `C:\Users\LENOVO\Desktop\ID_Proofs_Local`), and I will write a simple, direct sync tool so when you tell BABU on Telegram to upload them, it will instantly fetch them from your local folder and push them to Google Drive!
 
 This is completely allowed by Google's Drive API, has **no** security blocks, and will work instantly in less than 2 seconds!
 
@@ -1323,7 +1323,7 @@ now I wanted to move this app on web so I can acess it while this pc turned down
 
 ### 🤖 Antigravity Assistant (2026-05-24 10:05)
 
-To keep ARIA running 24/7 so that you can access your Telegram bot and web chat even when your local PC is turned off, we need to host it on a **Cloud Server**. 
+To keep BABU running 24/7 so that you can access your Telegram bot and web chat even when your local PC is turned off, we need to host it on a **Cloud Server**. 
 
 Here are the three best ways to do this, starting with the absolute easiest:
 
@@ -1383,7 +1383,7 @@ Here is the step-by-step guide to do this securely:
 1. Go to [**GitHub.com**](https://github.com/) and log in.
 2. Click the **`+`** icon in the top-right corner and select **"New repository"**.
 3. Fill in the details:
-   * **Repository name**: Type `ARIA-Assistant`
+   * **Repository name**: Type `BABU-Assistant`
    * **Visibility**: **Make sure to select `Private`** (this is extremely important so that your Google credentials and tokens remain secure and hidden from the public!).
    * **Do NOT check** "Add a README file", "Add .gitignore", or "Choose a license". Keep it completely empty.
 4. Click **"Create repository"**.
@@ -1537,7 +1537,7 @@ I see you already have the **Render** tab open in your browser! Let's get the bo
 1. Go to your **Render Dashboard** (https://dashboard.render.com).
 2. Click **New +** (top right) and select **Web Service**.
 3. Select **Build and deploy from a Git repository**.
-4. You will see a list of your GitHub repositories. Find **ARIA** (under owner `ssoni4751`) and click **Connect**.
+4. You will see a list of your GitHub repositories. Find **BABU** (under owner `ssoni4751`) and click **Connect**.
 5. Configure the following settings on the creation page:
    *   **Name:** `babu-assistant`
    *   **Region:** Select your nearest region (e.g., `Singapore` or `Oregon`).
@@ -1583,7 +1583,7 @@ Now, open your **Render Dashboard** tab that you have open at the top, and follo
 
 1. Click **New +** (top right) and select **Web Service**.
 2. Select **Build and deploy from a Git repository**.
-3. Select your **ARIA** repository and click **Connect**.
+3. Select your **BABU** repository and click **Connect**.
 4. Configure these settings:
    *   **Name:** `babu-assistant`
    *   **Region:** Select your nearest region (e.g. `Singapore` or `Oregon`).
@@ -1636,7 +1636,7 @@ have a look
 
 ### 🤖 Antigravity Assistant (2026-05-24 10:38)
 
-🎉 **A HUGE SUCCESS! ARIA IS OFFICIALLY LIVE IN THE CLOUD!** 🎉
+🎉 **A HUGE SUCCESS! BABU IS OFFICIALLY LIVE IN THE CLOUD!** 🎉
 
 Looking at your Render logs, this is absolutely beautiful:
 *   `--> Running 'python babu/bot.py'` — The entry point executed successfully.
@@ -1647,7 +1647,7 @@ You can now go to **Telegram** right now and send a message to your bot (or type
 
 ---
 
-### One Crucial Step: Keep ARIA Awake 24/7 (For Free!)
+### One Crucial Step: Keep BABU Awake 24/7 (For Free!)
 
 Because this is running on Render's **Free Tier**, Render will automatically put the bot to sleep (spin it down) if it doesn't receive any web traffic for 15 minutes. If it goes to sleep, the next time you send a Telegram message, it might take 50 seconds to wake up and reply.
 
@@ -1657,7 +1657,7 @@ To keep it awake and responding **instantly 24/7**, we can set up a free keep-al
 2. Click **Add New Monitor** on your dashboard.
 3. Configure the monitor like this:
    *   **Monitor Type:** `HTTP(s)`
-   *   **Friendly Name:** `ARIA Assistant`
+   *   **Friendly Name:** `BABU Assistant`
    *   **URL (or IP):** `https://babu-assistant-bxpj.onrender.com/healthz` *(This is your specific Render health-check link!)*
    *   **Monitoring Interval:** Every `5 minutes` (or `10 minutes`).
 4. Click **Create Monitor**.
@@ -1667,7 +1667,7 @@ That's it! UptimeRobot will ping your bot in the background every few minutes. T
 ---
 
 ### What to do now:
-Go ahead and test your bot on Telegram! Try asking it to send an email, log a task, or do a web search. Feel free to turn off your PC whenever you want—**ARIA is now running entirely on its own in the cloud!**
+Go ahead and test your bot on Telegram! Try asking it to send an email, log a task, or do a web search. Feel free to turn off your PC whenever you want—**BABU is now running entirely on its own in the cloud!**
 
 
 ### 👤 User (2026-05-24 10:48)
@@ -1681,7 +1681,7 @@ I told him to copy my contacts to a file in my google drive, it just saved that 
 
 You got those placeholder values (`Your first name`, `your email address`, etc.) because **the bot originally did not have a tool to fetch your Google Contacts**. 
 
-When you told ARIA to *"copy my contacts to a file in my Google Drive"*:
+When you told BABU to *"copy my contacts to a file in my Google Drive"*:
 1. The AI tried its best to satisfy your request and routed it to the closest action it had: `log_to_sheet`.
 2. Since it didn't actually have a way to read your real contacts list, **it hallucinated/generated placeholder data** to fill the columns so it could complete the request.
 
@@ -1713,7 +1713,7 @@ On your computer:
 4. Once the terminal says **"SUCCESS"**, close the window.
 
 #### Step 2: Upload the updated files to GitHub
-Go to your `ARIA` GitHub repository and upload the updated files to apply the new feature:
+Go to your `BABU` GitHub repository and upload the updated files to apply the new feature:
 
 1.  **For the bot code (inside the `babu` folder on GitHub)**:
     *   Navigate into your `babu` folder on GitHub.
@@ -1735,7 +1735,7 @@ Go to your `ARIA` GitHub repository and upload the updated files to apply the ne
 ### What happens next?
 Once you commit these files, **Render will automatically detect the changes and redeploy your bot (takes about 1 minute)**.
 
-Once Render is updated, go to Telegram and say: **"Copy my contacts to a sheet"**. ARIA will instantly pull your real contacts and format them perfectly in Google Drive!
+Once Render is updated, go to Telegram and say: **"Copy my contacts to a sheet"**. BABU will instantly pull your real contacts and format them perfectly in Google Drive!
 
 
 ### 👤 User (2026-05-24 10:58)
@@ -1812,11 +1812,11 @@ To fetch contacts from Google Contacts and create a spreadsheet, authentication 
 
 ### 🤖 Antigravity Assistant (2026-05-24 11:07)
 
-Aha! That message from ARIA is actually **fantastic news**! It confirms two very important things:
+Aha! That message from BABU is actually **fantastic news**! It confirms two very important things:
 1. Your updated code is officially live on Render.
 2. The AI successfully recognized that you wanted to copy your contacts and routed the action perfectly!
 
-The reason the bot says **"authentication with Google Workspace is required"** is exactly what we just diagnosed: the bot in the cloud is still using your **old token** (which only has mail/sheets permissions, but does not have the new contacts permission). Because of that, Google blocked the request, and ARIA politely told you that it needs authentication.
+The reason the bot says **"authentication with Google Workspace is required"** is exactly what we just diagnosed: the bot in the cloud is still using your **old token** (which only has mail/sheets permissions, but does not have the new contacts permission). Because of that, Google blocked the request, and BABU politely told you that it needs authentication.
 
 To solve this and get your contacts syncing, please complete **Steps 2 and 3** from our previous guide:
 
@@ -1838,7 +1838,7 @@ On your computer:
 ---
 
 ### Step 2: Upload the new `token.json` to GitHub
-Go to your `ARIA` GitHub repository:
+Go to your `BABU` GitHub repository:
 1. Click **Add file** -> **Upload files** at the root directory of your repository.
 2. Drag and drop the newly generated token file from your computer:
    *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\token.json`
@@ -1888,7 +1888,7 @@ This means your brand new `token.json` with the new Contacts permission is **suc
 Now, let's upload the new files so Render can start using them:
 
 #### 1. Upload `token.json` (to the Root directory)
-1. Open your main GitHub page (https://github.com/ssoni4751/ARIA).
+1. Open your main GitHub page (https://github.com/ssoni4751/BABU).
 2. Click **Add file** -> **Upload files**.
 3. Drag and drop this file from your computer:
    *   `C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\token.json`
@@ -1939,7 +1939,7 @@ Double-check that you completed the uploads in the two different places on your 
 
 ### 2. Is Render done building the new updates?
 1. Open your **Render Dashboard** tab (https://dashboard.render.com).
-2. Look at the latest deploy logs for your **ARIA Assistant** service.
+2. Look at the latest deploy logs for your **BABU Assistant** service.
 3. Make sure it shows the green **Live** badge for your latest upload. It usually takes **1 to 2 minutes** for Render to pull your new files from GitHub, install any libraries, and restart the bot.
 
 ---
@@ -1975,7 +1975,7 @@ Oh wow! That is absolutely beautiful to see! 😄
 Your actual contacts (names, service helplines, numbers, and categories) have been synced **perfectly** with absolute precision! All the dummy data has been cleared out, and you have a clean, real-time database in your Google Drive. 
 
 ### What We Have Accomplished Together:
-1.  **Always-On Cloud Server**: ARIA has been successfully migrated from Replit to your private GitHub repository and deployed to **Render**. It is now running 24/7, completely free of charge, even when your PC is turned off!
+1.  **Always-On Cloud Server**: BABU has been successfully migrated from Replit to your private GitHub repository and deployed to **Render**. It is now running 24/7, completely free of charge, even when your PC is turned off!
 2.  **Native Google Integrations**: We bypassed third-party webhook tools (saving you money and keeping your data private) and built direct connections to Gmail, Google Calendar, Sheets, Docs, Tasks, and Drive.
 3.  **On-the-fly Contacts Sync Tool**: We successfully designed and implemented a brand-new custom feature to connect to the **Google People API**, fetch your actual contact database, and sync it directly to Google Drive.
 
@@ -1985,9 +1985,9 @@ You now have a fully functioning, secure, enterprise-grade AI Personal Assistant
 
 ### Final Maintenance Tip:
 If you haven't yet, go ahead and set up that free monitor on **[UptimeRobot.com](https://uptimerobot.com/)** pinging your Render health URL:
-`https://babu-assistant-bxpj.onrender.com/healthz` every **5 minutes**. This will ensure that ARIA stays awake 24/7 and replies to your Telegram commands instantly without any startup delay.
+`https://babu-assistant-bxpj.onrender.com/healthz` every **5 minutes**. This will ensure that BABU stays awake 24/7 and replies to your Telegram commands instantly without any startup delay.
 
-It was an absolute pleasure pair-programming with you to build this migration and contacts sync tool. Enjoy your always-on AI assistant ARIA! If you ever need more features or updates, I'm always here to help!
+It was an absolute pleasure pair-programming with you to build this migration and contacts sync tool. Enjoy your always-on AI assistant BABU! If you ever need more features or updates, I'm always here to help!
 
 
 ### 👤 User (2026-05-24 11:23)
@@ -2002,13 +2002,13 @@ This is **absolutely perfect**! You set it up exactly right.
 The monitor shows `Preparing...` because it was just created. In a few minutes, UptimeRobot will send its first background ping, and the status will turn a beautiful **solid green** to show it is active. 
 
 From now on:
-*   UptimeRobot will keep pinging ARIA every 5 minutes.
+*   UptimeRobot will keep pinging BABU every 5 minutes.
 *   Render will keep the bot active and awake.
 *   Your Telegram messages will get replies instantly, 24/7, with zero delays!
 
 Everything is now completely configured, secure, automated, and running perfectly. Congratulations on building and launching such an elite cloud-based AI assistant! 
 
-It was a true pleasure working with you. Enjoy using ARIA! 🤖🎉
+It was a true pleasure working with you. Enjoy using BABU! 🤖🎉
 
 
 ### 👤 User (2026-05-24 11:24)
@@ -2026,7 +2026,7 @@ Your bot currently had the ability to **write** to your Google Sheet, but it did
 
 Because I want your bot to be extremely powerful, **I have just built and added a universal Google Sheets Search tool to your bot!**
 
-Now, ARIA won't just say "I can't read your sheet"—instead, it will directly open your `Contacts` spreadsheet (or *any* other spreadsheet you create in Google Drive), search it for whatever name or keyword you ask for, and reply with the exact row data instantly!
+Now, BABU won't just say "I can't read your sheet"—instead, it will directly open your `Contacts` spreadsheet (or *any* other spreadsheet you create in Google Drive), search it for whatever name or keyword you ask for, and reply with the exact row data instantly!
 
 ---
 
@@ -2034,7 +2034,7 @@ Now, ARIA won't just say "I can't read your sheet"—instead, it will directly o
 
 Since you already authorized Google Drive and Sheets permissions in your `token.json`, **you do not need to regenerate your token!** You only need to upload the updated code files to GitHub:
 
-1. Open your `ARIA` GitHub repository.
+1. Open your `BABU` GitHub repository.
 2. Click into the **`babu`** folder.
 3. Click **Add file** -> **Upload files**.
 4. Drag and drop these two updated files from your computer:
@@ -2050,7 +2050,7 @@ Wait about 30 seconds for Render to rebuild the bot, then go to Telegram and ask
 *   *"Search my contacts for Abhishek"*
 *   *"Find Rishi's number in my contacts sheet"*
 
-ARIA will connect to Google Drive, search the **Contacts** spreadsheet, find the exact matching row, and give you the number instantly!
+BABU will connect to Google Drive, search the **Contacts** spreadsheet, find the exact matching row, and give you the number instantly!
 
 
 ### 👤 User (2026-05-24 11:44)
@@ -2075,7 +2075,7 @@ I have just modified your local `bot.py` file to add full support for **`HEAD` r
 
 To fix this and get UptimeRobot to show a bright green **"UP"** status, simply upload the updated files to your GitHub repository (this is the same step as before, which also adds your new **Contacts Search** feature!):
 
-1. Go to your `ARIA` GitHub repository.
+1. Go to your `BABU` GitHub repository.
 2. Click into the **`babu`** folder.
 3. Click **Add file** -> **Upload files**.
 4. Drag and drop these two updated files from your computer:
@@ -2110,7 +2110,7 @@ This is completely normal! There are two quick reasons why it might still show t
 ### What to do:
 *   Give it **3 to 4 minutes** for UptimeRobot to perform its next check.
 *   Once it checks, the status will automatically update to green!
-*   In the meantime, you can test if your new code is live by asking ARIA on Telegram: **"Search my contacts for Shubham"**. If it replies with the correct info, it means the new code is 100% active and working!
+*   In the meantime, you can test if your new code is live by asking BABU on Telegram: **"Search my contacts for Shubham"**. If it replies with the correct info, it means the new code is 100% active and working!
 
 
 ### 👤 User (2026-05-24 11:51)
@@ -2132,7 +2132,7 @@ You can go straight to **Telegram** now and try asking:
 *   **"What is Mama Jalaun's mobile number?"** or 
 *   **"Search contacts for Pahalwan Plumber"**
 
-ARIA will pull the details directly from your Google Drive sheet and answer you instantly. 
+BABU will pull the details directly from your Google Drive sheet and answer you instantly. 
 
 Congratulations, you have built and deployed a absolute state-of-the-art, secure, and always-on AI assistant! You did an incredible job throughout this entire migration! 🚀😄
 
@@ -2193,14 +2193,14 @@ If you have photos, documents, receipts, or ID proofs (like Aadhaar cards, PAN c
 The bot will search Google Drive, find the image or file, download it, and **send it directly to your Telegram chat as a photo or document!** 
 
 ### 2. Photos in the Google Photos App
-As we discovered during our setup, Google officially shut down third-party background access to the Google Photos app libraries in early 2025 due to user privacy. However, if you sync or upload those photos to a folder in **Google Drive**, ARIA can access, search, and send them to you instantly!
+As we discovered during our setup, Google officially shut down third-party background access to the Google Photos app libraries in early 2025 due to user privacy. However, if you sync or upload those photos to a folder in **Google Drive**, BABU can access, search, and send them to you instantly!
 
 ---
 
 ### Do you want to add this feature?
-Is this what you were thinking of? (Having ARIA search Google Drive for a photo/file and send it to you on Telegram?) 
+Is this what you were thinking of? (Having BABU search Google Drive for a photo/file and send it to you on Telegram?) 
 
-If so, let me know, and **I can build a `find_and_send_file` tool into your bot right now!** You would be able to ask ARIA to fetch any image or document from your Drive, and it will drop it right into your Telegram chat.
+If so, let me know, and **I can build a `find_and_send_file` tool into your bot right now!** You would be able to ask BABU to fetch any image or document from your Drive, and it will drop it right into your Telegram chat.
 
 
 ### 👤 User (2026-05-24 12:20)
@@ -2225,7 +2225,7 @@ Now, when you ask your bot to search for an image or photo, it will:
 
 You just need to upload the updated files to your GitHub repository (into your `babu` folder):
 
-1. Go to your `ARIA` GitHub repository.
+1. Go to your `BABU` GitHub repository.
 2. Click into the **`babu`** folder.
 3. Click **Add file** -> **Upload files**.
 4. Drag and drop these two updated files from your computer:
@@ -2236,12 +2236,12 @@ You just need to upload the updated files to your GitHub repository (into your `
 ---
 
 ### How to use it!
-Wait about 30 seconds for Render to deploy the new code, then open your Telegram chat with ARIA and ask:
+Wait about 30 seconds for Render to deploy the new code, then open your Telegram chat with BABU and ask:
 *   *"Show me a photo of a cute puppy"*
 *   *"Find an image of the Eiffel Tower"*
 *   *"Get a picture of a dancing cat"*
 
-ARIA will search the web, grab the photo, and **drop the actual image directly into your Telegram chat!** Let me know as soon as you have uploaded it and tried it out!
+BABU will search the web, grab the photo, and **drop the actual image directly into your Telegram chat!** Let me know as soon as you have uploaded it and tried it out!
 
 
 ### 👤 User (2026-05-24 12:32)
@@ -2304,7 +2304,7 @@ Now, if you ever hit a "Token Exhausted" or rate-limit error, you can simply typ
 
 Upload these updated files to your GitHub repository inside the **`babu`** folder (this single upload will activate both the **Dynamic Model Switcher** and the **Image Search & Send** features we just built!):
 
-1. Go to your `ARIA` GitHub repository.
+1. Go to your `BABU` GitHub repository.
 2. Click into the **`babu`** folder.
 3. Click **Add file** -> **Upload files**.
 4. Drag and drop these two updated files from your computer:
@@ -2350,7 +2350,7 @@ Here is what I did:
 Before uploading the code, let's configure your key in Render so the bot can read it:
 
 1. Open your **Render Dashboard** (https://dashboard.render.com).
-2. Click on your **ARIA Assistant** service.
+2. Click on your **BABU Assistant** service.
 3. Click on **Environment** in the left sidebar menu.
 4. Click **Add Environment Vbabuble**.
 5. Set:
@@ -2364,7 +2364,7 @@ Before uploading the code, let's configure your key in Render so the bot can rea
 
 Now, let's upload the new model switcher code to your GitHub:
 
-1. Open your `ARIA` GitHub repository.
+1. Open your `BABU` GitHub repository.
 2. Click into the **`babu`** folder.
 3. Click **Add file** -> **Upload files**.
 4. Drag and drop this single updated file:

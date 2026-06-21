@@ -25,7 +25,7 @@ from babu.bot import invoke_babu, _histories, get_history_text
 
 def run_simulator():
     print("="*60)
-    print("ARIA TELEGRAM BOT SIMULATION & TOKEN METRICS AUDIT")
+    print("BABU TELEGRAM BOT SIMULATION & TOKEN METRICS AUDIT")
     print("="*60)
     
     session_id = "simulator_test_session_999"
@@ -37,7 +37,7 @@ def run_simulator():
     test_conversations = [
         {
             "description": "Test A: Casual Conversation (WALK Gear)",
-            "message": "Hi ARIA, good morning! Hope you are doing great today."
+            "message": "Hi BABU, good morning! Hope you are doing great today."
         },
         {
             "description": "Test B: Factual Personal Lookup (WALK Gear + Local Profile RAG)",
@@ -61,7 +61,7 @@ def run_simulator():
         
         reply, gear, tokens = invoke_babu(test["message"], session_id=session_id)
         
-        print(f"ARIA (Gear: {gear}): {reply[:120]}...")
+        print(f"BABU (Gear: {gear}): {reply[:120]}...")
         print(f"Token Stats: {tokens}")
         
         report.append({
@@ -76,7 +76,7 @@ def run_simulator():
     # Test E: Memory Compression Threshold Trigger simulation
     print("\n[RUNNING Test E: Memory Window Saturation & Summarizer Pass]")
     # Artificially inject a very long chat history to trigger auto-distillation
-    long_history = "USER: Let's talk about computers.\nARIA: OK.\n" * 150  # ~15,000 characters (exceeds 12,000 threshold)
+    long_history = "USER: Let's talk about computers.\nBABU: OK.\n" * 150  # ~15,000 characters (exceeds 12,000 threshold)
     _histories[session_id].clear()
     for i in range(50):
         _histories[session_id].append(("user", "Let's talk about computer parts and upgrades."))
@@ -88,7 +88,7 @@ def run_simulator():
     # log it to user_profile.json dynamic ledger, and clear active history!
     print("Sending message under saturated history state...")
     reply, gear, tokens = invoke_babu("What parts do you recommend for boosting PC speed?", session_id=session_id)
-    print(f"ARIA (Gear: {gear}): {reply[:120]}...")
+    print(f"BABU (Gear: {gear}): {reply[:120]}...")
     print(f"Token Stats: {tokens}")
     
     # Read user_profile.json to confirm summary commit

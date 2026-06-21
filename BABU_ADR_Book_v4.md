@@ -1,4 +1,4 @@
-# ARIA (BABU) ADR Book v4
+# BABU (BABU) ADR Book v4
 ## Source Code Blueprint & Production Architecture
 
 Version: 4.0
@@ -8,7 +8,7 @@ Version: 4.0
 # ADR-057 — Canonical Repository Structure
 
 ```text
-aria/
+babu/
 ├── babu/
 │   ├── bot.py
 │   ├── planner.py
@@ -293,7 +293,7 @@ facebook_post:
 Sources
 
 - config.json
-- env variables
+- env vbabubles
 - constitution.json
 
 Priority
@@ -453,6 +453,18 @@ Memory informs decisions.
 
 Law 6:
 Constitution governs everything.
+
+---
+
+# ADR-079 — Swarm Codebase Modularization
+
+Swarm modularization decouples Layer 0 Gateways, Layer 4 Services, and LangGraph orchestration nodes into separate modules (gateway.py, services.py, graph.py, bot.py). This prevents code bloat, simplifies telemetry imports, and allows database checkpointers to load without circular dependency loops.
+
+---
+
+# ADR-080 — Class C Double-Confirmation Protection
+
+To prevent accidental destruction of documents, spreadsheets, and calendar events, the Layer 5 Authorization Engine enforces a Stage 2 confirmation warning flow for Class C mutating actions. When a Class C action is requested, the system prompts the user with a warning card and locks execution until a second confirmation (confirm or 2) is received.
 
 ---
 

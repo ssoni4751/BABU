@@ -1,4 +1,4 @@
-# ARIA (BABU) Architecture Decision Record Book v2
+# BABU (BABU) Architecture Decision Record Book v2
 ## Advanced System Design, Governance, Memory & Deployment
 
 Version: 2.0
@@ -409,7 +409,7 @@ Intent
 
 Planner only for novel tasks.
 
-This transforms ARIA from a chatbot into an operational execution kernel.
+This transforms BABU from a chatbot into an operational execution kernel.
 
 ---
 

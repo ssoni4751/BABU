@@ -328,7 +328,9 @@ def init_postgres_db():
                 ("ADR-002", "ADR", "Runtime Index", "Phase 2", "System-state queries (identity, health, telemetry) incorrectly routed through planner and web search, causing high token costs and latency", "Introduce runtime_index.md and deterministic query routing", "Prevent LLMs from planning external web search/research for internal system awareness", "Zero-token system introspection and deterministic response within milliseconds", "Static/manual mapping of system-aware queries requires maintainers to register keywords in bot code", 9, None, "Active", "2026-06-11T12:00:00Z"),
                 ("ADR-003", "ADR", "Gemini Embeddings", "Phase 3", "OpenAI dependency and embedding API cost quota limits causing RAG failures", "Migrate to Gemini embedding-001 model", "Switch to a free, highly capable embedding API with LangChain integration", "Free embedding pipeline restoring search functionality", "Strict rate limits on free-tier Gemini API, handled via staged rate-limiting fallback gateways", 7, None, "Active", "2026-06-17T06:00:00Z"),
                 ("POSTMORTEM-001", "POSTMORTEM", "Telegram Outage Incident", "Phase 3", "Transport layer unavailable (webhook timeouts and network blocks)", "Implement async polling failsafe and local console simulation", "Ensure core execution and debugging is not blocked by third-party API availability", "Core loop decoupled from messaging network state", "Console simulator does not test webhooks/network edge cases directly", 6, None, "Active", "2026-06-17T08:00:00Z"),
-                ("LESSON-001", "LESSON", "Self-Awareness Hierarchy (K1-K7)", "Phase 3", "Lack of semantic boundary organization leading to retrieval confusion", "Formally register Knowledge Classes (K1-K7) inside runtime routing", "Organize self-awareness data: K1 Identity, K2 Runtime, K3 User, K4 Execution, K5 Architecture, K6 Domain, K7 External", "High-precision intent routing and scoped RAG retrieval", "Requires categorizing user queries into explicit knowledge classes", 8, None, "Active", "2026-06-17T09:00:00Z")
+                ("LESSON-001", "LESSON", "Self-Awareness Hierarchy (K1-K7)", "Phase 3", "Lack of semantic boundary organization leading to retrieval confusion", "Formally register Knowledge Classes (K1-K7) inside runtime routing", "Organize self-awareness data: K1 Identity, K2 Runtime, K3 User, K4 Execution, K5 Architecture, K6 Domain, K7 External", "High-precision intent routing and scoped RAG retrieval", "Requires categorizing user queries into explicit knowledge classes", 8, None, "Active", "2026-06-17T09:00:00Z"),
+                ("ADR-004", "ADR", "Swarm Codebase Modularization", "Phase 3", "Massive bot.py monolith (460KB) causing high memory usage, circular imports, and slow startup time", "Decompose bot.py into Layer 0 Gateway (gateway.py), Layer 4 Services (services.py), LangGraph Orchestration (graph.py), and a lean bot.py entrypoint", "Eliminate code duplication, fix circular import loops, and improve modular design", "Successful modularization with clean imports and identical system execution", "Functions are now imported across files, which requires maintaining correct import paths during refactoring", 9, None, "Active", "2026-06-21T12:00:00Z"),
+                ("ADR-005", "ADR", "Class C Double-Confirmation Protection", "Phase 3", "Risk of accidental destructive actions (e.g. delete_document, delete_spreadsheet) being executed without user awareness or double confirmation", "Implement Stage 2 confirmation warning flow for Class C destructive actions", "Secure external mutating and destructive actions behind a warning gate", "Blocked accidental runs of destructive commands with clean interactive approval flows", "Requires the user to explicitly confirm Class C actions with confirm/2, increasing latency by one turn", 9, None, "Active", "2026-06-21T12:00:00Z")
             ]
             for rec in seed_records:
                 cursor.execute("""
@@ -513,7 +515,9 @@ def init_durable_checkpoint_db():
             ("ADR-002", "ADR", "Runtime Index", "Phase 2", "System-state queries (identity, health, telemetry) incorrectly routed through planner and web search, causing high token costs and latency", "Introduce runtime_index.md and deterministic query routing", "Prevent LLMs from planning external web search/research for internal system awareness", "Zero-token system introspection and deterministic response within milliseconds", "Static/manual mapping of system-aware queries requires maintainers to register keywords in bot code", 9, None, "Active", "2026-06-11T12:00:00Z"),
             ("ADR-003", "ADR", "Gemini Embeddings", "Phase 3", "OpenAI dependency and embedding API cost quota limits causing RAG failures", "Migrate to Gemini embedding-001 model", "Switch to a free, highly capable embedding API with LangChain integration", "Free embedding pipeline restoring search functionality", "Strict rate limits on free-tier Gemini API, handled via staged rate-limiting fallback gateways", 7, None, "Active", "2026-06-17T06:00:00Z"),
             ("POSTMORTEM-001", "POSTMORTEM", "Telegram Outage Incident", "Phase 3", "Transport layer unavailable (webhook timeouts and network blocks)", "Implement async polling failsafe and local console simulation", "Ensure core execution and debugging is not blocked by third-party API availability", "Core loop decoupled from messaging network state", "Console simulator does not test webhooks/network edge cases directly", 6, None, "Active", "2026-06-17T08:00:00Z"),
-            ("LESSON-001", "LESSON", "Self-Awareness Hierarchy (K1-K7)", "Phase 3", "Lack of semantic boundary organization leading to retrieval confusion", "Formally register Knowledge Classes (K1-K7) inside runtime routing", "Organize self-awareness data: K1 Identity, K2 Runtime, K3 User, K4 Execution, K5 Architecture, K6 Domain, K7 External", "High-precision intent routing and scoped RAG retrieval", "Requires categorizing user queries into explicit knowledge classes", 8, None, "Active", "2026-06-17T09:00:00Z")
+            ("LESSON-001", "LESSON", "Self-Awareness Hierarchy (K1-K7)", "Phase 3", "Lack of semantic boundary organization leading to retrieval confusion", "Formally register Knowledge Classes (K1-K7) inside runtime routing", "Organize self-awareness data: K1 Identity, K2 Runtime, K3 User, K4 Execution, K5 Architecture, K6 Domain, K7 External", "High-precision intent routing and scoped RAG retrieval", "Requires categorizing user queries into explicit knowledge classes", 8, None, "Active", "2026-06-17T09:00:00Z"),
+            ("ADR-004", "ADR", "Swarm Codebase Modularization", "Phase 3", "Massive bot.py monolith (460KB) causing high memory usage, circular imports, and slow startup time", "Decompose bot.py into Layer 0 Gateway (gateway.py), Layer 4 Services (services.py), LangGraph Orchestration (graph.py), and a lean bot.py entrypoint", "Eliminate code duplication, fix circular import loops, and improve modular design", "Successful modularization with clean imports and identical system execution", "Functions are now imported across files, which requires maintaining correct import paths during refactoring", 9, None, "Active", "2026-06-21T12:00:00Z"),
+            ("ADR-005", "ADR", "Class C Double-Confirmation Protection", "Phase 3", "Risk of accidental destructive actions (e.g. delete_document, delete_spreadsheet) being executed without user awareness or double confirmation", "Implement Stage 2 confirmation warning flow for Class C destructive actions", "Secure external mutating and destructive actions behind a warning gate", "Blocked accidental runs of destructive commands with clean interactive approval flows", "Requires the user to explicitly confirm Class C actions with confirm/2, increasing latency by one turn", 9, None, "Active", "2026-06-21T12:00:00Z")
         ]
         for rec in seed_records:
             cursor.execute("""
@@ -1991,7 +1995,7 @@ def invoke_babu(message: str, session_id: str = "default", goal_id: Optional[str
                         promotion_note = (
                             f"\n\n💡 *System Suggestion: Promote Workflow*\n"
                             f"The workflow signature `{sig}` has successfully run {success_count}/{run_count} times.\n"
-                            f"To compile this workflow into ARIA's muscle memory (E[Temp]), approve by sending:\n"
+                            f"To compile this workflow into BABU's muscle memory (E[Temp]), approve by sending:\n"
                             f"`/promote {sig} {goal_id}`"
                         )
                         reply += promotion_note
@@ -2013,7 +2017,7 @@ STATUS_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ARIA — Cognitive Swarm Telemetry Control Panel</title>
+<title>BABU — Cognitive Swarm Telemetry Control Panel</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -2636,7 +2640,7 @@ STATUS_HTML = """<!DOCTYPE html>
     <div class="brand-group">
       <div class="logo-glow">A</div>
       <div>
-        <h1>ARIA COGNITIVE SWARM</h1>
+        <h1>BABU COGNITIVE SWARM</h1>
         <p class="sub-title">Real-Time Telemetry & Token Ledger</p>
       </div>
     </div>
@@ -3006,7 +3010,7 @@ STATUS_HTML = """<!DOCTYPE html>
   </div>
   
   <footer>
-    <p>ARIA Engine &bull; Self-Correction Checkpoints &bull; Bipartite Auditor &bull; SQLite Ledger</p>
+    <p>BABU Engine &bull; Self-Correction Checkpoints &bull; Bipartite Auditor &bull; SQLite Ledger</p>
   </footer>
 </div>
 
@@ -3693,7 +3697,7 @@ CHAT_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ARIA Web Chat</title>
+<title>BABU Web Chat</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style>
@@ -3825,17 +3829,17 @@ CHAT_HTML = """<!DOCTYPE html>
 </head>
 <body>
   <div id="header">
-    <div>ARIA Web Interface</div>
+    <div>BABU Web Interface</div>
     <div style="display: flex; align-items: center; gap: 15px;">
       <button id="clear-btn" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: #ef4444; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s;">Clear Chat</button>
       <div id="header-status">● Online</div>
     </div>
   </div>
   <div id="chat">
-    <div class="msg bot">Hello! I am ARIA. How can I help you today?</div>
+    <div class="msg bot">Hello! I am BABU. How can I help you today?</div>
   </div>
   <div id="input-area">
-    <input type="text" id="input" placeholder="Message ARIA..." autocomplete="off">
+    <input type="text" id="input" placeholder="Message BABU..." autocomplete="off">
     <button id="send">Send</button>
   </div>
   
@@ -3864,10 +3868,10 @@ CHAT_HTML = """<!DOCTYPE html>
     const sendBtn = document.getElementById('send');
     
     // Manage session ID persistent in localStorage
-    let sessionId = localStorage.getItem('aria_session_id');
+    let sessionId = localStorage.getItem('babu_session_id');
     if (!sessionId) {
       sessionId = 'web_session_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
-      localStorage.setItem('aria_session_id', sessionId);
+      localStorage.setItem('babu_session_id', sessionId);
     }
     
     const renderer = new marked.Renderer();
@@ -3974,7 +3978,7 @@ CHAT_HTML = """<!DOCTYPE html>
         }
       } catch(e) {
         document.getElementById(typingId).remove();
-        appendMsg('⚠️ Connection error to ARIA backend.', 'bot');
+        appendMsg('⚠️ Connection error to BABU backend.', 'bot');
       } finally {
         sendBtn.disabled = false;
         input.disabled = false;
@@ -4041,8 +4045,8 @@ CHAT_HTML = """<!DOCTYPE html>
         } catch(e) {}
         
         sessionId = 'web_session_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
-        localStorage.setItem('aria_session_id', sessionId);
-        chat.innerHTML = '<div class="msg bot">Hello! I am ARIA. How can I help you today?</div>';
+        localStorage.setItem('babu_session_id', sessionId);
+        chat.innerHTML = '<div class="msg bot">Hello! I am BABU. How can I help you today?</div>';
       }
     });
 
@@ -4590,7 +4594,7 @@ class HealthHandler(BaseHTTPRequestHandler):
 
             if path in ("/healthz", "/api/healthz"):
                 body = json.dumps({
-                    "status": "ok", "bot": "ARIA",
+                    "status": "ok", "bot": "BABU",
                     "features": ["memory", "web_search", "knowledge_base", "google_workspace"],
                     "google_configured": bool(is_google_configured()),
                 }).encode()
@@ -5184,7 +5188,7 @@ async def generate_and_send_preview(chat_id: int, bot, custom_topic: str = None,
         # 2. Send the image preview with interactive keyboard
         with open(draft["image_path"], "rb") as photo_file:
             caption_text = (
-                f"📊 *ARIA Marketing Department - Post Preview*\n\n"
+                f"📊 *BABU Marketing Department - Post Preview*\n\n"
                 f"Please review the graphic above and the proposed caption sent in the previous message.\n\n"
                 f"Click Approve to publish directly to Facebook Page."
             )
@@ -5525,7 +5529,7 @@ async def cmd_promote(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• **Template ID**: `{template_id}`\n"
             f"• **Signature**: `{sig}`\n"
             f"• **Source Goal ID**: `{goal_id}`\n\n"
-            f"ARIA has now compiled this workflow into muscle memory. Subsequent runs matching this signature will bypass dynamic planning and heavy auditing."
+            f"BABU has now compiled this workflow into muscle memory. Subsequent runs matching this signature will bypass dynamic planning and heavy auditing."
         )
 
 
@@ -5628,7 +5632,7 @@ async def run_babu(update: Update, msg: str, session_id: str):
             reply += f"\n\n[Tokens: {tokens['total']}]"
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
-        reply = f"ARIA error: {e}"
+        reply = f"BABU error: {e}"
     finally:
         stop_typing.set()
         typing_task.cancel()
@@ -6182,9 +6186,9 @@ async def cmd_goals(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     google_line = "\n- Send email, create calendar event, log to sheet - just ask naturally" if is_google_configured() else ""
     await update.message.reply_text(
-        "ARIA - Multi-Agent AI Assistant\n\n"
+        "BABU - Multi-Agent AI Assistant\n\n"
         "Unified Agent Swarm:\n"
-        "- Just send a message naturally! ARIA automatically decomposes your query, performs deep web research, writes drafts, and executes secure audited actions.\n"
+        "- Just send a message naturally! BABU automatically decomposes your query, performs deep web research, writes drafts, and executes secure audited actions.\n"
         "- /launch <question> - Shortcut command to explicitly trigger the planner.\n\n"
         "Marketing Department:\n"
         "- /postnow - Instantly generate and post custom daily tech graphic & copy to Facebook Page\n\n"
@@ -6206,7 +6210,7 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         stats = get_runtime_stats(limit=80)
         gears = stats.get("gear_counts", {})
         text = (
-            "ARIA Runtime Stats\n\n"
+            "BABU Runtime Stats\n\n"
             f"Routing events: {stats.get('routing_events', 0)}\n"
             f"Workflow events: {stats.get('workflow_events', 0)}\n"
             f"Detected actions: {stats.get('action_detected_count', 0)}\n"
@@ -6231,7 +6235,7 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if not args:
         menu = (
-            "🛡️ **ARIA Model Settings & Telemetry**\n\n"
+            "🛡️ **BABU Model Settings & Telemetry**\n\n"
             f"👤 **Current Assistant (PA) Model**: `{CURRENT_PA_MODEL}`\n"
             f"👥 **Current Swarm (Research) Model**: `{CURRENT_DEPT_MODEL}`\n\n"
             

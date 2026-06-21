@@ -31,7 +31,7 @@ from babu.bot import invoke_babu, _histories
 
 def run_tests():
     print("="*60)
-    print("RUNNING ARIA COGNITIVE OS PHASE 2 INTEGRATION TESTS")
+    print("RUNNING BABU COGNITIVE OS PHASE 2 INTEGRATION TESTS")
     print("="*60)
     
     # Test 1: Staged Context Compression Gateway

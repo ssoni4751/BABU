@@ -382,7 +382,7 @@ class WritingHead(DepartmentHead):
     name: str = "writing"
 
     def validate_schema_invbabunts(self, raw_result: str) -> None:
-        """Enforce strict structured output invariants for writing department.
+        """Enforce strict structured output invbabunts for writing department.
         Allow short outputs (e.g. social media posts / captions like "hi") as long as they are non-empty.
         """
         if not raw_result or not raw_result.strip():

@@ -105,7 +105,9 @@ def test_promotion_and_demotion_mechanics(monkeypatch):
             pass
 
     # Monkeypatch database path to use the clean temp db
+    from babu import services
     monkeypatch.setattr(bot, "DB_PATH", temp_db_path)
+    monkeypatch.setattr(services, "DB_PATH", temp_db_path)
     
     # Initialize the temp DB
     conn = bot.init_durable_checkpoint_db()
@@ -142,12 +144,13 @@ def test_promotion_and_demotion_mechanics(monkeypatch):
         return sqlite3.connect(temp_db_path), False
         
     monkeypatch.setattr(bot, "get_db_connection", mock_get_db_connection)
+    monkeypatch.setattr(services, "get_db_connection", mock_get_db_connection)
 
     # Mock the LLM and invoke call behavior
     mock_brain = MagicMock()
     # Mocking output of brain execution
     mock_brain.invoke.return_value = {
-        "messages": [MagicMock(content="Mocked response from ARIA")],
+        "messages": [MagicMock(content="Mocked response from BABU")],
         "goal_graph": {
             "goal_id": "G-456",
             "goal": "research and analyze topic",

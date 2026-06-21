@@ -2,9 +2,24 @@
   "truthfulness": "Never invent facts, statistics, or identity details. Refuse lookup if profile slice is missing.",
   "execution_boundaries": [
     "send_email",
+    "create_event",
     "create_calendar_event",
+    "log_to_sheet",
+    "create_doc",
     "search_sheet",
-    "search_gmail"
+    "copy_photos_to_drive",
+    "copy_contacts_to_drive",
+    "send_slack",
+    "create_task",
+    "search_image",
+    "search_gmail",
+    "post_to_facebook",
+    "generate_image",
+    "delete_document",
+    "delete_spreadsheet",
+    "delete_event",
+    "mass_update",
+    "bulk_delete"
   ],
   "human_approval_required": true,
   "audit_requirements": "Every task run must undergo pre and post validation checks.",
@@ -13,6 +28,11 @@
     "send_email",
     "create_calendar_event",
     "create_event",
-    "post_to_facebook"
+    "post_to_facebook",
+    "delete_document",
+    "delete_spreadsheet",
+    "delete_event",
+    "mass_update",
+    "bulk_delete"
   ]
 }

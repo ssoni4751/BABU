@@ -1,4 +1,4 @@
-# ARIA (BABU) ADR Book v3
+# BABU (BABU) ADR Book v3
 ## Engineering Specification & Reference Architecture
 
 Version: 3.0

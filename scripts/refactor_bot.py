@@ -1,7 +1,7 @@
 import os
 import re
 
-babu_dir = os.path.join(r"c:\Users\LENOVO\.gemini\antigravity\scratch\Aria", "babu")
+babu_dir = os.path.join(r"c:\Users\LENOVO\.gemini\antigravity\scratch\Babu", "babu")
 bot_path = os.path.join(babu_dir, "bot.py")
 
 with open(bot_path, "r", encoding="utf-8") as f:
@@ -102,7 +102,7 @@ def bootstrap_brain():
     health_thread.start()
     
     google_status = f"Google Workspace ({{'active' if is_google_configured() else 'NOT configured'}})"
-    print(f"--- ARIA IS LIVE | Memory | Web Search | Knowledge Base | {{google_status}} | Unified Swarm ---", flush=True)
+    print(f"--- BABU IS LIVE | Memory | Web Search | Knowledge Base | {{google_status}} | Unified Swarm ---", flush=True)
     
     bot = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     bot_module.tg_application = bot

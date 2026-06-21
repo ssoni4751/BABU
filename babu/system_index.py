@@ -1,7 +1,7 @@
 """
 system_index.py — System Information Index (SII) Layer
 
-The SII is the authoritative runtime routing layer for all ARIA system-related
+The SII is the authoritative runtime routing layer for all BABU system-related
 queries. It parses System_Information_Index.md and provides:
 
   1. parse_sii()                  — Parses the SII markdown into structured registries.
@@ -134,7 +134,7 @@ def parse_sii(filepath: str) -> Optional[dict]:
                     if m and mode == "adrs":
                         layers[current_layer]["adrs"].append(m.group(1).upper())
                     elif mode == "book" and line.endswith(".md"):
-                        # Store physical name (ARIA_ prefix mapping applied later)
+                        # Store physical name (BABU_ prefix mapping applied later)
                         layers[current_layer]["book"] = line.strip()
 
         # ── Component Registry ───────────────────────────────────────────
@@ -234,9 +234,9 @@ def parse_sii(filepath: str) -> Optional[dict]:
 # ---------------------------------------------------------------------------
 
 def _to_physical_name(doc_name: str) -> str:
-    """Map SII document names (ADR_Book_v1.md) → physical file names (ARIA_ADR_Book_v1.md)."""
+    """Map SII document names (ADR_Book_v1.md) → physical file names (BABU_ADR_Book_v1.md)."""
     if doc_name.startswith("ADR_Book_"):
-        return "ARIA_" + doc_name
+        return "BABU_" + doc_name
     return doc_name
 
 
@@ -299,7 +299,7 @@ def route_query(query: str, registries: Optional[dict] = None) -> RoutingResult:
     Returns:
       {
         "adrs":              ["ADR-004", "ADR-005"],       # resolved ADR IDs
-        "books":             ["ARIA_ADR_Book_v1.md"],      # physical book files
+        "books":             ["BABU_ADR_Book_v1.md"],      # physical book files
         "query_mode":        "SYSTEM_INFORMATION",         # behaviour hint
         "matched_component": "Memory",                     # first matched component
         "matched_layer":     "L2 Memory",                  # first matched layer

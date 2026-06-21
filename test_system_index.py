@@ -34,7 +34,7 @@ from babu.system_index import (
     invalidate_cache,
 )
 from babu.rag_storage import init_rag_db, retrieve_knowledge, MockEmbeddings
-from babu.bot import get_db_connection
+from babu.services import get_db_connection
 
 
 # ---------------------------------------------------------------------------
@@ -197,12 +197,12 @@ class TestSIIParsing(unittest.TestCase):
     def test_06_adr_map_precomputed(self):
         reg = parse_sii(self.tmp.name)
         adr_map = reg["adr_map"]
-        # ADR-001 → ADR-018 → ARIA_ADR_Book_v1.md
-        self.assertEqual(adr_map[1], "ARIA_ADR_Book_v1.md")
-        self.assertEqual(adr_map[18], "ARIA_ADR_Book_v1.md")
-        # ADR-019 → ADR-036 → ARIA_ADR_Book_v2.md
-        self.assertEqual(adr_map[19], "ARIA_ADR_Book_v2.md")
-        self.assertEqual(adr_map[36], "ARIA_ADR_Book_v2.md")
+        # ADR-001 → ADR-018 → BABU_ADR_Book_v1.md
+        self.assertEqual(adr_map[1], "BABU_ADR_Book_v1.md")
+        self.assertEqual(adr_map[18], "BABU_ADR_Book_v1.md")
+        # ADR-019 → ADR-036 → BABU_ADR_Book_v2.md
+        self.assertEqual(adr_map[19], "BABU_ADR_Book_v2.md")
+        self.assertEqual(adr_map[36], "BABU_ADR_Book_v2.md")
 
     def test_07_missing_file_returns_none(self):
         result = parse_sii("/nonexistent/path.md")
@@ -261,20 +261,20 @@ class TestRouteQuery(unittest.TestCase):
     def test_explicit_adr_routes_to_correct_book(self):
         result = route_query("tell me about ADR-004 ledger memory", self.reg)
         self.assertIn("ADR-004", result["adrs"])
-        self.assertIn("ARIA_ADR_Book_v1.md", result["books"])
+        self.assertIn("BABU_ADR_Book_v1.md", result["books"])
 
     def test_explicit_adr_019_routes_to_book2(self):
         result = route_query("what is ADR-019?", self.reg)
         self.assertIn("ADR-019", result["adrs"])
-        self.assertIn("ARIA_ADR_Book_v2.md", result["books"])
+        self.assertIn("BABU_ADR_Book_v2.md", result["books"])
 
     def test_multiple_explicit_adrs(self):
         result = route_query("compare ADR-001 and ADR-022", self.reg)
         self.assertIn("ADR-001", result["adrs"])
         self.assertIn("ADR-022", result["adrs"])
         # ADR-001 in Book1, ADR-022 in Book2
-        self.assertIn("ARIA_ADR_Book_v1.md", result["books"])
-        self.assertIn("ARIA_ADR_Book_v2.md", result["books"])
+        self.assertIn("BABU_ADR_Book_v1.md", result["books"])
+        self.assertIn("BABU_ADR_Book_v2.md", result["books"])
 
     # ── Layer Registry routing ──────────────────────────────────────────
 
@@ -341,7 +341,7 @@ class TestRouteQuery(unittest.TestCase):
     def test_route_query_to_books_wrapper(self):
         books = route_query_to_books("tell me about ADR-001", self.reg)
         self.assertIsInstance(books, list)
-        self.assertIn("ARIA_ADR_Book_v1.md", books)
+        self.assertIn("BABU_ADR_Book_v1.md", books)
 
 
 class TestRetrieveKnowledgeSourcesFilter(unittest.TestCase):
@@ -369,11 +369,11 @@ class TestRetrieveKnowledgeSourcesFilter(unittest.TestCase):
         v2 = json.dumps(embed.embed_query("deployment telemetry ADR-019"))
         cursor.execute(
             "INSERT INTO babu_knowledge (collection, source, title, chunk_text, embedding, metadata) VALUES (?, ?, ?, ?, ?, ?)",
-            ("adr_books", "ARIA_ADR_Book_v1.md", "Ledger-Based Memory", "Memory records outcomes.", v1, "{}")
+            ("adr_books", "BABU_ADR_Book_v1.md", "Ledger-Based Memory", "Memory records outcomes.", v1, "{}")
         )
         cursor.execute(
             "INSERT INTO babu_knowledge (collection, source, title, chunk_text, embedding, metadata) VALUES (?, ?, ?, ?, ?, ?)",
-            ("adr_books", "ARIA_ADR_Book_v2.md", "Deployment Telemetry", "Telemetry records deployments.", v2, "{}")
+            ("adr_books", "BABU_ADR_Book_v2.md", "Deployment Telemetry", "Telemetry records deployments.", v2, "{}")
         )
         conn.commit()
         cursor.close()
@@ -399,24 +399,24 @@ class TestRetrieveKnowledgeSourcesFilter(unittest.TestCase):
         results = retrieve_knowledge(
             "memory ledger",
             collections=["adr_books"],
-            sources=["ARIA_ADR_Book_v1.md"],
+            sources=["BABU_ADR_Book_v1.md"],
             top_k=5
         )
         sources_returned = [r["source"] for r in results]
         for src in sources_returned:
-            self.assertEqual(src, "ARIA_ADR_Book_v1.md",
+            self.assertEqual(src, "BABU_ADR_Book_v1.md",
                              f"Expected only Book1 results but got: {src}")
 
     def test_sources_filter_restricts_to_book2(self):
         results = retrieve_knowledge(
             "deployment telemetry",
             collections=["adr_books"],
-            sources=["ARIA_ADR_Book_v2.md"],
+            sources=["BABU_ADR_Book_v2.md"],
             top_k=5
         )
         sources_returned = [r["source"] for r in results]
         for src in sources_returned:
-            self.assertEqual(src, "ARIA_ADR_Book_v2.md",
+            self.assertEqual(src, "BABU_ADR_Book_v2.md",
                              f"Expected only Book2 results but got: {src}")
 
     def test_no_sources_filter_returns_both(self):

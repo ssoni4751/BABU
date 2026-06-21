@@ -1,4 +1,4 @@
-# ARIA Organization
+# BABU Organization
 
 ## Departments
 Departments perform work. They do not govern, nor do they self-authorize.

@@ -1,7 +1,7 @@
 """
-task_engine.py — ARIA's Execution Kernel
+task_engine.py — BABU's Execution Kernel
 
-This module is the core of ARIA's orchestration framework. It models work as
+This module is the core of BABU's orchestration framework. It models work as
 a directed acyclic graph (DAG) of TaskDTO objects, each carrying a narrow
 objective, a department assignment, dependency edges, priority, and a scoped
 token budget.
@@ -51,7 +51,7 @@ class TaskState(enum.Enum):
 
 @dataclass
 class TaskDTO:
-    """Universal work unit inside ARIA's orchestration framework.
+    """Universal work unit inside BABU's orchestration framework.
 
     Parameters
     ----------

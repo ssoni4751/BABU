@@ -1,5 +1,5 @@
 """
-governance.py — Immutable E0 Governance Layer & Compiled Cognition Helpers for ARIA
+governance.py — Immutable E0 Governance Layer & Compiled Cognition Helpers for BABU
 """
 
 import json
@@ -21,7 +21,13 @@ VERSION_PATH = os.path.join(BASE_DIR, "e0", "version.txt")
 # ── E0-A: CONSTITUTIONAL RULES (Immutable, Human-Defined Only) ──
 E0_A_Rules = {
     "truthfulness": "Never invent facts, statistics, or identity details. Refuse lookup if profile slice is missing.",
-    "execution_boundaries": ["send_email", "create_calendar_event", "search_sheet", "search_gmail"],
+    "execution_boundaries": [
+        "send_email", "create_event", "create_calendar_event", "log_to_sheet",
+        "create_doc", "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive",
+        "send_slack", "create_task", "search_image", "search_gmail",
+        "post_to_facebook", "generate_image", "delete_document", "delete_spreadsheet",
+        "delete_event", "mass_update", "bulk_delete"
+    ],
     "human_approval_required": True,
     "audit_requirements": "Every task run must undergo pre and post validation checks.",
     "micro_auditor_boundary": "Micro Auditor MUST be deterministic, MUST NOT call LLMs, and MUST complete in <50ms."

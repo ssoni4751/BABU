@@ -22,12 +22,9 @@ sys.path.append(CURRENT_DIR)
 sys.path.append(os.path.join(CURRENT_DIR, "babu"))
 
 from babu.planner import classify_intent
-from babu.bot import (
-    get_babu_age_string,
-    get_babu_self_context,
-    invoke_babu,
-    BabuState
-)
+from babu.gateway import get_babu_age_string, get_babu_self_context
+from babu.bot import invoke_babu
+from babu.graph import BabuState
 
 def test_babu_age_calculation():
     """Verify that get_babu_age_string returns a valid age string."""
@@ -78,7 +75,7 @@ def test_deterministic_short_circuits():
 
     # Test Architecture Query
     res_arch, mode, tokens = invoke_babu("tell me about your architecture", session_id="test_system_session")
-    assert "decentralized LangGraph-based swarm" in res_arch
+    assert "LangGraph-based" in res_arch
     assert "Bipartite Auditor" in res_arch
     assert tokens["prompt"] == 0
     assert tokens["completion"] == 0
@@ -267,7 +264,9 @@ def test_no_drop_table_in_init():
 
 def test_k0_working_memory_lifecycle():
     """Verify the database schema, persistence, and retrieval of K0 Working Memory."""
-    from babu.bot import get_db_connection, save_k0_memory_entry, retrieve_k0_memory, get_babu_self_context
+    from babu.services import get_db_connection, retrieve_k0_memory
+    from babu.bot import save_k0_memory_entry
+    from babu.gateway import get_babu_self_context
     
     # 1. Verify table exists in local db
     conn, is_pg = get_db_connection()

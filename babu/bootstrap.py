@@ -65,7 +65,7 @@ def bootstrap_brain():
     health_thread.start()
     
     google_status = f"Google Workspace ({'active' if bot_module.is_google_configured() else 'NOT configured'})"
-    print(f"--- ARIA IS LIVE | Memory | Web Search | Knowledge Base | {google_status} | Unified Swarm ---", flush=True)
+    print(f"--- BABU IS LIVE | Memory | Web Search | Knowledge Base | {google_status} | Unified Swarm ---", flush=True)
     
     bot = ApplicationBuilder().token(bot_module.TELEGRAM_TOKEN).build()
     bot_module.tg_application = bot

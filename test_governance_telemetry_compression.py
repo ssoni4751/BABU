@@ -9,7 +9,8 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(CURRENT_DIR)
 sys.path.append(os.path.join(CURRENT_DIR, "babu"))
 
-from babu.bot import get_db_connection, get_telemetry_data, log_execution_ledger_event
+from babu.services import get_db_connection, log_execution_ledger_event
+from babu.bot import get_telemetry_data
 from babu.departments import get_department_head
 from babu.task_engine import TaskDTO, TaskState
 
@@ -204,7 +205,8 @@ def test_etemp_telemetry_logging():
 
 def test_personal_query_spelling_vbabutions():
     """Verify that is_profile_relevant_query and requires_web_search correctly identify misspelled vbabunt queries."""
-    from babu.bot import is_profile_relevant_query, requires_web_search
+    from babu.services import is_profile_relevant_query
+    from babu.gateway import requires_web_search
     
     # Standard personal query spelling vbabutions
     assert is_profile_relevant_query("What is my bussiness") is True
@@ -218,7 +220,7 @@ def test_personal_query_spelling_vbabutions():
 
 def test_temporal_events_telemetry():
     """Verify that log_temporal_event and get_temporal_events correctly persist and retrieve temporal logs."""
-    from babu.bot import log_temporal_event, get_temporal_events
+    from babu.services import log_temporal_event, get_temporal_events
     
     session_id = f"test_temporal_session_{int(datetime.now(timezone.utc).timestamp())}"
     

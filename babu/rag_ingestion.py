@@ -202,10 +202,10 @@ def run_full_ingestion(artifact_dir: str, project_dir: str):
         ("walkthrough.md", "engineering_history"),
         ("implementation_plan.md", "engineering_history"),
         ("System_Information_Index.md", "system_index"),
-        ("ARIA_ADR_Book_v1.md", "adr_books"),
-        ("ARIA_ADR_Book_v2.md", "adr_books"),
-        ("ARIA_ADR_Book_v3.md", "adr_books"),
-        ("ARIA_ADR_Book_v4.md", "adr_books")
+        ("BABU_ADR_Book_v1.md", "adr_books"),
+        ("BABU_ADR_Book_v2.md", "adr_books"),
+        ("BABU_ADR_Book_v3.md", "adr_books"),
+        ("BABU_ADR_Book_v4.md", "adr_books")
     ]
     
     for filename, collection in markdown_files:

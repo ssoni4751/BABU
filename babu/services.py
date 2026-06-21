@@ -235,11 +235,11 @@ def is_profile_relevant_query(query: str) -> bool:
     q = query.lower()
     keywords = {
         "mother", "father", "wife", "son", "daughter", "brother", "sister", "family", "parent",
-        "spouse", "mariage", "marriage", "uncle", "aunty", "nephew", "niece", "cousin",
+        "spouse", "mbabuge", "marriage", "uncle", "aunty", "nephew", "niece", "cousin",
         "nickname", "name", "email", "phone", "address", "birthday", "dob", "birth", "age",
-        "company", "business", "client", "gst", "pf", "tax", "consultancy", "consultant",
+        "company", "business", "bussiness", "busines", "client", "gst", "pf", "tax", "consultancy", "consultant",
         "myself", "about me", "who am i", "my journey", "my background", "my profile", "my biography",
-        "who is talk", "who is speak", "shubham", "swarnkar", "anshu"
+        "who is talk", "who is speak", "shubham", "swarnkar", "anshu", "personal", "transaction", "my", "me"
     }
     return any(kw in q for kw in keywords)
 

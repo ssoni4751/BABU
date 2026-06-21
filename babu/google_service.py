@@ -857,7 +857,7 @@ def search_duckduckgo_image(query: str) -> tuple[bool, str]:
     return False, f"No images found for '{query}'."
 
 
-def upload_file_to_drive(file_path: str, folder_name: str = "ARIA Reports") -> tuple[bool, str]:
+def upload_file_to_drive(file_path: str, folder_name: str = "BABU Reports") -> tuple[bool, str]:
     """Uploads a local file directly to a specified folder in the user's Google Drive."""
     creds = get_google_creds()
     if not creds:
@@ -957,7 +957,7 @@ def execute_google_action(action: str, params: dict) -> tuple[bool, str]:
     """Directly route automation queries to official Google Workspace APIs."""
     if action == "send_email":
         to = params.get("to", "")
-        subject = params.get("subject", "Automated Message from ARIA")
+        subject = params.get("subject", "Automated Message from BABU")
         body = params.get("body", "")
         image_path = params.get("image_path", params.get("file_path", ""))
         if not to or not body:
@@ -988,14 +988,14 @@ def execute_google_action(action: str, params: dict) -> tuple[bool, str]:
         return create_calendar_event(title, date, time, duration, description)
 
     elif action == "log_to_sheet":
-        sheet_name = params.get("sheet_name", "ARIA Log")
+        sheet_name = params.get("sheet_name", "BABU Log")
         data = params.get("data", {})
         if not data:
             return False, "No logging 'data' parameters provided."
         return log_to_sheet(sheet_name, data)
 
     elif action == "create_doc":
-        title = params.get("title", "ARIA New Document")
+        title = params.get("title", "BABU New Document")
         content = params.get("content", "")
         return create_doc(title, content)
 
@@ -1036,7 +1036,7 @@ def execute_google_action(action: str, params: dict) -> tuple[bool, str]:
 
     elif action == "upload_to_drive":
         file_path = params.get("file_path", "")
-        folder_name = params.get("folder_name", "ARIA Reports")
+        folder_name = params.get("folder_name", "BABU Reports")
         if not file_path:
             return False, "Missing 'file_path' parameter to upload."
         return upload_file_to_drive(file_path, folder_name)

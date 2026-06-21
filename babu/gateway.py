@@ -3,6 +3,7 @@ import re
 import sys
 import time
 import json
+import threading
 import requests
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
@@ -131,20 +132,24 @@ def get_dynamic_self_identity() -> str:
         identity_text = (
             f"=== 👤 IDENTITY INDEX ===\n"
             f"**Name:** Project BABU (Behavioral Autonomous Bureaucratic Utility)\n"
-            f"**Version:** 3.5.0\n"
-            f"**Purpose:** Next-generation AI agentic assistant designed to automate research, analysis, writing, and Google Workspace execution tasks using a decentralized swarm architecture.\n\n"
+            f"**Version:** 4.0.0 (V2 Cognitive OS)\n"
+            f"**Purpose:** A governed, stratified 9-layer Cognitive Operating System — built to automate research, analysis, writing, and Google Workspace execution with constitutional authority, human-supreme governance, and zero-hallucination auditing.\n\n"
             f"**Capabilities:**\n"
             f"- Active PA Model: `{CURRENT_PA_MODEL}`\n"
             f"- Active Department Model: `{CURRENT_DEPT_MODEL}`\n"
             f"- Enabled Services: {services_str}\n\n"
             f"**Architecture:**\n"
-            f"LangGraph-based decentralized swarm framework:\n"
-            f"- Router Node: Evaluates query intent & directs routing.\n"
-            f"- Planner Node: Generates topologically sorted execution DAGs.\n"
-            f"- Task Engine: Orchestrates task status transitions.\n"
-            f"- Swarm Departments: Research, Information, Analysis, Writing, Execution.\n"
-            f"- Governance Gatekeepers: Pre-Execution Gatekeeper, Post-Execution Validator, and Epistemic Immune System.\n"
-            f"- Cache layer: E[Temp] compiled templates."
+            f"LangGraph-based governed Cognitive OS with 9 stratified layers:\n"
+            f"- Layer 1 — Interface Gateway: Telegram, Facebook, Web Dashboard ingestion.\n"
+            f"- Layer 2 — Intent Classification: Rule-based + LLM routing, Class A/B/C action policies.\n"
+            f"- Layer 3 — Constitution & Governance: Human-supreme authority, Epistemic Immune System.\n"
+            f"- Layer 4 — Planning & Orchestration: Topological DAG planner, dependency resolution.\n"
+            f"- Layer 5 — Department Execution: Research, Information, Analysis, Writing, Execution workers.\n"
+            f"- Layer 6 — Bipartite Auditor: Pre-execution gatekeeper + Post-execution semantic validator.\n"
+            f"- Layer 7 — Memory & Knowledge: SQLite checkpoint DB, RAG ingestion, Self-RAG feedback.\n"
+            f"- Layer 8 — Telemetry & Observability: Latency tracking, failure logging, governance telemetry.\n"
+            f"- Layer 9 — Self-Improvement: Anti-pattern learning, immune lesson propagation, ADR knowledge base.\n"
+            f"- Cache: E[Temp] compiled templates for zero-latency short-circuit responses."
         )
         return identity_text
     except Exception as e:
@@ -214,10 +219,14 @@ def get_babu_self_context(session_id: str = "default") -> str:
     k0_ctx = retrieve_k0_memory(session_id)
     
     self_ctx = (
-        f"You are Project BABU (Behavioral Autonomous Bureaucratic Utility), Version 3.5.0.\n"
+        f"You are Project BABU (Behavioral Autonomous Bureaucratic Utility), Version 4.0.0 (V2 Cognitive OS).\n"
+        f"Date of Birth: May 27, 2026.\n"
         f"System Age: {age_str}.\n"
         f"Operating Environment: Python {sys.version.split()[0]} on Windows.\n"
         f"Authoritative Knowledge: Automated tax, compliance (PF, GST, CSC services), and e-governance assistant.\n"
+        f"Architecture: LangGraph-based governed Cognitive OS with 9 stratified layers, including "
+        f"a Bipartite Auditor (Pre-Execution Gatekeeper + Post-Execution Semantic Validator), "
+        f"Constitutional Governance with human-supreme authority, and Epistemic Immune System.\n"
     )
     if k0_ctx:
         self_ctx += f"\nRecent Context (K0):\n{k0_ctx}"

@@ -1,10 +1,10 @@
-# ARIA — Multi-Agent AI Assistant
+# BABU — Multi-Agent AI Assistant
 
-ARIA is a multi-agent AI system accessible via Telegram and the web. It routes every query into one of three gears and gives all research agents live web search, conversation memory, and a knowledge base.
+BABU is a multi-agent AI system accessible via Telegram and the web. It routes every query into one of three gears and gives all research agents live web search, conversation memory, and a knowledge base.
 
 ## Run & Operate
 
-- `python babu/bot.py` — run the ARIA bot (Telegram + web chat API)
+- `python babu/bot.py` — run the BABU bot (Telegram + web chat API)
 - `pnpm --filter @workspace/babu-web run dev` — run the status/chat web UI
 - `pnpm run typecheck` — full typecheck across all packages
 
@@ -31,13 +31,13 @@ ARIA is a multi-agent AI system accessible via Telegram and the web. It routes e
 
 ```
 babu/
-  bot.py               ← All ARIA logic + HTTP server (chat API + health)
+  bot.py               ← All BABU logic + HTTP server (chat API + health)
 artifacts/
   babu-web/            ← React status page (/) and chat UI (/chat)
   api-server/          ← Hosts deployment config (artifact.toml)
 ```
 
-## Architecture — ARIA Agent Graph
+## Architecture — BABU Agent Graph
 
 ```
 User Message (Telegram or Web /api/chat)
@@ -72,7 +72,7 @@ User Message (Telegram or Web /api/chat)
 |---|---|
 | Web Search | DuckDuckGo via `duckduckgo_search` |
 | Memory | Per-session conversation history (in-memory deque, max 20 turns) |
-| Knowledge Base | Built-in ARIA knowledge dict with keyword search |
+| Knowledge Base | Built-in BABU knowledge dict with keyword search |
 
 ## Telegram Commands
 
@@ -98,7 +98,7 @@ User Message (Telegram or Web /api/chat)
 ## Gotchas
 
 - Bot uses **polling** (not webhooks) — Reserved VM only, never autoscale
-- Do NOT run the dev `ARIA Telegram Bot` workflow while deployed — causes polling conflict
+- Do NOT run the dev `BABU Telegram Bot` workflow while deployed — causes polling conflict
 - `GOOGLE_API_KEY` / `GEMINI_API_KEY` stored but unused (legacy)
 - LAUNCH gear takes ~30-45s — `asyncio.to_thread` keeps the event loop alive
 - Memory is in-process only — restarting the bot clears all session history

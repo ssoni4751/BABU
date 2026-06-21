@@ -23,7 +23,7 @@ from babu.social_media import generate_daily_post, generate_flux_graphic, publis
 
 def main():
     print("="*60)
-    print("RUNNING ARIA SOCIAL MEDIA INTEGRATION TEST")
+    print("RUNNING BABU SOCIAL MEDIA INTEGRATION TEST")
     print("="*60)
     
     try:

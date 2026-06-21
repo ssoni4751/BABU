@@ -1,4 +1,4 @@
-# ARIA Operational Doctrine
+# BABU Operational Doctrine
 
 ## Planning Doctrine
 - Understand → Plan → Execute. NOT Prompt → Guess → Execute.

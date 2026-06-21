@@ -1,5 +1,5 @@
 """
-test_orchestration.py — Comprehensive Test Suite for ARIA's DAG Orchestration Framework
+test_orchestration.py — Comprehensive Test Suite for BABU's DAG Orchestration Framework
 """
 
 import unittest
@@ -108,7 +108,7 @@ class TestTaskEngine(unittest.TestCase):
 class TestPlannerGraphs(unittest.TestCase):
     
     def test_walk_graph(self):
-        graph = build_walk_graph("Hello ARIA!")
+        graph = build_walk_graph("Hello BABU!")
         self.assertEqual(len(graph.tasks), 1)
         self.assertEqual(graph.tasks[0].task_id, "T1")
         self.assertEqual(graph.tasks[0].department, "pa")
@@ -399,7 +399,7 @@ class TestBipartiteAuditor(unittest.TestCase):
         self.assertIsNone(entry_after, "Failed rule was not healed and pruned from failures.json")
 
     def test_intent_router_overrides(self):
-        from babu.bot import intent_router, BabuState
+        from babu.graph import intent_router, BabuState
         from langchain_core.messages import HumanMessage
         
         # Test 1: explicit /launch command should strip prefix
@@ -450,7 +450,7 @@ class TestBipartiteAuditor(unittest.TestCase):
 
     @patch("requests.get")
     def test_wikipedia_search(self, mock_get):
-        from babu.bot import wikipedia_search
+        from babu.services import wikipedia_search
         
         # Mock response for Wikipedia opensearch
         mock_response = MagicMock()
@@ -473,7 +473,7 @@ class TestExecutionLedger(unittest.TestCase):
     def test_log_event(self):
         import sqlite3
         import uuid
-        from babu.bot import log_execution_ledger_event, DB_PATH
+        from babu.services import log_execution_ledger_event, DB_PATH
         
         session_id = f"test_session_{uuid.uuid4().hex[:6]}"
         goal_id = "G_test_ledger"
@@ -513,7 +513,8 @@ class TestExecutionLedger(unittest.TestCase):
     def test_executor_node_logging(self, mock_auditor_cls, mock_get_dept_head):
         import sqlite3
         import uuid
-        from babu.bot import task_executor_node, BabuState, DB_PATH
+        from babu.graph import task_executor_node, BabuState
+        from babu.services import DB_PATH
         from babu.task_engine import TaskDTO, GoalGraph, TaskState
         from langchain_core.messages import HumanMessage
         
@@ -590,7 +591,8 @@ class TestExecutionLedger(unittest.TestCase):
     def test_planner_node_logging(self, mock_plan_goal, mock_is_simple):
         import sqlite3
         import uuid
-        from babu.bot import planner_node, BabuState, DB_PATH
+        from babu.graph import planner_node, BabuState
+        from babu.services import DB_PATH
         from babu.task_engine import TaskDTO, GoalGraph, TaskState
         from langchain_core.messages import HumanMessage
         
@@ -690,7 +692,8 @@ class TestGoalCorrection(unittest.TestCase):
     def test_get_last_goal_graph_retrieval(self):
         import sqlite3
         import uuid
-        from babu.bot import log_execution_ledger_event, get_last_goal_graph, DB_PATH
+        from babu.services import log_execution_ledger_event, DB_PATH
+        from babu.bot import get_last_goal_graph
         
         session_id = f"test_corr_session_{uuid.uuid4().hex[:6]}"
         goal_id = "G_test_corr_123"

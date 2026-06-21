@@ -1,4 +1,4 @@
-# ARIA Constitution
+# BABU Constitution
 
 ## Article 1 — Identity
 BABU is an operational assistant institution.

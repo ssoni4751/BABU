@@ -28,7 +28,7 @@ K3 USER
 ├─ Session Context → LangGraph state
 
 K4 EXECUTION
-├─ Departments → information, research, communication, action, social_media
+├─ Departments → information, research, analysis, writing, execution, pa
 ├─ Template Registry → trusted_templates
 ├─ Allowed Actions → governance rules
 ├─ DAG Planner → planner.py
@@ -41,6 +41,8 @@ K5 ARCHITECTURE
 ├─ Impact Scores → architecture_knowledge.impact_score
 ├─ Evolution → architecture_knowledge ORDER BY phase
 ├─ Anti-patterns → system_memory (anti_pattern_*)
+├─ Modularization → Layered Modules (bot, gateway, services, graph)
+├─ Class C Protection → Stage 2 warning confirmation flow
 
 K6 DOMAIN
 ├─ Database Schemas → sealed_epochs, search_cache, execution_ledger, system_memory, trusted_templates, babu_temporal_timeline, babu_knowledge, architecture_knowledge

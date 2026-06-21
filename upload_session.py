@@ -15,7 +15,7 @@ LOG_FILE = r"C:\Users\LENOVO\.gemini\antigravity\brain\592b40b0-97b4-4126-ac4c-9
 OUTPUT_FILE = r"C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\Babu_Session_Transcript.md"
 
 print("="*60)
-print("ARIA Session Transcript Generator & Uploader")
+print("BABU Session Transcript Generator & Uploader")
 print("="*60)
 
 if not os.path.exists(LOG_FILE):
@@ -65,11 +65,11 @@ if not dialogue:
     sys.exit(1)
 
 # Write markdown file
-header = f"""# ARIA & Antigravity - Pair Programming Session Transcript
+header = f"""# BABU & Antigravity - Pair Programming Session Transcript
 
 **Date:** {datetime.now().strftime("%Y-%m-%d")}
 **Session ID:** `592b40b0-97b4-4126-ac4c-99fd0a65df0e`
-**Description:** Full pair programming transcript migrating the ARIA bot from Replit to Render, configuring direct Google Workspace APIs, implementing dynamic pathing, Google Contacts Syncing, and dynamic model switching with Gemini support.
+**Description:** Full pair programming transcript migrating the BABU bot from Replit to Render, configuring direct Google Workspace APIs, implementing dynamic pathing, Google Contacts Syncing, and dynamic model switching with Gemini support.
 
 ---
 

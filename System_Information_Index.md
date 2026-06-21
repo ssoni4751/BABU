@@ -5,7 +5,7 @@ Status: Canonical
 
 ## Purpose
 
-The System Information Index (SII) is the authoritative runtime routing layer for all ARIA system-related queries.
+The System Information Index (SII) is the authoritative runtime routing layer for all BABU system-related queries.
 
 The SII contains:
 - Topic mappings
@@ -214,11 +214,11 @@ ADR-057 → ADR-078
 Domains:
 Repository, Database, LangGraph, Scaling
 
-## ARIA_BABU_Architecture_Diagrams.md
+## BABU_BABU_Architecture_Diagrams.md
 Domains:
 Architecture, Execution Flow, Roadmap
 
-## ARIA_Master_Architecture_Index.md
+## BABU_Master_Architecture_Index.md
 Domains:
 Knowledge Graph, Registries, Architecture Index
 

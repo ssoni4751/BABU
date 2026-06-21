@@ -1203,9 +1203,9 @@ def task_executor_node(state: BabuState):
 def pa_node(state: BabuState):
     import time
     try:
-        from .bot import CURRENT_PA_MODEL, build_llm, retrieve_k0_memory, supported_models, model_mon, tg_application, LAST_TELEGRAM_SUCCESS_TIME, LAST_FB_SUCCESS_TIME, LAST_GOOGLE_SUCCESS_TIME, LAST_WEB_SUCCESS_TIME, BOT_START_TIME
+        from .bot import CURRENT_PA_MODEL, build_llm, retrieve_k0_memory, tg_application, LAST_TELEGRAM_SUCCESS_TIME, LAST_FB_SUCCESS_TIME, LAST_GOOGLE_SUCCESS_TIME, LAST_WEB_SUCCESS_TIME, BOT_START_TIME
     except ImportError:
-        from bot import CURRENT_PA_MODEL, build_llm, retrieve_k0_memory, supported_models, model_mon, tg_application, LAST_TELEGRAM_SUCCESS_TIME, LAST_FB_SUCCESS_TIME, LAST_GOOGLE_SUCCESS_TIME, LAST_WEB_SUCCESS_TIME, BOT_START_TIME
+        from bot import CURRENT_PA_MODEL, build_llm, retrieve_k0_memory, tg_application, LAST_TELEGRAM_SUCCESS_TIME, LAST_FB_SUCCESS_TIME, LAST_GOOGLE_SUCCESS_TIME, LAST_WEB_SUCCESS_TIME, BOT_START_TIME
 
     final_brief = state.get("final_brief")
     if final_brief and "Respond directly to user query" in final_brief:
@@ -1524,7 +1524,7 @@ def pa_node(state: BabuState):
         details = profile.get("personal_details", {}) if profile else {}
         nickname = details.get("primary_nickname", "") or details.get("full_name", "Anshu")
         manifesto = (
-            f"You are ARIA, a warm, direct, and helpful personal companion. Current date/time: {now_str}.\n"
+            f"You are BABU, a warm, direct, and helpful personal companion. Current date/time: {now_str}.\n"
             f"Style: Warm, brief, natural human dialogue. Max two short paragraphs. Do not mention internal details.\n"
             f"Recipient: You are talking directly to {nickname}.\n"
             f"CRITICAL: If the user asks about their personal details, family, business, career, or background, you MUST use the information provided in [Internal Research] (which is retrieved from the authoritative local user profile).\n"
@@ -1555,7 +1555,7 @@ def pa_node(state: BabuState):
         pa_rules = get_anti_pattern_rules("pa")
 
         manifesto = (
-            f"ARIA. Current date/time: {now_str}. Never reveal internal agents. {style}"
+            f"BABU. Current date/time: {now_str}. Never reveal internal agents. {style}"
             f" Use history for context, never repeat it verbatim."
             f"{google_ctx}{profile_ctx}"
         )

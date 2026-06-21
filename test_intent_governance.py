@@ -418,7 +418,8 @@ class TestIntentGovernance(unittest.TestCase):
         self.assertIn("delete_event", gk.supported_actions)
         
         # 3. Verify Class C state machine transitions in bot.py approval logic
-        from babu.bot import _pending_actions, _pending_actions_lock, db_save_pending_action, db_delete_pending_action
+        from babu.bot import _pending_actions, _pending_actions_lock
+        from babu.services import db_save_pending_action, db_delete_pending_action
         
         session_id = "test_confirm_session"
         pending_action = {

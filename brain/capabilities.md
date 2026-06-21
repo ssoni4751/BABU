@@ -1,4 +1,4 @@
-# ARIA Capabilities
+# BABU Capabilities
 
 ## Services
 Services are infrastructure capabilities. Each service has known capabilities, dependencies, failure modes, and fallbacks.

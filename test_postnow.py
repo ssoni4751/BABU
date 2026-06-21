@@ -1,5 +1,5 @@
 """
-ARIA /postnow Preview Tester
+BABU /postnow Preview Tester
 =============================
 Generates the daily marketing post (caption + FLUX graphic) and sends
 the resulting image directly to your Telegram so you can inspect it.
@@ -87,7 +87,7 @@ def send_photo_to_telegram(image_path: str, caption: str):
 
 def main():
     print("=" * 60)
-    print("ARIA /postnow Preview — Generate & Send to Telegram")
+    print("BABU /postnow Preview — Generate & Send to Telegram")
     print("=" * 60)
 
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
@@ -127,7 +127,7 @@ def main():
 
     # Step 3: Send to Telegram
     print("\n[STEP 3] Sending preview to your Telegram...")
-    tg_caption = f"🔍 *ARIA /postnow Preview*\n\n{caption}"
+    tg_caption = f"🔍 *BABU /postnow Preview*\n\n{caption}"
     try:
         ok = send_photo_to_telegram(img_path, tg_caption)
         if ok:

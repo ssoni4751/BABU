@@ -14,7 +14,8 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(CURRENT_DIR)
 sys.path.append(os.path.join(CURRENT_DIR, "babu"))
 
-from babu.bot import is_private_data_query, web_search, REFUSAL_PRIVATE_DATA, pa_node
+from babu.services import is_private_data_query, web_search, REFUSAL_PRIVATE_DATA
+from babu.graph import pa_node
 from babu.planner import classify_intent, IntentPacket
 from babu.task_engine import TaskDTO
 from babu.workers import run_worker

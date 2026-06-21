@@ -95,7 +95,7 @@ def append_to_profile_ledger(category: str, entry_data: dict) -> bool:
 
 def send_immune_rule_email(new_rule: dict, all_rules: list) -> None:
     """
-    Compiles and sends a structured, concise plain-text report of ARIA's active immune rules
+    Compiles and sends a structured, concise plain-text report of BABU's active immune rules
     to the user's official email address. Executed asynchronously to avoid blocking.
     Gated to trigger ONLY on METHODOLOGY and AUDIT failure types.
     """
@@ -165,10 +165,10 @@ def send_immune_rule_email(new_rule: dict, all_rules: list) -> None:
         domain_active_count = len(active_by_domain.get(domain_name, []))
 
         # 5. Construct concise email body
-        subject = f"[ARIA IMMUNE] New Rule Sealed in [{domain_name}]"
+        subject = f"[BABU IMMUNE] New Rule Sealed in [{domain_name}]"
         body = (
             "========================================================================\n"
-            "🛡️ ARIA COGNITIVE IMMUNE SYSTEM — RULE SEALED\n"
+            "🛡️ BABU COGNITIVE IMMUNE SYSTEM — RULE SEALED\n"
             "========================================================================\n\n"
             "A new cognitive/reasoning anti-pattern rule has been successfully synthesized\n"
             "and committed to failures.json by the Epistemic Immune System.\n\n"
@@ -194,7 +194,7 @@ def send_immune_rule_email(new_rule: dict, all_rules: list) -> None:
             f"• Total Active Reasoning Constraints (confidence >= 0.25): {active_count}\n"
             f"• Active Rules in [{domain_name}]: {domain_active_count}\n\n"
             "========================================================================\n"
-            "ℹ️ ARIA cognitive OS automatically enforces these negative constraints\n"
+            "ℹ️ BABU cognitive OS automatically enforces these negative constraints\n"
             "during future plan-and-decouple execution graphs to eliminate errors.\n"
             "========================================================================\n"
         )
@@ -233,7 +233,7 @@ def consolidate_failures_semantic(new_entry: dict, existing_failures: list) -> t
         })
 
     prompt = (
-        "You are ARIA's Epistemic Immune System memory compressor. Your job is to check if a new candidate rule "
+        "You are BABU's Epistemic Immune System memory compressor. Your job is to check if a new candidate rule "
         "is semantically equivalent to or covered by any existing rule in the same domain. "
         "Specifically, categorize the relationship between the candidate rule and existing rules using one of these outcomes:\n"
         "- \"EXACT_MATCH\": The candidate rule is semantically equivalent to or covers the exact same instructions as an existing rule.\n"
@@ -258,7 +258,7 @@ def consolidate_failures_semantic(new_entry: dict, existing_failures: list) -> t
             
         res = invoke_with_fallback(
             [
-                SystemMessage(content="You are ARIA's self-correcting Epistemic Immune System memory deduplicator."),
+                SystemMessage(content="You are BABU's self-correcting Epistemic Immune System memory deduplicator."),
                 HumanMessage(content=prompt)
             ],
             model_name="llama-3.1-8b-instant",  # Fast, cheap, and very capable of simple classification
@@ -350,7 +350,7 @@ def log_execution_failure(
     # 1. Define standard or governance analysis prompt
     if intent_packet:
         analysis_prompt = (
-            f"Analyze this operational failure in ARIA's automated systems at the GOVERNANCE/PLANNING level.\n\n"
+            f"Analyze this operational failure in BABU's automated systems at the GOVERNANCE/PLANNING level.\n\n"
             f"• Goal text: {goal}\n"
             f"• Failed Task Objective: {method}\n"
             f"• Failure exception or audit result: {exception_msg}\n"
@@ -367,7 +367,7 @@ def log_execution_failure(
         )
     else:
         analysis_prompt = (
-            f"Analyze this operational failure in ARIA's automated systems.\n\n"
+            f"Analyze this operational failure in BABU's automated systems.\n\n"
             f"• Execution Domain: {domain}\n"
             f"• Attempted Method: {method}\n"
             f"• Exception Message: {exception_msg}\n\n"
@@ -393,7 +393,7 @@ def log_execution_failure(
             # Dynamic LLM routing with auto-failover for failure analysis
             res = invoke_with_fallback(
                 [
-                    SystemMessage(content="You are ARIA's self-correcting Epistemic Immune System. Distill system errors into highly actionable execution constraints."),
+                    SystemMessage(content="You are BABU's self-correcting Epistemic Immune System. Distill system errors into highly actionable execution constraints."),
                     HumanMessage(content=analysis_prompt)
                 ],
                 model_name="llama-3.3-70b-versatile",
@@ -611,7 +611,7 @@ def compress_context_payload(raw_text: str, context_topic: str = "general data")
         
         res = invoke_with_fallback(
             [
-                SystemMessage(content="You are ARIA's high-speed context compressor. Distill bulk raw data into high-density operational briefs. Be extremely concise."),
+                SystemMessage(content="You are BABU's high-speed context compressor. Distill bulk raw data into high-density operational briefs. Be extremely concise."),
                 HumanMessage(content=compression_prompt)
             ],
             model_name="llama-3.1-8b-instant",

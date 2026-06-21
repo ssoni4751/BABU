@@ -1,5 +1,5 @@
 {
-  "name": "ARIA Automation Router",
+  "name": "BABU Automation Router",
   "flow": [
     {
       "id": 1,
@@ -11,7 +11,7 @@
       },
       "mapper": {},
       "metadata": {
-        "designer": { "x": -200, "y": 0, "name": "ARIA Webhook" }
+        "designer": { "x": -200, "y": 0, "name": "BABU Webhook" }
       }
     },
     {
@@ -247,7 +247,7 @@
       "confidential": false,
       "dataloss": false,
       "dlq": false,
-      "freshVbabubles": false
+      "freshVariables": false
     },
     "designer": {
       "orphans": []

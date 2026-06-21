@@ -1,6 +1,6 @@
 import os, sqlite3, sys
 
-# Path to the ARIA checkpoint SQLite DB
+# Path to the BABU checkpoint SQLite DB
 base_dir = os.path.dirname(os.path.abspath(r'C:\Users\LENOVO\.gemini\antigravity\scratch\Babu\babu\bot.py'))
 db_path = os.path.join(base_dir, 'memory', 'babu_checkpoint.db')
 

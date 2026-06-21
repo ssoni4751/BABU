@@ -1,4 +1,4 @@
-# ARIA (BABU) Architecture Decision Record (ADR) Book
+# BABU (BABU) Architecture Decision Record (ADR) Book
 Version: 1.0
 
 ---
@@ -32,8 +32,8 @@ Knowledge and experience are fundamentally different data domains.
 ## Decision
 Separate:
 
-- Brain (what ARIA knows)
-- Memory (what ARIA experienced)
+- Brain (what BABU knows)
+- Memory (what BABU experienced)
 
 ## Consequences
 - Cleaner reasoning
@@ -233,9 +233,9 @@ Only novel goals invoke Planner.
 ## Status
 Accepted
 
-ARIA is modeled as an execution kernel.
+BABU is modeled as an execution kernel.
 
-| OS Concept | ARIA |
+| OS Concept | BABU |
 |------------|------|
 | Kernel | Constitution |
 | Scheduler | Planner |
@@ -310,7 +310,7 @@ L6 — Execution
 
 # ADR-018 — Canonical Principle
 
-ARIA operates under a strict hierarchy:
+BABU operates under a strict hierarchy:
 
 Constitution
 → Knowledge

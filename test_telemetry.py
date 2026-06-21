@@ -25,7 +25,7 @@ from babu.google_service import log_telemetry
 
 def run_telemetry_tests():
     print("="*60)
-    print("RUNNING ARIA COGNITIVE OS PHASE 3 INTEGRATION TESTS")
+    print("RUNNING BABU COGNITIVE OS PHASE 3 INTEGRATION TESTS")
     print("="*60)
     
     # Test 1: Real-time India Tech Trend Scraping & Compression

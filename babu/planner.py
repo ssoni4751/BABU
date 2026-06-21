@@ -1,5 +1,5 @@
 """
-planner.py — ARIA's Goal Decomposition Engine
+planner.py — BABU's Goal Decomposition Engine
 
 Decomposes user goals into structured task DAGs (GoalGraph) using a single
 LLM call. Supports three planning modes:
@@ -539,7 +539,7 @@ def _build_fallback_graph(
     checklist = ["State query ambiguity clearly", "Refuse execution factually"]
 
     if planner_status == "AMBIGUOUS_QUERY":
-        objective = "Politely explain to the user that their query is too vague, ambiguous, or lacks necessary details to plan safely. Ask the user to clarify exactly what objective they want ARIA to achieve."
+        objective = "Politely explain to the user that their query is too vague, ambiguous, or lacks necessary details to plan safely. Ask the user to clarify exactly what objective they want BABU to achieve."
         checklist = ["Politely explain ambiguity", "Ask for specific clarification"]
     elif planner_status == "CONSTRAINT_CONFLICT":
         bounds_desc = "restricted permissions"

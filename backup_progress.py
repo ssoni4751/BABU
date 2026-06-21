@@ -47,15 +47,15 @@ def create_backup_zip(zip_path: str, source_dirs: list, source_files: list):
     print(f"[ZIP] Archive created successfully. Size: {os.path.getsize(zip_path)} bytes.", flush=True)
 
 
-def upload_to_drive(zip_path: str, folder_name: str = "ARIA Backups") -> str:
-    """Upload the zip file directly to Google Drive under 'ARIA Backups' folder."""
+def upload_to_drive(zip_path: str, folder_name: str = "BABU Backups") -> str:
+    """Upload the zip file directly to Google Drive under 'BABU Backups' folder."""
     creds = get_google_creds()
     if not creds:
         raise ValueError("Google Workspace credentials could not be loaded.")
         
     drive_service = build("drive", "v3", credentials=creds)
     
-    # 1. Get or create the ARIA Backups folder ID
+    # 1. Get or create the BABU Backups folder ID
     print(f"[DRIVE] Resolving folder '{folder_name}'...", flush=True)
     folder_id = get_drive_folder_id(drive_service, folder_name)
     print(f"[DRIVE] Folder ID: {folder_id}", flush=True)
@@ -80,7 +80,7 @@ def upload_to_drive(zip_path: str, folder_name: str = "ARIA Backups") -> str:
 
 def main():
     print("="*60)
-    print("ARIA CODELAB PACKUP & GOOGLE DRIVE BACKUP SYSTEM")
+    print("BABU CODELAB PACKUP & GOOGLE DRIVE BACKUP SYSTEM")
     print("="*60)
     
     today_str = datetime.now().strftime("%Y-%m-%d")

@@ -12,9 +12,9 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "babu")
 from google_service import get_google_creds, TOKEN_PATH
 
 print("="*60)
-print("ARIA Google Workspace OAuth 2.0 Authenticator")
+print("BABU Google Workspace OAuth 2.0 Authenticator")
 print("="*60)
-print("This script will open a browser window to authorize ARIA.")
+print("This script will open a browser window to authorize BABU.")
 print("Once authorized, it will save a permanent 'token.json' file.")
 print("="*60)
 

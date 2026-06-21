@@ -9,7 +9,8 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(CURRENT_DIR)
 sys.path.append(os.path.join(CURRENT_DIR, "babu"))
 
-from babu.bot import get_db_connection, get_telemetry_data, log_execution_ledger_event
+from babu.services import get_db_connection, log_execution_ledger_event
+from babu.bot import get_telemetry_data
 
 def test_latency_telemetry_calculation():
     print("="*60)
