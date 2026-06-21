@@ -2259,9 +2259,9 @@ def has_multiple_tasks_or_requests(query: str, intent_packet_dict: Optional[dict
         faq_types_present.add("age")
     if any(k in t for k in ("who are you", "tell me about yourself", "about yourself", "your identity", "what is your name")):
         faq_types_present.add("identity")
-    if any(k in t for k in ("system health", "status dashboard", "health dashboard", "system status")):
+    if any(k in t for k in ("system health", "status dashboard", "health dashboard", "system status", "health status", "health")):
         faq_types_present.add("health")
-    if any(k in t for k in ("upgrades", "upgrade", "adr", "tradeoff", "highest impact", "evolution", "evolve", "history", "timeline", "incident")):
+    if any(k in t for k in ("upgrades", "upgrade", "adr", "tradeoff", "highest impact", "evolution", "evolve", "history", "timeline", "incident", "architecture", "built")):
         faq_types_present.add("system")
         
     if len(faq_types_present) > 1:

@@ -443,7 +443,7 @@ PLANNER_SYSTEM_PROMPT: str = (
     "- Consult Runtime Index before selecting information source. Under no circumstances should you plan external web search/research for identity, system state, telemetry, configuration, or health. Use only internal/local resources.\n"
     "- GOAL CORRECTIONS: If the user query is a correction, typo fix, or modification of a previous goal in the recent conversation history (e.g. 'I meant monitoring, not monetary' or 'correct the topic to X'), you must identify the corrected goal topic and plan the task DAG for the corrected goal, not the incorrect one.\n"
     "- INTENT CONSTRAINTS: The system has pre-classified the user's intent boundaries. You must strictly obey these constraints:\n"
-    "  * allowed_departments: You are ONLY allowed to create tasks for the departments listed in 'allowed_departments'. Any other department is strictly prohibited.\n"
+    "  * allowed_departments: You are ONLY allowed to create tasks for the departments listed in 'allowed_departments'. You may invoke helper departments (such as information, research, analysis, writing, pa) only when they are required to satisfy a permitted goal. Helper departments may not introduce new user goals or mutating actions. Any other department is strictly prohibited.\n"
     "  * allowed_actions: For 'execution' department tasks, you are ONLY allowed to plan the actions listed in 'allowed_actions'. Planning any other execution action is strictly prohibited.\n"
     "  * execution_mode: Read this setting carefully. If it is 'READ_ONLY', you must only plan read-only informational/research tasks and end with a 'pa' task; no draft or mutation actions are allowed. If it is 'APPROVAL_REQUIRED', you can create 'execution' tasks but they will go through an approval check. If it is 'AUTO_EXECUTE', you are allowed to plan automated background execution dispatches.\n"
     "  * CRITICAL: If you cannot satisfy the user's goal under these constraints (e.g., they requested sending an email but 'execution' is not in allowed_departments, or 'send_email' is not in allowed_actions), you MUST NOT plan any tasks. Instead, you MUST return a single JSON object indicating a conflict, using the conflict format described below.\n"
@@ -603,6 +603,9 @@ def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]
 
     allowed_depts_set = set(allowed_depts)
     allowed_depts_set.add("pa")
+    # Dynamically allow all helper non-mutating departments so the planner can
+    # utilize them for research, retrieval, reasoning, and synthesis as needed.
+    allowed_depts_set.update({"information", "research", "analysis", "writing", "pa"})
     return allowed_depts_set, set(allowed_actions)
 
 
@@ -702,9 +705,14 @@ def plan_goal(
         f"User query: {query}",
     ]
     if intent_packet:
+        # Dynamically include non-mutating helper departments in the display list
+        # so the planner knows it can utilize them for research/synthesis tasks.
+        prompt_depts = set(intent_packet.allowed_departments)
+        prompt_depts.update({"information", "research", "analysis", "writing", "pa"})
+        prompt_depts_list = sorted(list(prompt_depts))
         user_content_parts.append(
             f"Pre-classified Intent Boundaries:\n"
-            f"- allowed_departments: {intent_packet.allowed_departments}\n"
+            f"- allowed_departments: {prompt_depts_list}\n"
             f"- allowed_actions: {intent_packet.allowed_actions}\n"
             f"- execution_mode: {intent_packet.execution_mode}\n"
             f"- confidence: {intent_packet.confidence}"

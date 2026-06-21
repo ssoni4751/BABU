@@ -53,6 +53,9 @@ def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]
 
     allowed_depts_set = set(allowed_depts)
     allowed_depts_set.add("pa")
+    # Dynamically allow all helper non-mutating departments so the gatekeeper
+    # permits dynamically planned helper/reasoning/synthesis tasks.
+    allowed_depts_set.update({"information", "research", "analysis", "writing", "pa"})
     return allowed_depts_set, set(allowed_actions)
 
 

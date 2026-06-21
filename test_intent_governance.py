@@ -82,24 +82,16 @@ class TestIntentGovernance(unittest.TestCase):
     def test_05_planner_template_constraint_enforcement(self):
         """Test that plan_goal programmatically rejects tasks that violate template boundaries."""
         # Query with LOOKUP intent packet
-        intent = IntentPacket(lookup=True, research=False, generate=False, execute=False, execution_mode="READ_ONLY")
+        intent = IntentPacket(lookup=True, research=False, generate=False, execute=False, execution_mode="READ_ONLY", allowed_actions=[])
         
-        # We mock a planner response by patching the LLM call or calling plan_goal with a query that would return an unauthorized task
-        # To test the programmatic validation directly, let's call plan_goal.
-        # But since plan_goal makes a live Groq call, let's test by generating a graph and observing how plan_goal handles template mismatch.
-        # If the LLM generates a task that is strictly prohibited (e.g. analysis department in LOOKUP), plan_goal rejects it.
-        # Let's test the programmatic rejection block inside plan_goal by verifying validate_dag or direct post-processing.
-        # We can construct a GoalGraph that violates the LOOKUP boundaries and pass it to plan_goal. Wait, we can test the logic directly:
-        
-        # LOOKUP allowed_departments: {"research", "pa"}
-        # Prohibited department: analysis
+        # Prohibited task: execution department with mutating action send_email
         prohibited_task = TaskDTO(
             task_id="T2",
-            objective="Analyze family data",
-            department="analysis",
+            objective="Send email to family",
+            department="execution",
             depends_on=[],
             priority=2,
-            context={"intent_packet": intent.to_dict()}
+            context={"intent_packet": intent.to_dict(), "action": "send_email"}
         )
         
         # Verify that we can catch this in auditor or plan_goal post-processing
@@ -355,6 +347,60 @@ class TestIntentGovernance(unittest.TestCase):
         self.assertIn("information", system_msg.content)
         self.assertIn("academic-level citations", system_msg.content)
         print("✅ PreExecutionGatekeeper, get_department_head, and PostExecutionValidator correctly support information department with citation-free auditing rules.")
+
+    def test_12_dynamic_department_routing_helper_departments(self):
+        """Test that get_allowed_boundaries dynamically includes helper non-mutating departments
+        (information, research, analysis, writing, pa) even if the intent packet lists
+        a single predefined department like 'analysis'.
+        """
+        # 1. Create an intent packet with only 'analysis' and 'pa' as allowed departments
+        # Specifying allowed_actions=[] prevents the constructor from auto-promoting
+        # the packet to allow the 'execution' department due to default search actions.
+        intent = IntentPacket(lookup=False, research=False, generate=True, execute=False, execution_mode="READ_ONLY", allowed_departments=["analysis", "pa"], allowed_actions=[])
+        intent_dict = intent.to_dict()
+        
+        # 2. Resolve allowed boundaries using the modified function
+        from babu.planner import get_allowed_boundaries as planner_get_bounds
+        from babu.auditor import get_allowed_boundaries as auditor_get_bounds
+        
+        for get_bounds in (planner_get_bounds, auditor_get_bounds):
+            allowed_depts, allowed_actions = get_bounds(intent_dict)
+            # Verify that helper departments are dynamically added
+            self.assertIn("information", allowed_depts)
+            self.assertIn("research", allowed_depts)
+            self.assertIn("analysis", allowed_depts)
+            self.assertIn("writing", allowed_depts)
+            self.assertIn("pa", allowed_depts)
+            # Verify that mutating execution department is NOT allowed (since not in intent packet)
+            self.assertNotIn("execution", allowed_depts)
+
+        # 3. Verify that PreExecutionGatekeeper does not block helper departments
+        gatekeeper = PreExecutionGatekeeper()
+        for helper_dept in ("information", "research", "analysis", "writing", "pa"):
+            task = TaskDTO(
+                task_id="T1",
+                objective=f"Perform {helper_dept} task",
+                department=helper_dept,
+                depends_on=[],
+                priority=1,
+                context={"intent_packet": intent_dict}
+            )
+            passed, reason = gatekeeper.audit(task)
+            self.assertTrue(passed, f"Gatekeeper blocked helper department '{helper_dept}' unexpectedly: {reason}")
+
+        # 4. Verify that execution tasks are still blocked
+        task_exec = TaskDTO(
+            task_id="T1",
+            objective="Send email to user",
+            department="execution",
+            depends_on=[],
+            priority=1,
+            context={"intent_packet": intent_dict, "action": "send_email"}
+        )
+        passed, reason = gatekeeper.audit(task_exec)
+        self.assertFalse(passed, "Gatekeeper allowed unauthorized execution task.")
+        self.assertIn("strictly prohibited", reason)
+        print("✅ Dynamic department routing verified successfully for helper and reasoning departments.")
 
 if __name__ == "__main__":
     unittest.main()
