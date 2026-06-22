@@ -319,6 +319,11 @@ def planner_node(state: BabuState):
     active_goal = state.get("active_goal") or {}
     pre_goal_id = active_goal.get("goal_id")
     
+    detected_action = state.get("detected_action")
+    if detected_action:
+        print(f"[PLANNER NODE] Detected pending action approval. Skipping planning to let executor handle it directly.", flush=True)
+        return {"goal_graph": None}
+        
     log_temporal_event(
         event_category="GOAL_RECEIVED",
         summary=f"Received goal: {query[:80]}",
