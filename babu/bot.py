@@ -557,20 +557,30 @@ PRICING_TABLE = {
 
 
 def is_epoch_sealed(epoch_id: str) -> bool:
+    conn = None
+    cursor = None
     try:
         conn, is_pg = get_db_connection()
         cursor = conn.cursor()
         placeholder = "%s" if is_pg else "?"
         cursor.execute(f"SELECT 1 FROM sealed_epochs WHERE epoch_id = {placeholder}", (epoch_id,))
         res = cursor.fetchone()
-        cursor.close()
-        conn.close()
         return bool(res)
     except Exception as e:
         print(f"[DB ERROR] is_epoch_sealed failed: {e}", flush=True)
         return False
+    finally:
+        if conn:
+            try:
+                if cursor:
+                    cursor.close()
+                conn.close()
+            except Exception:
+                pass
 
 def seal_epoch(epoch_id: str):
+    conn = None
+    cursor = None
     try:
         conn, is_pg = get_db_connection()
         cursor = conn.cursor()
@@ -585,14 +595,22 @@ def seal_epoch(epoch_id: str):
                 (epoch_id, datetime.now(timezone.utc).isoformat())
             )
         conn.commit()
-        cursor.close()
-        conn.close()
         print(f"[GOVERNANCE] Epoch '{epoch_id}' successfully sealed.", flush=True)
     except Exception as e:
         print(f"[DB ERROR] seal_epoch failed: {e}", flush=True)
+    finally:
+        if conn:
+            try:
+                if cursor:
+                    cursor.close()
+                conn.close()
+            except Exception:
+                pass
 
 
 def get_last_goal_graph(session_id: str) -> Optional[dict]:
+    conn = None
+    cursor = None
     try:
         conn, is_pg = get_db_connection()
         cursor = conn.cursor()
@@ -603,14 +621,20 @@ def get_last_goal_graph(session_id: str) -> Optional[dict]:
             ORDER BY event_id DESC LIMIT 1
         """, (session_id,))
         res = cursor.fetchone()
-        cursor.close()
-        conn.close()
         if res and res[0]:
             meta = json.loads(res[0])
             return meta.get("graph")
     except Exception as e:
         print(f"[DB ERROR] get_last_goal_graph failed: {e}", flush=True)
-    return None
+        return None
+    finally:
+        if conn:
+            try:
+                if cursor:
+                    cursor.close()
+                conn.close()
+            except Exception:
+                pass
 
 # ── Part 3: State Execution Ledger Helpers ───────────────────────────────
 
@@ -4150,17 +4174,51 @@ def get_telemetry_data(limit=100) -> dict:
     retrieval_latencies = []
     retrieved_tokens = 0
     
+    all_rows = []
+    conn = None
+    cursor = None
     try:
-        conn, is_pg = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT event_id, session_id, goal_id, task_id, department, event_type, metadata, timestamp 
-            FROM execution_ledger 
-            ORDER BY event_id DESC
-        """)
-        all_rows = cursor.fetchall()
-        cursor.close()
-        conn.close()
+        try:
+            conn, is_pg = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT event_id, session_id, goal_id, task_id, department, event_type, metadata, timestamp 
+                FROM execution_ledger 
+                ORDER BY event_id DESC
+            """)
+            all_rows = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            conn = None
+            cursor = None
+        except Exception as e:
+            print(f"[DB TELEMETRY WARNING] Primary query failed: {e}. Falling back to SQLite.", flush=True)
+            if conn:
+                try:
+                    if cursor:
+                        cursor.close()
+                    conn.close()
+                except Exception:
+                    pass
+                conn = None
+                cursor = None
+            try:
+                import sqlite3
+                conn = sqlite3.connect(DB_PATH)
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT event_id, session_id, goal_id, task_id, department, event_type, metadata, timestamp 
+                    FROM execution_ledger 
+                    ORDER BY event_id DESC
+                """)
+                all_rows = cursor.fetchall()
+                cursor.close()
+                conn.close()
+                conn = None
+                cursor = None
+            except Exception as sqlite_err:
+                print(f"[DB TELEMETRY ERROR] SQLite fallback failed: {sqlite_err}", flush=True)
+                all_rows = []
         
         for row in all_rows:
             ev_id, sess_id, g_id, t_id, dept, ev_type, meta_str, ts = row
