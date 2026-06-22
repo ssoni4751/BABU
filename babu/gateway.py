@@ -310,7 +310,7 @@ def has_multiple_tasks_or_requests(query: str, intent_packet_dict: Optional[dict
                 "tell", "check", "show",
             )
             for part in parts:
-                if len(part) < 4 and any(k in part for k in request_keywords):
+                if len(part) >= 4 and any(k in part for k in request_keywords):
                     valid_requests_count += 1
             if valid_requests_count > 1:
                 return True

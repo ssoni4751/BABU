@@ -124,7 +124,7 @@ def route_after_router(state: BabuState) -> str:
         print(f"[ROUTE AFTER ROUTER] Deterministic FAQ/greeting detected for query: '{query}'. Short-circuiting directly to PA node.", flush=True)
         return "pa"
 
-    if query_category == "SYSTEM_INFORMATION" and is_faq:
+    if query_category == "SYSTEM_INFORMATION" and is_faq and not is_multi:
         print(f"[ROUTE AFTER ROUTER] SYSTEM_INFORMATION FAQ query detected ('{query}'). Routing to PA short-circuit.", flush=True)
         return "pa"
 
@@ -1339,7 +1339,7 @@ def pa_node(state: BabuState):
         print(f"[PA NODE] Deterministic short-circuit for health dashboard query: '{user_query}'", flush=True)
         return {"messages": state["messages"] + [AIMessage(content=dashboard_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
 
-    if any(k in lowered_query for k in ("upgrades received", "recent upgrades", "what upgrades", "upgrades did you receive", "upgrades did you recieve", "upgrades in last", "upgrade received", "recent upgrade", "what upgrade", "upgrade did you receive", "upgrade did you recieve", "upgrade in last", "adr", "architecture decision", "tradeoff", "tradeoffs", "lessons learned", "evolution", "upgrades", "upgrade", "gemini", "dynamic imports", "runtime_index", "postmortem", "lesson", "incident", "impact_score", "highest impact", "largest impact", "biggest impact", "most impact", "supersedes", "solve", "evolve", "hierarchy")):
+    if not is_multi_request and any(k in lowered_query for k in ("upgrades received", "recent upgrades", "what upgrades", "upgrades did you receive", "upgrades did you recieve", "upgrades in last", "upgrade received", "recent upgrade", "what upgrade", "upgrade did you receive", "upgrade did you recieve", "upgrade in last", "adr", "architecture decision", "tradeoff", "tradeoffs", "lessons learned", "evolution", "upgrades", "upgrade", "gemini", "dynamic imports", "runtime_index", "postmortem", "lesson", "incident", "impact_score", "highest impact", "largest impact", "biggest impact", "most impact", "supersedes", "solve", "evolve", "hierarchy")):
         conn, is_pg = get_db_connection()
         cursor = conn.cursor()
         try:
