@@ -775,6 +775,7 @@ def task_executor_node(state: BabuState):
     
     start_time = time.time()
     session_id = state.get("session_id", "default")
+    detected_action = state.get("detected_action")
     
     graph_dict = state.get("goal_graph")
     if not graph_dict:
@@ -782,7 +783,6 @@ def task_executor_node(state: BabuState):
             from .planner import build_action_graph
         except ImportError:
             from planner import build_action_graph
-        detected_action = state.get("detected_action")
         query = state["user_query"]
         active_goal = state.get("active_goal") or {}
         pre_goal_id = active_goal.get("goal_id")
@@ -936,7 +936,9 @@ def task_executor_node(state: BabuState):
                 from governance import get_constitution
             mandatory_approvals = get_constitution("mandatory_human_approval", [])
             
-            if action in mandatory_approvals:
+            if detected_action and detected_action.get("action") == action:
+                task.context["approved"] = True
+            elif action in mandatory_approvals:
                 task.context["approved"] = False
             elif action in ("search_sheet", "search_gmail"):
                 task.context["approved"] = True
