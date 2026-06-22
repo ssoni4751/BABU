@@ -1682,9 +1682,20 @@ def pa_node(state: BabuState):
     pa_start_time = time.time()
     pa_start_iso = datetime.now(timezone.utc).isoformat()
     
-    llm_pa = build_llm(CURRENT_PA_MODEL, 0.2)
-    response = llm_pa.invoke([SystemMessage(content=manifesto), HumanMessage(content="\n\n".join(parts))])
-    
+    used_model = CURRENT_PA_MODEL
+    try:
+        llm_pa = build_llm(CURRENT_PA_MODEL, 0.2)
+        response = llm_pa.invoke([SystemMessage(content=manifesto), HumanMessage(content="\n\n".join(parts))])
+    except Exception as e:
+        err_msg = str(e)
+        if "413" in err_msg or "too large" in err_msg.lower() or "limit exceeded" in err_msg.lower():
+            print(f"[PA NODE WARNING] Model {CURRENT_PA_MODEL} failed with 413/limit exceeded. Falling back to llama-3.3-70b-versatile. Error: {err_msg}", flush=True)
+            used_model = "llama-3.3-70b-versatile"
+            llm_pa = build_llm(used_model, 0.2)
+            response = llm_pa.invoke([SystemMessage(content=manifesto), HumanMessage(content="\n\n".join(parts))])
+        else:
+            raise e
+            
     pa_end_time = time.time()
     pa_end_iso = datetime.now(timezone.utc).isoformat()
     pa_latency_ms = round((pa_end_time - pa_start_time) * 1000, 2)
@@ -1731,7 +1742,7 @@ def pa_node(state: BabuState):
             response.content += telemetry_footnote
                 
     token_stats = extract_tokens(response)
-    p_rate, c_rate = get_token_costs(CURRENT_PA_MODEL)
+    p_rate, c_rate = get_token_costs(used_model)
     pa_cost = (token_stats.get("prompt", 0) * p_rate) + (token_stats.get("completion", 0) * c_rate)
     try:
         g_id = graph_dict.get("goal_id") if graph_dict else "G-WALK"
@@ -1748,7 +1759,7 @@ def pa_node(state: BabuState):
                 "tokens": token_stats,
                 "cost": round(pa_cost, 6),
                 "response_preview": response.content[:300],
-                "model": CURRENT_PA_MODEL,
+                "model": used_model,
                 "is_estimated": False,
                 "event_start_time": pa_start_iso,
                 "event_end_time": pa_end_iso,
