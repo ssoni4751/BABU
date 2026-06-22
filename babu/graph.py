@@ -1027,7 +1027,7 @@ def task_executor_node(state: BabuState):
             dispatch_method = getattr(dept_head, "dispatch", None)
             worker_payload = run_method(task, llm_dept) if callable(run_method) else None
             if not (isinstance(worker_payload, tuple) and len(worker_payload) == 2):
-                worker_payload = dispatch_method(task, llm_dept) if callable(dispatch_method) else worker_payload
+                worker_payload = dispatch_method(task, {}, llm_dept) if callable(dispatch_method) else worker_payload
             worker_result, node_tokens = worker_payload
             error_msg = None
         except Exception as e:
