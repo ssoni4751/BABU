@@ -216,7 +216,7 @@ INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
     "conversational intent into a structured IntentPacket JSON containing capability routing templates.\n"
     "\n"
     "QUERY CATEGORY DEFINITIONS:\n"
-    "- BUSINESS_INFORMATION: Set if the query relates to the user's business context, services, client records, customers, invoices, revenue, business operations, or specific client claims (like PF claims, GST registration details for clients). Any query asking for customer/client names or counts is strictly BUSINESS_INFORMATION.\n"
+    "- BUSINESS_INFORMATION: Set if the query relates to the user's business context, services, client records, customers, invoices, revenue, business operations, or specific client claims (like PF claims, GST registration details for clients). Any query asking for customer/client names or counts is strictly BUSINESS_INFORMATION. Do NOT classify job-related personal requests (e.g. personal leaves, emails to boss, personal calendar events, or personal drafts) as BUSINESS_INFORMATION; these are strictly PERSONAL_INFORMATION.\n"
     "- PERSONAL_INFORMATION: Set if the query relates to the user's personal details, family graph, residential address, personal email/phone, or personal background.\n"
     "- SYSTEM_INFORMATION: Set if the query relates to the system itself (BABU), its architecture, age, upgrades, logs, ADRs.\n"
     "- PUBLIC_INFORMATION: Set if the query is a general knowledge question, public search, tax/compliance general laws, Wikipedia lookups, general facts (e.g., 'what is GST?', 'how to settle PF online?').\n"
@@ -290,23 +290,23 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
         "my phone", "my number", "my mobile", "my address", "my name", "my nickname",
         "my email", "my mail", "to my mail", "to my email", "my mother",
         "my father", "my family", "my parents", "my brother", "my sister",
-        "my sibling", "my profile", "who am i",
+        "my sibling", "my profile", "who am i", "my boss", "leave", "boss",
     )
     _force_lookup = any(marker in t for marker in _personal_data_markers)
 
     # Deterministic governance must not disappear when an inference provider is
     # unavailable.  High-confidence execution classes are therefore identified
     # before the optional semantic classifier runs.
-    _mutating_actions = {
-        "send_email": ("send", "email"),
-        "create_event": ("create", "event"),
-        "create_doc": ("create", "document"),
-        "post_to_facebook": ("facebook", "post"),
-    }
-    detected_action = next(
-        (action for action, markers in _mutating_actions.items() if all(m in t for m in markers)),
-        None,
-    )
+    detected_action = None
+    if "send" in t and ("email" in t or "mail" in t):
+        detected_action = "send_email"
+    elif "create" in t and "event" in t:
+        detected_action = "create_event"
+    elif "create" in t and ("document" in t or "doc" in t):
+        detected_action = "create_doc"
+    elif "facebook" in t and "post" in t:
+        detected_action = "post_to_facebook"
+
     if detected_action:
         scheduled = any(marker in t for marker in ("scheduled", "daily", "automatically", "background"))
         return IntentPacket(

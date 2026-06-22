@@ -243,6 +243,11 @@ def verify_source_authority(worker_result: str, scoped_context: dict, category: 
                 "subject", "dear", "regards", "sincerely", "thanks", "thank", "hello", "hi",
                 "mr", "mrs", "ms", "sir", "madam", "mail", "email", "kind", "best", "wishes",
                 "personal", "leave", "date", "days", "day", "please", "kindly", "approve", "approval",
+                "request", "urgent", "boss", "manager", "lead", "director", "president", "vice",
+                "office", "work", "job", "company", "business", "sick", "medical", "emergency", "family",
+                "vacation", "holiday", "inform", "notification", "notify", "requesting", "applied",
+                "write", "writing", "draft", "send", "time", "week", "month", "year", "today", "tomorrow",
+                "yesterday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
                 # Hinglish / Hindi common words
                 "aap", "aapke", "aapki", "aapka", "mere", "meri", "mera", "apne", "apni", "apna", "kitne",
                 "ka", "ke", "ki", "se", "ko", "ne", "tha", "the", "thi", "hai", "hain", "honge", "hogi",
