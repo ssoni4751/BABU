@@ -171,7 +171,7 @@ class PreExecutionGatekeeper:
         return True, ""
 
 
-def verify_source_authority(worker_result: str, scoped_context: dict, category: str) -> tuple[bool, str]:
+def verify_source_authority(worker_result: str, scoped_context: dict, category: str, task=None) -> tuple[bool, str]:
     """Ensure that for private data queries (BUSINESS_INFORMATION/PERSONAL_INFORMATION),
     the worker result does not contain facts (numbers, capitalized words) fabricated by the model
     (AUTHORITY_MODEL) that are not present in the allowed local sources.
@@ -212,6 +212,11 @@ def verify_source_authority(worker_result: str, scoped_context: dict, category: 
         for k in ("profile_slice", "knowledge_base"):
             if k in scoped_context and scoped_context[k]:
                 allowed_text_parts.append(json.dumps(scoped_context[k], ensure_ascii=False))
+
+        if task:
+            allowed_text_parts.append(task.objective)
+            if hasattr(task, "context") and isinstance(task.context, dict):
+                allowed_text_parts.append(json.dumps(task.context, ensure_ascii=False))
                 
         allowed_text_lower = " ".join(allowed_text_parts).lower()
         
@@ -235,6 +240,9 @@ def verify_source_authority(worker_result: str, scoped_context: dict, category: 
                 "pf", "itr", "gst", "cons", "ltd", "co", "consolidation", "kyc", "declaration",
                 "january", "february", "march", "april", "may", "june", "july", "august", "september",
                 "october", "november", "december",
+                "subject", "dear", "regards", "sincerely", "thanks", "thank", "hello", "hi",
+                "mr", "mrs", "ms", "sir", "madam", "mail", "email", "kind", "best", "wishes",
+                "personal", "leave", "date", "days", "day", "please", "kindly", "approve", "approval",
                 # Hinglish / Hindi common words
                 "aap", "aapke", "aapki", "aapka", "mere", "meri", "mera", "apne", "apni", "apna", "kitne",
                 "ka", "ke", "ki", "se", "ko", "ne", "tha", "the", "thi", "hai", "hain", "honge", "hogi",
@@ -309,7 +317,7 @@ class PostExecutionValidator:
 
         is_private = is_private_data_query(task.objective, category)
         if is_private:
-            passed_source, reason_source = verify_source_authority(result, scoped_context, category)
+            passed_source, reason_source = verify_source_authority(result, scoped_context, category, task)
             if not passed_source:
                 print(f"[AUDITOR:POST] Deterministic block: {reason_source}", flush=True)
                 task.context["audit_metrics"] = {
