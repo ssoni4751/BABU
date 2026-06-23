@@ -380,6 +380,11 @@ class InformationHead(DepartmentHead):
             web_search_val = "Web search bypassed for system-aware queries."
             scoped["web_search"] = web_search_val
             sources[AUTHORITY_WEB] = web_search_val
+        elif category == "SYSTEM_INFORMATION":
+            print(f"[DEPT:information] SYSTEM_INFORMATION query detected. Bypassing external web search for: '{search_query}'", flush=True)
+            web_search_val = "Web search bypassed for system information queries."
+            scoped["web_search"] = web_search_val
+            sources[AUTHORITY_WEB] = web_search_val
         else:
             print(f"[DEPT:information] Executing general information web search for: '{search_query}'", flush=True)
             web_hits = web_search(search_query)
