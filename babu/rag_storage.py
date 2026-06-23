@@ -64,11 +64,15 @@ class MockEmbeddings:
         return [self.embed_query(doc) for doc in documents]
 
 
+_GEMINI_FAILED = False
+
+
 class ResilientEmbeddings:
     """A wrapper embedding model that dynamically falls back across models and defaults to Mock."""
     def embed_query(self, text: str) -> list[float]:
-        # 1. Try Gemini
-        if os.environ.get("GEMINI_API_KEY"):
+        global _GEMINI_FAILED
+        # 1. Try Gemini if it has not failed in this process run
+        if os.environ.get("GEMINI_API_KEY") and not _GEMINI_FAILED:
             try:
                 from langchain_google_genai import GoogleGenerativeAIEmbeddings
                 # Try primary model
@@ -80,7 +84,8 @@ class ResilientEmbeddings:
                     model = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", output_dimensionality=768)
                     return model.embed_query(text)
             except Exception as e:
-                print(f"[RAG ERROR] Gemini embedding initialization or generation failed: {e}. Falling back to MockEmbeddings.", flush=True)
+                print(f"[RAG ERROR] Gemini embedding initialization or generation failed: {e}. Falling back to MockEmbeddings for the rest of this process run.", flush=True)
+                _GEMINI_FAILED = True
 
         # 2. Fallback to Mock
         return MockEmbeddings().embed_query(text)
