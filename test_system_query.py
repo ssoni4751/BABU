@@ -298,4 +298,64 @@ def test_k0_working_memory_lifecycle():
     assert "Mock successful response from BABU" in self_ctx
 
 
+def test_governance_template_semantic_compatibility():
+    """Verify that check_constraint_compatibility catches topic and intent mismatches."""
+    from babu.governance import check_constraint_compatibility
+    import json
+
+    # 1. Compatible template: same topic, same intent
+    template_1 = {
+        "goal_graph_json": json.dumps({"goal": "what is system health status", "tasks": []})
+    }
+    assert check_constraint_compatibility("show my system health status dashboard", template_1) is True
+
+    # 2. Incompatible template: different topics
+    template_2 = {
+        "goal_graph_json": json.dumps({"goal": "who is the prime minister of india", "tasks": []})
+    }
+    assert check_constraint_compatibility("show my system health status dashboard", template_2) is False
+
+    # 3. Incompatible template: same topic, different intent (analysis vs simple status)
+    template_3 = {
+        "goal_graph_json": json.dumps({"goal": "what is system health status", "tasks": []})
+    }
+    assert check_constraint_compatibility("analyse my system health status dashboard", template_3) is False
+
+
+def test_department_scoped_context_injection():
+    """Verify that dispatch automatically injects system health and profile slice in task context."""
+    from babu.departments import InformationHead
+    from babu.task_engine import TaskDTO, TaskState
+
+    head = InformationHead()
+    task = TaskDTO(
+        task_id="T-TEST-123",
+        objective="analyse system health status",
+        department="information",
+        depends_on=[],
+        priority=1,
+        state=TaskState.READY,
+        context={"parent_goal": "analyse system health status and send report"},
+        token_budget=1000,
+        compliance_checklist=[]
+    )
+    
+    original_run_worker = head._run_worker
+    captured_scoped = {}
+    
+    def mock_run_worker(t, scoped_context, llm):
+        nonlocal captured_scoped
+        captured_scoped.update(scoped_context)
+        return "mocked result", {"prompt": 0, "completion": 0, "total": 0}
+        
+    head._run_worker = mock_run_worker
+    try:
+        head.dispatch(task, {}, None)
+    finally:
+        head._run_worker = original_run_worker
+
+    assert "system_health_dashboard" in captured_scoped
+    assert "SYSTEM HEALTH & SELF-AUDIT DASHBOARD" in captured_scoped["system_health_dashboard"]
+
+
 

@@ -950,18 +950,25 @@ def search_gmail_messages(query: str, max_results: int = 5) -> tuple[bool, str]:
         print(f"[GMAIL ERROR] Email retrieval failed: {e}", flush=True)
         return False, f"Failed to retrieve emails: {e}"
 
-
 # ── Central Execution Router ─────────────────────────────────────────────────
 
 def execute_google_action(action: str, params: dict) -> tuple[bool, str]:
     """Directly route automation queries to official Google Workspace APIs."""
     if action == "send_email":
-        to = params.get("to", "")
+        to = params.get("to", "").strip()
         subject = params.get("subject", "Automated Message from BABU")
         body = params.get("body", "")
         image_path = params.get("image_path", params.get("file_path", ""))
         if not to or not body:
             return False, "Missing recipient 'to' or message 'body' parameters."
+            
+        # Validate email format to catch unresolved placeholder strings early
+        import re
+        is_placeholder = "placeholder" in to.lower() or "email" in to.lower() or "your_email" in to.lower() or "@example.com" in to
+        is_valid_pattern = bool(re.match(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", to))
+        if is_placeholder or not is_valid_pattern:
+            return False, f"Invalid recipient email address format: '{to}'. Please provide a valid email address."
+            
         return send_gmail(to, subject, body, image_path)
 
     elif action == "generate_image":

@@ -114,6 +114,56 @@ class DepartmentHead:
             raise ValueError(f"Invalid task for {self.name}: {task.task_id}")
 
         scoped = self.scope_context(task, shared_resources)
+        
+        # Inject system or user data context dynamically if relevant
+        parent_goal = task.context.get("parent_goal", "") or task.objective
+        p_lower = parent_goal.lower()
+        obj_lower = task.objective.lower()
+        
+        # 1. System Health/Status Dashboard
+        health_kws = ("system health", "status dashboard", "health dashboard", "system status", "health status", "health", "failures", "telemetry")
+        if any(k in p_lower for k in health_kws) or any(k in obj_lower for k in health_kws):
+            try:
+                from .gateway import get_system_health_dashboard
+            except ImportError:
+                from gateway import get_system_health_dashboard
+            try:
+                scoped["system_health_dashboard"] = get_system_health_dashboard()
+            except Exception as e:
+                print(f"[DEPT] Failed to get system health dashboard: {e}", flush=True)
+                
+        # 2. System Self-Context
+        self_kws = ("about yourself", "who are you", "your identity", "architecture", "codebase", "how does babu work", "how do you work", "bipartite auditor")
+        if any(k in p_lower for k in self_kws) or any(k in obj_lower for k in self_kws):
+            try:
+                from .gateway import get_babu_self_context
+            except ImportError:
+                from gateway import get_babu_self_context
+            try:
+                scoped["system_self_context"] = get_babu_self_context()
+            except Exception as e:
+                print(f"[DEPT] Failed to get system self context: {e}", flush=True)
+
+        # 3. User Profile Slice
+        try:
+            from services import is_profile_relevant_query, search_profile
+        except ImportError:
+            try:
+                from .services import is_profile_relevant_query, search_profile
+            except ImportError:
+                is_profile_relevant_query = None
+                search_profile = None
+                
+        if is_profile_relevant_query and search_profile:
+            is_prof = is_profile_relevant_query(parent_goal) or is_profile_relevant_query(task.objective)
+            if is_prof or task.context.get("grant_profile_access", False):
+                try:
+                    profile_slice = search_profile(task.objective, bypass_filter=True)
+                    if profile_slice:
+                        scoped["profile_slice"] = profile_slice
+                except Exception as e:
+                    print(f"[DEPT] Failed to search profile: {e}", flush=True)
+
         task.context["scoped_context"] = scoped
         if task.compliance_checklist:
             scoped["compliance_checklist"] = task.compliance_checklist

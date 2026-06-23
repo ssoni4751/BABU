@@ -88,9 +88,58 @@ def check_constraint_compatibility(query: str, template: dict) -> bool:
             print(f"[GOVERNANCE CONSTRAINT CHECK] Failed: Negation marker '{marker}' detected in query.", flush=True)
             return False
             
-    # Check slot schema - extract placeholders if any
-    # (For template queries, we ensure no extra parameters outside template slots are requested)
-    # E.g. if template is daily post, and query requests email, it's incompatible
+    # Check slot schema / topic matching to prevent template collisions
+    try:
+        goal_graph_json = template.get("goal_graph_json")
+        graph_dict = json.loads(goal_graph_json) if goal_graph_json else {}
+        original_goal = graph_dict.get("goal", "").lower().strip()
+    except Exception:
+        original_goal = ""
+
+    if original_goal:
+        # Define topic keyword sets
+        topics = [
+            {"email", "mail", "gmail"},
+            {"facebook", "post"},
+            {"calendar", "event", "events", "meeting"},
+            {"sheet", "sheets", "spreadsheet", "spreadsheets"},
+            {"health", "status", "dashboard"},
+            {"time", "ist"},
+            {"upgrade", "upgrades", "adr", "tradeoff", "tradeoffs", "evolution", "architecture", "built"},
+            {"identity", "age", "name", "dob", "birthday", "nickname"},
+            {"father", "mother", "family", "parents", "brother", "sister", "sibling"},
+            {"search", "web", "wikipedia", "wiki", "google"}
+        ]
+        
+        orig_topics = set()
+        query_topics = set()
+        
+        for idx, keyword_set in enumerate(topics):
+            if any(k in original_goal for k in keyword_set):
+                orig_topics.add(idx)
+            if any(k in q_clean for k in keyword_set):
+                query_topics.add(idx)
+                
+        # If the original goal is tied to specific topics, the query must share at least one of those topics
+        if orig_topics and not (orig_topics & query_topics):
+            print(f"[GOVERNANCE CONSTRAINT CHECK] Failed: Topic mismatch. Template topics {orig_topics} vs Query topics {query_topics}.", flush=True)
+            return False
+            
+        # Also check for verb/intent mismatch (e.g. analysis vs simple lookup vs execution)
+        analysis_verbs = {"analyse", "analyze", "analysis", "explain", "why", "investigate", "debug", "diagnose"}
+        has_analysis_orig = any(v in original_goal for v in analysis_verbs)
+        has_analysis_query = any(v in q_clean for v in analysis_verbs)
+        if has_analysis_orig != has_analysis_query:
+            print(f"[GOVERNANCE CONSTRAINT CHECK] Failed: Intent/analysis mismatch. Query has_analysis={has_analysis_query}, Template has_analysis={has_analysis_orig}", flush=True)
+            return False
+
+        execution_verbs = {"send", "create", "post", "log", "delete", "update"}
+        has_execution_orig = any(v in original_goal for v in execution_verbs)
+        has_execution_query = any(v in q_clean for v in execution_verbs)
+        if has_execution_orig != has_execution_query:
+            print(f"[GOVERNANCE CONSTRAINT CHECK] Failed: Action execution mismatch. Query has_execution={has_execution_query}, Template has_execution={has_execution_orig}", flush=True)
+            return False
+            
     return True
 
 

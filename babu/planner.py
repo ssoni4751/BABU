@@ -1113,6 +1113,7 @@ def plan_goal(
             task_context["protocol"] = t["protocol"]
         task_context["grant_profile_access"] = bool(t.get("grant_profile_access", False))
         task_context["intent_packet"] = intent_packet.to_dict() if intent_packet else None
+        task_context["parent_goal"] = query
 
         # Dynamic per-department token budget allocation
         dept_budgets = {
