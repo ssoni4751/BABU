@@ -237,7 +237,12 @@ def _to_physical_name(doc_name: str) -> str:
     """Map SII document names (ADR_Book_v1.md) → physical file names (BABU_ADR_Book_v1.md)."""
     if doc_name.startswith("ADR_Book_"):
         return "BABU_" + doc_name
-    return doc_name
+    mapping = {
+        "BABU_BABU_Architecture_Diagrams.md": "babu_execution_flow.md",
+        "BABU_Master_Architecture_Index.md": "babu_cognitive_os_architectural_blueprint.md",
+        "System_Information_Index.md": "System_Information_Index.md"
+    }
+    return mapping.get(doc_name, doc_name)
 
 
 # ---------------------------------------------------------------------------

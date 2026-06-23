@@ -102,7 +102,7 @@ class IntentPacket:
                     "send_email", "create_event", "log_to_sheet", "create_doc", 
                     "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
                     "send_slack", "create_task", "search_image", "search_gmail",
-                    "post_to_facebook", "generate_image"
+                    "post_to_facebook", "generate_image", "upload_to_drive"
                 ]
             else:
                 actions = ["search_sheet", "search_gmail"]
@@ -113,7 +113,7 @@ class IntentPacket:
             "send_email", "create_event", "log_to_sheet", "create_doc", 
             "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
             "send_slack", "create_task", "search_image", "search_gmail",
-            "post_to_facebook", "generate_image"
+            "post_to_facebook", "generate_image", "upload_to_drive"
         }
         if any(act in self.allowed_actions for act in _execution_actions):
             if "execution" not in self.allowed_departments:
@@ -142,7 +142,7 @@ class IntentPacket:
         mutating_actions = {
             "send_email", "create_event", "log_to_sheet", "create_doc", 
             "copy_photos_to_drive", "copy_contacts_to_drive", 
-            "send_slack", "create_task", "post_to_facebook"
+            "send_slack", "create_task", "post_to_facebook", "upload_to_drive"
         }
         return any(act in self.allowed_actions for act in mutating_actions)
 
@@ -195,7 +195,7 @@ class IntentPacket:
                     "send_email", "create_event", "log_to_sheet", "create_doc", 
                     "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
                     "send_slack", "create_task", "search_image", "search_gmail",
-                    "post_to_facebook"
+                    "post_to_facebook", "upload_to_drive"
                 ]
             else:
                 allowed_actions = ["search_sheet", "search_gmail"]
@@ -306,18 +306,30 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
         detected_action = "create_doc"
     elif "facebook" in t and "post" in t:
         detected_action = "post_to_facebook"
+    elif ("save" in t or "upload" in t) and ("drive" in t or "google drive" in t or "report" in t):
+        detected_action = "upload_to_drive"
 
     if detected_action:
         scheduled = any(marker in t for marker in ("scheduled", "daily", "automatically", "background"))
-        return IntentPacket(
+        try:
+            from babu.bot import is_system_aware_query
+        except ImportError:
+            from bot import is_system_aware_query
+        
+        is_sys = is_system_aware_query(query)
+        packet = IntentPacket(
             allowed_departments=["information", "writing", "execution", "pa"],
             allowed_actions=[detected_action],
             execution_mode="AUTO_EXECUTE" if scheduled else "APPROVAL_REQUIRED",
             confidence=0.95,
             tokens={"prompt": 0, "completion": 0, "total": 0},
             model="rules_engine",
-            query_category="PERSONAL_INFORMATION" if _force_lookup else "PUBLIC_INFORMATION",
+            query_category="SYSTEM_INFORMATION" if is_sys else ("PERSONAL_INFORMATION" if _force_lookup else "PUBLIC_INFORMATION"),
+            system_query=is_sys
         )
+        if is_sys:
+            packet.execution_mode = "APPROVAL_REQUIRED"
+        return packet
 
     if any(marker in t for marker in ("email", "emails", "gmail", "mail")) and any(marker in t for marker in ("check", "search", "find", "recent", "updates", "summarize")):
         return IntentPacket(
@@ -413,12 +425,16 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
             
         if is_system_aware_query(query):
             packet.system_query = True
-            packet.execution_mode = "READ_ONLY"
-            packet.allowed_actions = []
-            allowed_depts = [d for d in packet.allowed_departments if d != "execution"]
-            if "pa" not in allowed_depts:
-                allowed_depts.append("pa")
-            packet.allowed_departments = allowed_depts
+            has_execution = "execution" in packet.allowed_departments and len(packet.allowed_actions) > 0
+            if has_execution:
+                packet.execution_mode = "APPROVAL_REQUIRED"  # Enforce approval check for safety
+            else:
+                packet.execution_mode = "READ_ONLY"
+                packet.allowed_actions = []
+                allowed_depts = [d for d in packet.allowed_departments if d != "execution"]
+                if "pa" not in allowed_depts:
+                    allowed_depts.append("pa")
+                packet.allowed_departments = allowed_depts
             
         # Programmatic query category overrides
         lowered = query.lower()
@@ -814,7 +830,7 @@ def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]
                 "send_email", "create_event", "log_to_sheet", "create_doc", 
                 "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
                 "send_slack", "create_task", "search_image", "search_gmail",
-                "post_to_facebook", "generate_image"
+                "post_to_facebook", "generate_image", "upload_to_drive"
             ]
         else:
             allowed_actions = ["search_sheet", "search_gmail"]

@@ -200,11 +200,12 @@ def compute_cosine_similarity(v1: list[float], v2: list[float]) -> float:
     return dot / (norm1 * norm2)
 
 
-def retrieve_knowledge(query: str, collections: Optional[list[str]] = None, top_k: int = 3, similarity_threshold: float = 0.35, sources: Optional[list[str]] = None) -> list[dict]:
+def retrieve_knowledge(query: str, collections: Optional[list[str]] = None, top_k: int = 3, similarity_threshold: float = 0.35, sources: Optional[list[str]] = None, query_vector: Optional[list[float]] = None) -> list[dict]:
     """Retrieve top matched knowledge chunks, strictly enforcing token budget constraints."""
     init_rag_db()
     
-    query_vector = get_embedding(query)
+    if query_vector is None:
+        query_vector = get_embedding(query)
     results = []
 
 
@@ -430,4 +431,103 @@ def retrieve_knowledge(query: str, collections: Optional[list[str]] = None, top_
             final_results.append(item)
             total_tokens += estimated_tokens
 
+    return final_results
+
+
+def retrieve_system_knowledge_hierarchical(
+    query: str,
+    matched_books: Optional[list[str]] = None,
+    top_k: int = 3,
+    similarity_threshold: float = 0.35
+) -> list[dict]:
+    """
+    Tiered retrieval for system queries:
+    1. See index first (System_Information_Index.md / system_index collection).
+    2. Then books (matched_books / adr_books collection).
+    3. Then the rest of RAG (general collections like babu_docs, engineering_history, immune_lessons, telemetry_knowledge, governance).
+    Enforces the overall MAX_RESULTS and MAX_RETRIEVED_TOKENS limits.
+    """
+    query_vector = get_embedding(query)
+    
+    # 1. Tier 1: Index
+    index_results = retrieve_knowledge(
+        query=query,
+        collections=["system_index"],
+        sources=["System_Information_Index.md"],
+        top_k=top_k,
+        similarity_threshold=similarity_threshold,
+        query_vector=query_vector
+    )
+    
+    # 2. Tier 2: Books
+    book_results = []
+    if matched_books:
+        book_results = retrieve_knowledge(
+            query=query,
+            collections=["adr_books", "babu_docs"],
+            sources=matched_books,
+            top_k=top_k,
+            similarity_threshold=similarity_threshold,
+            query_vector=query_vector
+        )
+    else:
+        book_results = retrieve_knowledge(
+            query=query,
+            collections=["adr_books"],
+            top_k=top_k,
+            similarity_threshold=similarity_threshold,
+            query_vector=query_vector
+        )
+        
+    # 3. Tier 3: General RAG
+    rag_results = retrieve_knowledge(
+        query=query,
+        collections=["babu_docs", "engineering_history", "immune_lessons", "telemetry_knowledge", "governance"],
+        top_k=top_k,
+        similarity_threshold=similarity_threshold,
+        query_vector=query_vector
+    )
+    
+    # Combine results in priority order
+    combined_candidates = []
+    seen_ids = set()
+    seen_chunks = set()
+    
+    def add_candidates(items):
+        for item in items:
+            item_id = item.get("id")
+            chunk_hash = hashlib.sha256(item["chunk_text"].strip().encode("utf-8")).hexdigest()
+            if item_id in seen_ids or chunk_hash in seen_chunks:
+                continue
+            seen_ids.add(item_id)
+            seen_chunks.add(chunk_hash)
+            combined_candidates.append(item)
+
+    add_candidates(index_results)
+    add_candidates(book_results)
+    add_candidates(rag_results)
+    
+    # Enforce strict budget: MAX_RESULTS = 3, MAX_RETRIEVED_TOKENS = 1200
+    final_results = []
+    total_tokens = 0
+    
+    for item in combined_candidates:
+        if len(final_results) >= MAX_RESULTS:
+            break
+            
+        text = item["chunk_text"]
+        estimated_tokens = len(text) // 4
+        
+        if total_tokens + estimated_tokens > MAX_RETRIEVED_TOKENS:
+            remaining_tokens = MAX_RETRIEVED_TOKENS - total_tokens
+            if remaining_tokens > 100:
+                chunk_limit_char = remaining_tokens * 4
+                item["chunk_text"] = text[:chunk_limit_char] + "\n... (truncated due to token budget limits)"
+                final_results.append(item)
+                total_tokens = MAX_RETRIEVED_TOKENS
+            break
+        else:
+            final_results.append(item)
+            total_tokens += estimated_tokens
+            
     return final_results

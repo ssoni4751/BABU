@@ -369,23 +369,15 @@ def planner_node(state: BabuState):
         )
 
         try:
-            from .rag_storage import retrieve_knowledge
+            from .rag_storage import retrieve_system_knowledge_hierarchical
         except ImportError:
-            from rag_storage import retrieve_knowledge
+            from rag_storage import retrieve_system_knowledge_hierarchical
 
         rag_start = time.time()
-
-        if matched_books:
-            retrieved = retrieve_knowledge(
-                query,
-                collections=["adr_books", "system_index", "babu_docs", "engineering_history"],
-                sources=matched_books + ["System_Information_Index.md"],
-            )
-        else:
-            retrieved = retrieve_knowledge(
-                query,
-                collections=["adr_books", "system_index", "babu_docs", "engineering_history"],
-            )
+        retrieved = retrieve_system_knowledge_hierarchical(
+            query=query,
+            matched_books=matched_books,
+        )
 
         rag_end = time.time()
         rag_latency = round((rag_end - rag_start) * 1000, 2)

@@ -262,14 +262,28 @@ class ResearchHead(DepartmentHead):
                 AUTHORITY_MEMORY, AUTHORITY_DATABASE, AUTHORITY_LEDGER, AUTHORITY_WEB
             )
 
+        try:
+            from .gateway import is_system_aware_query
+        except ImportError:
+            from gateway import is_system_aware_query
+
         sources = {}
 
         # 3. Dynamic search execution
-        print(f"[DEPT:research] Dynamically executing web search for objective: '{search_query}'", flush=True)
-        web_hits = web_search(search_query)
-        if web_hits and web_hits != "No results found.":
+        p_goal = task.context.get("parent_goal", "") or task.objective
+        is_system_aware = is_system_aware_query(search_query) or is_system_aware_query(p_goal)
+
+        if is_system_aware:
+            print(f"[DEPT:research] System-aware query detected. Bypassing external web search for: '{search_query}'", flush=True)
+            web_hits = "Web search bypassed for system-aware queries."
             scoped["web_search"] = web_hits
             sources[AUTHORITY_WEB] = web_hits
+        else:
+            print(f"[DEPT:research] Dynamically executing web search for objective: '{search_query}'", flush=True)
+            web_hits = web_search(search_query)
+            if web_hits and web_hits != "No results found.":
+                scoped["web_search"] = web_hits
+                sources[AUTHORITY_WEB] = web_hits
 
         kb_hits = search_knowledge(search_query)
         if kb_hits:
@@ -346,11 +360,24 @@ class InformationHead(DepartmentHead):
         if intent_packet and isinstance(intent_packet, dict):
             category = intent_packet.get("query_category")
 
+        try:
+            from .gateway import is_system_aware_query
+        except ImportError:
+            from gateway import is_system_aware_query
+
+        p_goal = task.context.get("parent_goal", "") or task.objective
+        is_system_aware = is_system_aware_query(search_query) or is_system_aware_query(p_goal)
+
         sources = {}
 
         if is_private_data_query(search_query, category):
             print(f"[DEPT:information] Bypassing general web search for private query: '{search_query}'", flush=True)
             web_search_val = "Web search blocked for private personal/business data queries."
+            scoped["web_search"] = web_search_val
+            sources[AUTHORITY_WEB] = web_search_val
+        elif is_system_aware:
+            print(f"[DEPT:information] System-aware query detected. Bypassing external web search for: '{search_query}'", flush=True)
+            web_search_val = "Web search bypassed for system-aware queries."
             scoped["web_search"] = web_search_val
             sources[AUTHORITY_WEB] = web_search_val
         else:

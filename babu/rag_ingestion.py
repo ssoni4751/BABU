@@ -85,27 +85,37 @@ def ingest_e0_configs(config_dir: str):
         with open(const_path, "r", encoding="utf-8") as f:
             data = json.load(f)
         
-        # Ingest safety guidelines
-        safety = data.get("safety_guidelines", {})
-        for name, detail in safety.items():
-            store_knowledge_chunk(
-                collection="governance",
-                source="constitution.json",
-                title=f"Safety Rule: {name}",
-                chunk_text=f"Constitution Safety Guideline [{name}]: {detail}",
-                metadata={"config": "constitution", "rule": name}
-            )
+        # Ingest safety/truthfulness guidelines
+        for key in ["truthfulness", "audit_requirements", "micro_auditor_boundary"]:
+            if key in data:
+                store_knowledge_chunk(
+                    collection="governance",
+                    source="constitution.json",
+                    title=f"Constitution Policy: {key}",
+                    chunk_text=f"Constitution {key.replace('_', ' ').capitalize()}: {data[key]}",
+                    metadata={"config": "constitution", "rule": key}
+                )
             
         # Ingest execution boundaries
-        boundaries = data.get("execution_boundaries", {})
-        for name, detail in boundaries.items():
-            store_knowledge_chunk(
-                collection="governance",
-                source="constitution.json",
-                title=f"Execution Boundary: {name}",
-                chunk_text=f"Constitution Execution Boundary [{name}]: {detail}",
-                metadata={"config": "constitution", "rule": name}
-            )
+        boundaries = data.get("execution_boundaries", [])
+        if isinstance(boundaries, list):
+            for action in boundaries:
+                store_knowledge_chunk(
+                    collection="governance",
+                    source="constitution.json",
+                    title=f"Execution Boundary: {action}",
+                    chunk_text=f"Constitution Execution Boundary allowed action: {action}",
+                    metadata={"config": "constitution", "rule": action}
+                )
+        elif isinstance(boundaries, dict):
+            for name, detail in boundaries.items():
+                store_knowledge_chunk(
+                    collection="governance",
+                    source="constitution.json",
+                    title=f"Execution Boundary: {name}",
+                    chunk_text=f"Constitution Execution Boundary [{name}]: {detail}",
+                    metadata={"config": "constitution", "rule": name}
+                )
             
     # 2. Policies
     policies_path = os.path.join(config_dir, "policies.json")

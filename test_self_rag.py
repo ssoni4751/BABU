@@ -64,7 +64,7 @@ class TestSelfRAG(unittest.TestCase):
 
     def test_01_embedding_factory_and_storage(self):
         """Test that MockEmbeddings returns a deterministic unit vector and init_rag_db initializes tables."""
-        model = get_embeddings_model()
+        model = MockEmbeddings()
         self.assertIsNotNone(model)
         
         # Test mock embedding normalized unit vector
