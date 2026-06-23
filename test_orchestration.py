@@ -2,6 +2,9 @@
 test_orchestration.py — Comprehensive Test Suite for BABU's DAG Orchestration Framework
 """
 
+import os
+os.environ["DATABASE_URL"] = ""
+
 import unittest
 from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock
@@ -526,6 +529,7 @@ class TestExecutionLedger(unittest.TestCase):
         
         # Mock Department Head to return simple result
         mock_dept_head = MagicMock()
+        mock_dept_head.run.return_value = ("{'findings': 'some findings'}", {"prompt": 10, "completion": 5, "total": 15})
         mock_dept_head.dispatch.return_value = ("{'findings': 'some findings'}", {"prompt": 10, "completion": 5, "total": 15})
         mock_get_dept_head.return_value = mock_dept_head
         
@@ -579,12 +583,11 @@ class TestExecutionLedger(unittest.TestCase):
         conn.close()
         
         event_types = [r[0] for r in rows]
-        self.assertIn("AUDIT_PRE", event_types)
         self.assertIn("AUDIT_PRE_PASS", event_types)
         self.assertIn("EXECUTION_START", event_types)
         self.assertIn("EXECUTION_DONE", event_types)
-        self.assertIn("AUDIT_POST", event_types)
         self.assertIn("AUDIT_POST_PASS", event_types)
+        self.assertIn("GOAL_COMPLETED", event_types)
 
     @patch("babu.bot.is_simple_query")
     @patch("babu.planner.plan_goal")

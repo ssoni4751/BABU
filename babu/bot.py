@@ -275,6 +275,32 @@ def init_postgres_db():
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_k0_session_id ON babu_k0_working_memory (session_id);")
         
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS planned_graphs_cache (
+                session_id TEXT NOT NULL,
+                query_hash TEXT NOT NULL,
+                goal_class TEXT NOT NULL,
+                graph_hash TEXT NOT NULL,
+                raw_query TEXT NOT NULL,
+                goal_graph_json TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (session_id, query_hash)
+            );
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pg_cache_session_hash ON planned_graphs_cache (session_id, query_hash);")
+        
+        # Truncate cache if exceeds 1000 entries
+        try:
+            cursor.execute("SELECT COUNT(*) FROM planned_graphs_cache;")
+            if cursor.fetchone()[0] > 1000:
+                cursor.execute("""
+                    DELETE FROM planned_graphs_cache 
+                    WHERE created_at < NOW() - INTERVAL '24 hours';
+                """)
+                print("[POSTGRES] Pruned planned_graphs_cache entries older than 24 hours.", flush=True)
+        except Exception as prune_err:
+            print(f"[POSTGRES PRUNE WARNING] Failed to prune planned_graphs_cache: {prune_err}", flush=True)
+        
         # Safe migration / column additions for babu_k0_working_memory if table exists
         try:
             cursor.execute("ALTER TABLE babu_k0_working_memory ADD COLUMN IF NOT EXISTS response_full TEXT;")
@@ -458,6 +484,32 @@ def init_durable_checkpoint_db():
         );
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_k0_session_id ON babu_k0_working_memory (session_id);")
+    
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS planned_graphs_cache (
+            session_id TEXT NOT NULL,
+            query_hash TEXT NOT NULL,
+            goal_class TEXT NOT NULL,
+            graph_hash TEXT NOT NULL,
+            raw_query TEXT NOT NULL,
+            goal_graph_json TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (session_id, query_hash)
+        );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_pg_cache_session_hash ON planned_graphs_cache (session_id, query_hash);")
+    
+    # Truncate cache if exceeds 1000 entries
+    try:
+        cursor.execute("SELECT COUNT(*) FROM planned_graphs_cache;")
+        if cursor.fetchone()[0] > 1000:
+            cursor.execute("""
+                DELETE FROM planned_graphs_cache 
+                WHERE created_at < datetime('now', '-24 hours');
+            """)
+            print("[SQLITE] Pruned planned_graphs_cache entries older than 24 hours.", flush=True)
+    except Exception as prune_err:
+        print(f"[SQLITE PRUNE WARNING] Failed to prune planned_graphs_cache: {prune_err}", flush=True)
     
     # Safe migration for SQLite to add new columns if they do not exist
     try:

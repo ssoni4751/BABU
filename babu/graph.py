@@ -483,6 +483,132 @@ def planner_node(state: BabuState):
         }
     )
 
+    # ── Phase 3: Session-Scoped Cache Lookup ──
+    def get_query_hash(q: str) -> str:
+        import hashlib
+        import string
+        normalized = q.lower().strip()
+        normalized = "".join(c for c in normalized if c not in string.punctuation)
+        normalized = " ".join(normalized.split())
+        return hashlib.sha256(normalized.encode('utf-8')).hexdigest()
+
+    query_hash = get_query_hash(query)
+    goal_class = intent_packet.query_category
+    cached_graph = None
+
+    conn, is_pg = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        if is_pg:
+            cursor.execute(
+                "SELECT goal_graph_json FROM planned_graphs_cache WHERE session_id = %s AND query_hash = %s AND goal_class = %s",
+                (session_id, query_hash, goal_class)
+            )
+        else:
+            cursor.execute(
+                "SELECT goal_graph_json FROM planned_graphs_cache WHERE session_id = ? AND query_hash = ? AND goal_class = ?",
+                (session_id, query_hash, goal_class)
+            )
+        row = cursor.fetchone()
+        if row:
+            cached_graph = row[0]
+        cursor.close()
+    except Exception as e:
+        print(f"[PLANNER CACHE] Error looking up plan cache: {e}", flush=True)
+    finally:
+        conn.close()
+
+    if cached_graph:
+        try:
+            from .task_engine import GoalGraph
+        except ImportError:
+            from task_engine import GoalGraph
+            
+        try:
+            graph_dict = json.loads(cached_graph)
+            graph_dict["goal_id"] = pre_goal_id
+            graph_dict["goal"] = query
+            graph = GoalGraph.from_dict(graph_dict)
+            graph.planner_status = "CACHE_MATCH"
+            print(f"[PLANNER NODE] Session cache hit! Reusing plan for query hash {query_hash} and goal class {goal_class}", flush=True)
+            
+            tracker = state.get("execution_tracker") or {}
+            tracker["planner_duration"] = 0.0
+            
+            routing_meta = state.get("routing_metadata") or {}
+            routing_meta["sql_context"] = sql_context
+            routing_meta["retrieved_rag"] = retrieved
+            
+            # Calculate graph hash for trace metadata
+            import hashlib
+            graph_json_str = json.dumps(graph.to_dict())
+            graph_hash = hashlib.sha256(graph_json_str.encode('utf-8')).hexdigest()
+            
+            log_execution_ledger_event(
+                session_id=session_id,
+                goal_id=graph.goal_id,
+                task_id=None,
+                department=None,
+                event_type="GOAL_CREATED",
+                state_before="NONE",
+                state_after="ACTIVE",
+                metadata={
+                    "query": query,
+                    "goal": graph.goal,
+                    "planner_status": "CACHE_MATCH",
+                    "graph_hash": graph_hash
+                }
+            )
+            
+            log_execution_ledger_event(
+                session_id=session_id,
+                goal_id=graph.goal_id,
+                task_id=None,
+                department=None,
+                event_type="PLANNING",
+                state_before=None,
+                state_after="PLANNED",
+                metadata={
+                    "query": query,
+                    "graph": graph.to_dict(),
+                    "planner_status": "CACHE_MATCH",
+                    "tokens": {"prompt": 0, "completion": 0, "total": 0},
+                    "cost": 0.0,
+                    "model": "cache_lookup",
+                    "is_estimated": False,
+                    "event_start_time": datetime.now(timezone.utc).isoformat(),
+                    "event_end_time": datetime.now(timezone.utc).isoformat(),
+                    "latency_ms": 0.0,
+                    "latency": 0.0,
+                    "graph_hash": graph_hash
+                }
+            )
+            
+            log_temporal_event(
+                event_category="GOAL_PLANNED",
+                summary=f"Goal planned using CACHE_MATCH strategy: {graph.goal[:80]}",
+                outcome="SUCCESS",
+                metadata={
+                    "session_id": session_id,
+                    "goal_id": graph.goal_id,
+                    "planner_status": "CACHE_MATCH",
+                    "tasks_count": len(graph.tasks),
+                    "graph_hash": graph_hash
+                }
+            )
+            
+            ret_dict = {
+                "goal_graph": graph.to_dict(),
+                "execution_tracker": tracker,
+                "tokens": ic_tokens,
+                "routing_metadata": routing_meta
+            }
+            if is_system:
+                ret_dict["compressed_research"] = (self_ctx + "\n\n" + sql_context).strip()
+            return ret_dict
+        except Exception as parse_err:
+            print(f"[PLANNER CACHE] Failed to load cached goal graph: {parse_err}. Falling back to normal path.", flush=True)
+
     plan_start_time = time.time()
     plan_start_iso = datetime.now(timezone.utc).isoformat()
 
@@ -654,6 +780,11 @@ def planner_node(state: BabuState):
     else:
         graph.planning_tokens = getattr(graph, "planning_tokens", None) or {"prompt": 1800, "completion": 500, "total": 2300}
     
+    # Calculate graph hash for trace metadata
+    import hashlib
+    graph_json_str = json.dumps(graph.to_dict())
+    graph_hash = hashlib.sha256(graph_json_str.encode('utf-8')).hexdigest()
+
     log_execution_ledger_event(
         session_id=session_id,
         goal_id=graph.goal_id,
@@ -665,7 +796,8 @@ def planner_node(state: BabuState):
         metadata={
             "query": query,
             "goal": graph.goal,
-            "planner_status": graph.planner_status
+            "planner_status": graph.planner_status,
+            "graph_hash": graph_hash
         }
     )
     
@@ -698,7 +830,8 @@ def planner_node(state: BabuState):
             "event_start_time": plan_start_iso,
             "event_end_time": plan_end_iso,
             "latency_ms": plan_latency_ms,
-            "latency": plan_latency_sec
+            "latency": plan_latency_sec,
+            "graph_hash": graph_hash
         }
     )
     
@@ -725,7 +858,8 @@ def planner_node(state: BabuState):
             "template_rejected_reason": template_rejected_reason,
             "template_execution_used": template_execution_used,
             "planner_tokens": plan_tokens,
-            "template_tokens_saved": template_tokens_saved
+            "template_tokens_saved": template_tokens_saved,
+            "graph_hash": graph_hash
         }
     )
     
@@ -737,13 +871,42 @@ def planner_node(state: BabuState):
             "session_id": session_id,
             "goal_id": graph.goal_id,
             "planner_status": graph.planner_status,
-            "tasks_count": len(graph.tasks)
+            "tasks_count": len(graph.tasks),
+            "graph_hash": graph_hash
         }
     )
         
     routing_meta = state.get("routing_metadata") or {}
     routing_meta["sql_context"] = sql_context
     routing_meta["retrieved_rag"] = retrieved
+
+    # Save planned graph to cache
+    if graph and getattr(graph, "planner_status", "") != "CACHE_MATCH":
+        conn, is_pg = get_db_connection()
+        try:
+            cursor = conn.cursor()
+            if is_pg:
+                cursor.execute("""
+                    INSERT INTO planned_graphs_cache (session_id, query_hash, goal_class, graph_hash, raw_query, goal_graph_json)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (session_id, query_hash) DO UPDATE 
+                    SET goal_graph_json = EXCLUDED.goal_graph_json,
+                        goal_class = EXCLUDED.goal_class,
+                        graph_hash = EXCLUDED.graph_hash,
+                        raw_query = EXCLUDED.raw_query,
+                        created_at = CURRENT_TIMESTAMP;
+                """, (session_id, query_hash, goal_class, graph_hash, query, graph_json_str))
+            else:
+                cursor.execute("""
+                    INSERT OR REPLACE INTO planned_graphs_cache (session_id, query_hash, goal_class, graph_hash, raw_query, goal_graph_json, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP);
+                """, (session_id, query_hash, goal_class, graph_hash, query, graph_json_str))
+            conn.commit()
+            cursor.close()
+        except Exception as save_err:
+            print(f"[PLANNER CACHE] Failed to save planned graph to cache: {save_err}", flush=True)
+        finally:
+            conn.close()
 
     ret_dict = {
         "goal_graph": graph.to_dict(), 
@@ -760,11 +923,11 @@ def task_executor_node(state: BabuState):
     import time
     from datetime import datetime, timezone
     try:
-        from .task_engine import TaskEngine, GoalGraph, TaskState
+        from .task_engine import TaskEngine, GoalGraph, TaskState, TaskDTO
         from .departments import get_department_head
         from .auditor import BipartiteAuditor, get_service_class
     except ImportError:
-        from task_engine import TaskEngine, GoalGraph, TaskState
+        from task_engine import TaskEngine, GoalGraph, TaskState, TaskDTO
         from departments import get_department_head
         from auditor import BipartiteAuditor, get_service_class
         
@@ -797,6 +960,11 @@ def task_executor_node(state: BabuState):
     llm_dept = build_llm(CURRENT_DEPT_MODEL, 0.1)
     auditor = BipartiteAuditor(llm=llm_dept)
     
+    # Calculate graph hash for trace metadata
+    import hashlib
+    graph_json_str = json.dumps(goal_graph.to_dict())
+    graph_hash = hashlib.sha256(graph_json_str.encode('utf-8')).hexdigest()
+    
     is_template_match = (goal_graph.planner_status == "TEMPLATE_MATCH")
     if is_template_match:
         try:
@@ -814,12 +982,122 @@ def task_executor_node(state: BabuState):
                 event_type="PLANNER_CONSTRAINT_VIOLATION",
                 state_before="ACTIVE",
                 state_after="FAILED",
-                metadata={"reason": "Micro-audit failed: template constraints violated."}
+                metadata={"reason": "Micro-audit failed: template constraints violated.", "graph_hash": graph_hash}
             )
             return {"action_result": "Governance Refusal: Template constraint violation.", "final_brief": "Micro-audit failed."}
             
     execution_log = state.get("execution_log") or []
     
+    # ── Phase 1: Upfront Batch Pre-Audit and Approvals ──
+    pending_approval_task = None
+    for task in goal_graph.tasks:
+        # Pre-execution audit check
+        passed, reason = auditor.audit_pre(task)
+        if not passed:
+            print(f"[EXECUTOR] Upfront batch pre-audit FAILED for task '{task.task_id}': {reason}", flush=True)
+            engine.mark_failed(task.task_id, reason)
+            engine.goal.status = "FAILED"
+            log_execution_ledger_event(
+                session_id=session_id,
+                goal_id=goal_graph.goal_id,
+                task_id=task.task_id,
+                department=task.department,
+                event_type="AUDIT_PRE_FAIL",
+                state_before="RUNNING",
+                state_after="FAILED",
+                metadata={"reason": reason, "graph_hash": graph_hash}
+            )
+            return {
+                "goal_graph": engine.goal.to_dict(),
+                "execution_log": execution_log,
+                "final_brief": f"Execution failed at batch pre-audit stage for task {task.task_id}: {reason}"
+            }
+            
+        if task.department == "execution":
+            action = task.context.get("action", "")
+            try:
+                from .governance import get_constitution
+            except ImportError:
+                from governance import get_constitution
+            mandatory_approvals = get_constitution("mandatory_human_approval", [])
+            
+            if detected_action and detected_action.get("action") == action:
+                task.context["approved"] = True
+            elif action in mandatory_approvals:
+                if not task.context.get("approved"):
+                    task.context["approved"] = False
+            elif action in ("search_sheet", "search_gmail"):
+                task.context["approved"] = True
+                
+            if not task.context.get("approved") and not pending_approval_task:
+                pending_approval_task = task
+
+    if pending_approval_task:
+        task = pending_approval_task
+        dept_head = get_department_head(task.department)
+        action = task.context.get("action", "")
+        params = task.context.get("params", {})
+        
+        # Resolve placeholders using user profile
+        resolved_params = dept_head._resolve_params(params, "")
+        
+        # Save pending action for bot.py callback
+        pending_action_data = {
+            "action": action,
+            "params": resolved_params,
+            "task_id": task.task_id,
+            "goal_id": goal_graph.goal_id,
+            "stage": "approval",
+            "graph_hash": graph_hash
+        }
+        with _pending_actions_lock:
+            _pending_actions[session_id] = pending_action_data
+        db_save_pending_action(session_id, pending_action_data)
+        
+        preview_fields = {k: v for k, v in resolved_params.items() if k not in ("body", "content", "caption")}
+        fields_str = "\n".join(f"  • {k.capitalize()}: {v}" for k, v in preview_fields.items())
+        body_preview = resolved_params.get("body", resolved_params.get("content", resolved_params.get("caption", "")))
+        
+        preview = fields_str
+        if body_preview:
+            if "[NEEDS_RESEARCH_CONTEXT]" in body_preview:
+                preview += f"\n\n**Draft Content:**\n*(Will be dynamically generated from search/analysis)*"
+            else:
+                preview += f"\n\n**Draft Content:**\n{body_preview}"
+                
+        is_c = (get_service_class(action) == "C")
+        prompt_end = "Reply with '1' / 'approve' to approve, or '0' / 'cancel' to reject." if is_c else "Reply with '1' / 'approve' to execute, or '0' / 'cancel' to reject."
+        
+        pending_action_notice = (
+            f"Action authorization required.\n\n"
+            f"Proposed action: **{action}**\n"
+            f"{preview}\n\n"
+            f"{prompt_end}"
+        )
+        
+        duration = round(time.time() - start_time, 2)
+        tracker = state.get("execution_tracker") or {}
+        tracker["task_manager_duration"] = duration
+        
+        log_execution_ledger_event(
+            session_id=session_id,
+            goal_id=goal_graph.goal_id,
+            task_id=task.task_id,
+            department=task.department,
+            event_type="WAITING_FOR_APPROVAL",
+            state_before="RUNNING",
+            state_after="WAITING",
+            metadata={"action": action, "params": resolved_params, "graph_hash": graph_hash}
+        )
+        
+        return {
+            "goal_graph": goal_graph.to_dict(),
+            "execution_log": execution_log,
+            "final_brief": pending_action_notice,
+            "execution_tracker": tracker,
+            "tokens": {"prompt": 0, "completion": 0, "total": 0}
+        }
+
     while True:
         ready_tasks = engine.get_ready_tasks()
         task = ready_tasks[0] if ready_tasks else None
@@ -832,86 +1110,25 @@ def task_executor_node(state: BabuState):
         pre_start_time = time.time()
         pre_start_iso = datetime.now(timezone.utc).isoformat()
 
-        log_execution_ledger_event(
-            session_id=session_id,
-            goal_id=goal_graph.goal_id,
-            task_id=task.task_id,
-            department=task.department,
-            event_type="AUDIT_PRE",
-            state_before="READY",
-            state_after="AUDITING_PRE",
-            metadata={"objective": task.objective, "event_start_time": pre_start_iso}
-        )
-        
-        # Pre-execution audit check
-        passed, reason = auditor.audit_pre(task)
-        
-        pre_end_time = time.time()
-        pre_end_iso = datetime.now(timezone.utc).isoformat()
-        pre_latency_ms = round((pre_end_time - pre_start_time) * 1000, 2)
-        pre_latency_sec = round(pre_end_time - pre_start_time, 4)
-        
-        if not passed:
-            print(f"[EXECUTOR] Pre-execution audit FAILED for task '{task.task_id}': {reason}", flush=True)
-            engine.mark_failed(task.task_id, reason)
-            engine.goal.status = "FAILED"
-            
-            log_execution_ledger_event(
-                session_id=session_id,
-                goal_id=goal_graph.goal_id,
-                task_id=task.task_id,
-                department=task.department,
-                event_type="AUDIT_PRE_FAIL",
-                state_before="RUNNING",
-                state_after="FAILED",
-                metadata={
-                    "reason": reason,
-                    "event_start_time": pre_start_iso,
-                    "event_end_time": pre_end_iso,
-                    "latency_ms": pre_latency_ms,
-                    "latency": pre_latency_sec
-                }
-            )
-            
-            # Synthesize governance rules from failure
-            try:
-                from .memory import log_execution_failure
-            except ImportError:
-                from memory import log_execution_failure
-            try:
-                log_execution_failure(
-                    domain=f"department.{task.department}",
-                    method=task.context.get("action", "unknown"),
-                    exception_msg=f"Pre-execution Audit Failed: {reason}",
-                    goal=goal_graph.goal,
-                    intent_packet=task.context.get("intent_packet")
-                )
-            except Exception as e:
-                print(f"[EPISTEMIC MEMORY ERROR] Failed to record audit failure: {e}", flush=True)
-                
-            return {
-                "goal_graph": engine.goal.to_dict(),
-                "execution_log": execution_log,
-                "final_brief": f"Execution failed at pre-audit stage for task {task.task_id}: {reason}"
-            }
-            
+        # Log audit pre-pass (batch pre-audit occurred upfront)
         log_execution_ledger_event(
             session_id=session_id,
             goal_id=goal_graph.goal_id,
             task_id=task.task_id,
             department=task.department,
             event_type="AUDIT_PRE_PASS",
-            state_before="AUDITING_PRE",
+            state_before="READY",
             state_after="RUNNING",
             metadata={
                 "objective": task.objective,
                 "event_start_time": pre_start_iso,
-                "event_end_time": pre_end_iso,
-                "latency_ms": pre_latency_ms,
-                "latency": pre_latency_sec,
+                "event_end_time": pre_start_iso,
+                "latency_ms": 0.0,
+                "latency": 0.0,
                 "tokens": {"prompt": 0, "completion": 0, "total": 0},
                 "cost": 0.0,
-                "model": "rules_engine"
+                "model": "rules_engine",
+                "graph_hash": graph_hash
             }
         )
             
@@ -928,92 +1145,6 @@ def task_executor_node(state: BabuState):
             if tid in task.depends_on
         ]
         
-        if task.department == "execution":
-            action = task.context.get("action", "")
-            try:
-                from .governance import get_constitution
-            except ImportError:
-                from governance import get_constitution
-            mandatory_approvals = get_constitution("mandatory_human_approval", [])
-            
-            if detected_action and detected_action.get("action") == action:
-                task.context["approved"] = True
-            elif action in mandatory_approvals:
-                task.context["approved"] = False
-            elif action in ("search_sheet", "search_gmail"):
-                task.context["approved"] = True
-                
-            if not task.context.get("approved"):
-                action = task.context.get("action", "")
-                params = task.context.get("params", {})
-                
-                upstream_texts = [
-                    item["result"] for item in task.context.get("upstream_results", [])
-                ]
-                upstream_text = "\n\n".join(upstream_texts) if upstream_texts else ""
-                resolved_params = dept_head._resolve_params(params, upstream_text)
-                
-                # Default pending action state
-                pending_action_data = {
-                    "action": action,
-                    "params": resolved_params,
-                    "task_id": task.task_id,
-                    "goal_id": goal_graph.goal_id,
-                    "stage": "approval"  # Initial stage
-                }
-                
-                with _pending_actions_lock:
-                    _pending_actions[session_id] = pending_action_data
-                db_save_pending_action(session_id, pending_action_data)
-                    
-                preview_fields = {k: v for k, v in resolved_params.items() if k not in ("body", "content", "caption")}
-                fields_str = "\n".join(f"  • {k.capitalize()}: {v}" for k, v in preview_fields.items())
-                body_preview = resolved_params.get("body", resolved_params.get("content", resolved_params.get("caption", "")))
-                
-                preview = fields_str
-                if body_preview:
-                    preview += f"\n\n**Draft Content:**\n{body_preview}"
-                    
-                is_c = (get_service_class(action) == "C")
-                prompt_end = "Reply with '1' / 'approve' to approve, or '0' / 'cancel' to reject." if is_c else "Reply with '1' / 'approve' to execute, or '0' / 'cancel' to reject."
-                
-                pending_action_notice = (
-                    f"Action authorization required.\n\n"
-                    f"Proposed action: **{action}**\n"
-                    f"{preview}\n\n"
-                    f"{prompt_end}"
-                )
-                
-                duration = round(time.time() - start_time, 2)
-                tracker = state.get("execution_tracker") or {}
-                tracker["task_manager_duration"] = duration
-                
-                log_execution_ledger_event(
-                    session_id=session_id,
-                    goal_id=goal_graph.goal_id,
-                    task_id=task.task_id,
-                    department=task.department,
-                    event_type="WAITING_FOR_APPROVAL",
-                    state_before="RUNNING",
-                    state_after="WAITING",
-                    metadata={"action": action, "params": resolved_params}
-                )
-                
-                node_tokens = {"prompt": 0, "completion": 0, "total": 0}
-                for entry in execution_log:
-                    t = entry.get("tokens") or {"prompt": 0, "completion": 0, "total": 0}
-                    node_tokens["prompt"] += t.get("prompt", 0)
-                    node_tokens["completion"] += t.get("completion", 0)
-                    node_tokens["total"] += t.get("total", 0)
-                    
-                return {
-                    "goal_graph": engine.goal.to_dict(),
-                    "execution_log": execution_log,
-                    "final_brief": pending_action_notice,
-                    "execution_tracker": tracker,
-                    "tokens": node_tokens
-                }
-
         # Run worker
         worker_start_time = time.time()
         worker_start_iso = datetime.now(timezone.utc).isoformat()
@@ -1026,7 +1157,7 @@ def task_executor_node(state: BabuState):
             event_type="EXECUTION_START",
             state_before="RUNNING",
             state_after="EXECUTING",
-            metadata={"objective": task.objective, "event_start_time": worker_start_iso}
+            metadata={"objective": task.objective, "event_start_time": worker_start_iso, "graph_hash": graph_hash}
         )
         
         try:
@@ -1065,7 +1196,8 @@ def task_executor_node(state: BabuState):
                     "event_start_time": worker_start_iso,
                     "event_end_time": worker_end_iso,
                     "latency_ms": worker_latency_ms,
-                    "latency": worker_latency_sec
+                    "latency": worker_latency_sec,
+                    "graph_hash": graph_hash
                 }
             )
             
@@ -1095,6 +1227,7 @@ def task_executor_node(state: BabuState):
                 "tokens": node_tokens,
                 "cost": round(worker_cost, 6),
                 "model": CURRENT_DEPT_MODEL,
+                "graph_hash": graph_hash
             }
         )
 
@@ -1115,75 +1248,12 @@ def task_executor_node(state: BabuState):
                 "event_start_time": worker_start_iso,
                 "event_end_time": worker_end_iso,
                 "latency_ms": worker_latency_ms,
-                "latency": worker_latency_sec
+                "latency": worker_latency_sec,
+                "graph_hash": graph_hash
             }
         )
         
-        # Post-execution Validation check
-        post_start_time = time.time()
-        post_start_iso = datetime.now(timezone.utc).isoformat()
-
-        log_execution_ledger_event(
-            session_id=session_id,
-            goal_id=goal_graph.goal_id,
-            task_id=task.task_id,
-            department=task.department,
-            event_type="AUDIT_POST",
-            state_before="EXECUTED",
-            state_after="AUDITING_POST",
-            metadata={"objective": task.objective, "event_start_time": post_start_iso}
-        )
-        
-        passed_post, post_reason = auditor.audit_post(task, worker_result)
-        
-        post_end_time = time.time()
-        post_end_iso = datetime.now(timezone.utc).isoformat()
-        post_latency_ms = round((post_end_time - post_start_time) * 1000, 2)
-        post_latency_sec = round(post_end_time - post_start_time, 4)
-        
-        if not passed_post:
-            print(f"[EXECUTOR] Post-execution audit FAILED for task '{task.task_id}': {post_reason}", flush=True)
-            engine.mark_failed(task.task_id, post_reason)
-            engine.goal.status = "FAILED"
-            
-            log_execution_ledger_event(
-                session_id=session_id,
-                goal_id=goal_graph.goal_id,
-                task_id=task.task_id,
-                department=task.department,
-                event_type="AUDIT_POST_FAIL",
-                state_before="RUNNING",
-                state_after="FAILED",
-                metadata={
-                    "reason": post_reason,
-                    "event_start_time": post_start_iso,
-                    "event_end_time": post_end_iso,
-                    "latency_ms": post_latency_ms,
-                    "latency": post_latency_sec
-                }
-            )
-            
-            try:
-                from .memory import log_execution_failure
-            except ImportError:
-                from memory import log_execution_failure
-            try:
-                log_execution_failure(
-                    domain=f"department.{task.department}",
-                    method=task.context.get("action", "unknown"),
-                    exception_msg=f"Post-execution Audit Failed: {post_reason}",
-                    goal=goal_graph.goal,
-                    intent_packet=task.context.get("intent_packet")
-                )
-            except Exception as e:
-                print(f"[EPISTEMIC MEMORY ERROR] Failed to record audit failure: {e}", flush=True)
-                
-            return {
-                "goal_graph": engine.goal.to_dict(),
-                "execution_log": execution_log,
-                "final_brief": f"Execution failed: post-execution audit blocked task {task.task_id}."
-            }
-            
+        # Log audit post-pass (batch post-audit occurs at the end)
         log_execution_ledger_event(
             session_id=session_id,
             goal_id=goal_graph.goal_id,
@@ -1194,13 +1264,14 @@ def task_executor_node(state: BabuState):
             state_after="COMPLETED",
             metadata={
                 "objective": task.objective,
-                "event_start_time": post_start_iso,
-                "event_end_time": post_end_iso,
-                "latency_ms": post_latency_ms,
-                "latency": post_latency_sec,
+                "event_start_time": worker_end_iso,
+                "event_end_time": worker_end_iso,
+                "latency_ms": 0.0,
+                "latency": 0.0,
                 "tokens": {"prompt": 0, "completion": 0, "total": 0},
                 "cost": 0.0,
-                "model": "rules_engine"
+                "model": "rules_engine",
+                "graph_hash": graph_hash
             }
         )
         
@@ -1212,8 +1283,8 @@ def task_executor_node(state: BabuState):
             "task_id": task.task_id,
             "department": task.department,
             "worker_ms": worker_latency_ms,
-            "audit_pre_ms": pre_latency_ms,
-            "audit_post_ms": post_latency_ms
+            "audit_pre_ms": 0.0,
+            "audit_post_ms": 0.0
         })
         state.get("execution_tracker", {})["task_latencies"] = task_latencies
         
@@ -1261,7 +1332,126 @@ def task_executor_node(state: BabuState):
             final_brief = "\n\n".join(research_results)
         else:
             final_brief = "Goal executed successfully, but no department brief was generated."
-            
+
+    # ── Phase 1: Single Batch Post-Execution Audit on final_brief ──
+    post_audit_start_time = time.time()
+    post_audit_start_iso = datetime.now(timezone.utc).isoformat()
+    
+    intent_packet = state.get("routing_metadata", {}).get("intent_packet") or {}
+    
+    # Consolidate compliance checklist items from all tasks
+    aggregated_checklist = []
+    for t in goal_graph.tasks:
+        if t.compliance_checklist:
+            for item in t.compliance_checklist:
+                if item not in aggregated_checklist:
+                    aggregated_checklist.append(item)
+                    
+    if not aggregated_checklist:
+        aggregated_checklist = [
+            "Verify that the worker actually answered/accomplished the objective.",
+            "Check for factual truthfulness and style alignment."
+        ]
+        
+    # Consolidate scoped contexts
+    aggregated_scoped_context = {}
+    for t in goal_graph.tasks:
+        if t.context and "scoped_context" in t.context:
+            if isinstance(t.context["scoped_context"], dict):
+                aggregated_scoped_context.update(t.context["scoped_context"])
+                
+    dummy_task = TaskDTO(
+        task_id="batch-post-audit",
+        objective=state["user_query"],
+        department="writing",  # Use writing department to ensure semantic auditing is enabled
+        depends_on=[],
+        priority=0,
+        context={
+            "intent_packet": intent_packet,
+            "scoped_context": aggregated_scoped_context
+        },
+        compliance_checklist=aggregated_checklist
+    )
+    
+    passed, reason = auditor.audit_post(dummy_task, final_brief)
+    
+    post_audit_end_time = time.time()
+    post_audit_end_iso = datetime.now(timezone.utc).isoformat()
+    post_audit_latency_ms = round((post_audit_end_time - post_audit_start_time) * 1000, 2)
+    post_audit_latency_sec = round(post_audit_end_time - post_audit_start_time, 4)
+    
+    # Extract audit tokens
+    audit_tokens = getattr(auditor, "last_tokens", {"prompt": 0, "completion": 0, "total": 0})
+    total_node_tokens["prompt"] += audit_tokens.get("prompt", 0)
+    total_node_tokens["completion"] += audit_tokens.get("completion", 0)
+    total_node_tokens["total"] += audit_tokens.get("total", 0)
+    
+    p_dept, c_dept = get_token_costs(CURRENT_DEPT_MODEL)
+    audit_cost = (audit_tokens.get("prompt", 0) * p_dept) + (audit_tokens.get("completion", 0) * c_dept)
+    
+    # Update tracker
+    task_latencies = tracker.get("task_latencies") or []
+    task_latencies.append({
+        "task_id": "batch-post-audit",
+        "department": "governance",
+        "worker_ms": 0.0,
+        "audit_pre_ms": 0.0,
+        "audit_post_ms": post_audit_latency_ms
+    })
+    tracker["task_latencies"] = task_latencies
+    
+    if not passed:
+        print(f"[EXECUTOR] Batch post-audit FAILED: {reason}", flush=True)
+        engine.goal.status = "FAILED"
+        log_execution_ledger_event(
+            session_id=session_id,
+            goal_id=goal_graph.goal_id,
+            task_id="batch-post-audit",
+            department="governance",
+            event_type="AUDIT_POST_FAIL",
+            state_before="RUNNING",
+            state_after="FAILED",
+            metadata={
+                "reason": reason,
+                "event_start_time": post_audit_start_iso,
+                "event_end_time": post_audit_end_iso,
+                "latency_ms": post_audit_latency_ms,
+                "latency": post_audit_latency_sec,
+                "tokens": audit_tokens,
+                "cost": round(audit_cost, 6),
+                "model": CURRENT_DEPT_MODEL,
+                "graph_hash": graph_hash
+            }
+        )
+        return {
+            "goal_graph": engine.goal.to_dict(),
+            "execution_log": execution_log,
+            "final_brief": f"Governance Refusal: Post-execution audit checklist violation. {reason}",
+            "execution_tracker": tracker,
+            "tokens": total_node_tokens
+        }
+        
+    # Log post audit pass event
+    log_execution_ledger_event(
+        session_id=session_id,
+        goal_id=goal_graph.goal_id,
+        task_id="batch-post-audit",
+        department="governance",
+        event_type="AUDIT_POST_PASS",
+        state_before="EXECUTED",
+        state_after="COMPLETED",
+        metadata={
+            "event_start_time": post_audit_start_iso,
+            "event_end_time": post_audit_end_iso,
+            "latency_ms": post_audit_latency_ms,
+            "latency": post_audit_latency_sec,
+            "tokens": audit_tokens,
+            "cost": round(audit_cost, 6),
+            "model": CURRENT_DEPT_MODEL,
+            "graph_hash": graph_hash
+        }
+    )
+
     log_execution_ledger_event(
         session_id=session_id,
         goal_id=goal_graph.goal_id,
@@ -1274,7 +1464,8 @@ def task_executor_node(state: BabuState):
             "query": state["user_query"],
             "goal": goal_graph.goal,
             "final_brief_preview": final_brief[:300],
-            "latency": duration
+            "latency": duration,
+            "graph_hash": graph_hash
         }
     )
     
