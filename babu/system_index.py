@@ -123,7 +123,7 @@ def parse_sii(filepath: str) -> Optional[dict]:
                 line = line.strip()
                 if line.startswith("## "):
                     current_layer = line.lstrip("#").strip()
-                    layers[current_layer] = {"adrs": [], "book": None}
+                    layers[current_layer] = {"adrs": [], "book": None, "books": []}
                     mode = None
                 elif re.match(r'^References?:', line, re.IGNORECASE):
                     mode = "adrs"
@@ -135,7 +135,9 @@ def parse_sii(filepath: str) -> Optional[dict]:
                         layers[current_layer]["adrs"].append(m.group(1).upper())
                     elif mode == "book" and line.endswith(".md"):
                         # Store physical name (BABU_ prefix mapping applied later)
-                        layers[current_layer]["book"] = line.strip()
+                        layers[current_layer]["books"].append(line.strip())
+                        if layers[current_layer]["book"] is None:
+                            layers[current_layer]["book"] = line.strip()
 
         # ── Component Registry ───────────────────────────────────────────
         elif "Component Registry" in header:
@@ -353,10 +355,10 @@ def route_query(query: str, registries: Optional[dict] = None) -> RoutingResult:
                         matched_books.add(book)
             if result["matched_layer"] is None:
                 result["matched_layer"] = layer_name
-            # Also try the registered book for that layer
-            layer_book = layer_info.get("book")
-            if layer_book:
-                matched_books.add(_to_physical_name(layer_book))
+            # Also try the registered books for that layer
+            layer_books = layer_info.get("books", [])
+            for b in layer_books:
+                matched_books.add(_to_physical_name(b))
 
     # ── 3. Component keyword matching ────────────────────────────────────
     for comp_name, comp_info in registries.get("components", {}).items():
