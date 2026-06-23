@@ -104,10 +104,15 @@ def get_embedding(text: str) -> list[float]:
         return MockEmbeddings().embed_query(text)
 
 
+_RAG_DB_INITIALIZED = False
+
+
 def init_rag_db():
     """Register pgvector or SQLite schemas based on DATABASE_URL availability."""
-
-
+    global _RAG_DB_INITIALIZED
+    if _RAG_DB_INITIALIZED:
+        return
+        
     conn, is_pg = _get_db_connection()
     try:
         cursor = conn.cursor()
@@ -147,6 +152,7 @@ def init_rag_db():
         cursor.close()
         conn.close()
         print("[RAG] Knowledge base schema initialized successfully.", flush=True)
+        _RAG_DB_INITIALIZED = True
     except Exception as e:
         print(f"[RAG ERROR] init_rag_db failed: {e}", flush=True)
 
