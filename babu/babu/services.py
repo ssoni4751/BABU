@@ -5,20 +5,13 @@ import hashlib
 import threading
 import re
 import time
-try:
-    import requests
-except Exception:
-    requests = None
+import requests
 from typing import Optional, List, Any, Tuple, Dict
 
 try:
     from .google_service import is_google_configured
-except Exception:
-    try:
-        from google_service import is_google_configured
-    except Exception:
-        def is_google_configured():
-            return False
+except ImportError:
+    from google_service import is_google_configured
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory", "babu_checkpoint.db")
 DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -38,124 +31,6 @@ PRICING_TABLE = {
     "gpt-4o-mini": (0.150, 0.600),
     "o1-mini": (3.00, 12.00)
 }
-
-def _ensure_sqlite_schema(conn):
-    """Create required SQLite tables if they do not exist."""
-    cursor = conn.cursor()
-    # sealed_epochs
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS sealed_epochs (
-            epoch_id TEXT PRIMARY KEY,
-            sealed_at TEXT
-        );
-    """)
-    # search_cache
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS search_cache (
-            query_hash TEXT PRIMARY KEY,
-            raw_query TEXT,
-            distilled_results TEXT,
-            sources TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-    """)
-    # execution_ledger
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS execution_ledger (
-            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT NOT NULL,
-            goal_id TEXT NOT NULL,
-            task_id TEXT,
-            department TEXT,
-            event_type TEXT NOT NULL,
-            state_before TEXT,
-            state_after TEXT,
-            metadata TEXT,
-            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-    """)
-    # system_memory
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS system_memory (
-            key TEXT PRIMARY KEY,
-            data TEXT
-        );
-    """)
-    # trusted_templates
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS trusted_templates (
-            template_id TEXT PRIMARY KEY,
-            template_signature TEXT UNIQUE,
-            goal_graph_json TEXT,
-            version INTEGER DEFAULT 1,
-            execution_count INTEGER DEFAULT 0,
-            success_count INTEGER DEFAULT 0,
-            consecutive_failures INTEGER DEFAULT 0,
-            status TEXT DEFAULT 'ACTIVE',
-            promoted_from_goal_id TEXT,
-            promotion_epoch INTEGER,
-            average_execution_time REAL DEFAULT 0.0,
-            average_token_cost REAL DEFAULT 0.0,
-            last_used TEXT,
-            created_at TEXT
-        );
-    """)
-    # babu_temporal_timeline
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS babu_temporal_timeline (
-            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            event_category TEXT NOT NULL,
-            summary TEXT NOT NULL,
-            outcome TEXT,
-            impact_score REAL DEFAULT 1.0,
-            cause TEXT,
-            effect TEXT,
-            resolution TEXT,
-            confidence REAL,
-            metadata TEXT
-        );
-    """)
-    # architecture_knowledge
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS architecture_knowledge (
-            record_id TEXT PRIMARY KEY,
-            record_type TEXT NOT NULL,
-            title TEXT NOT NULL,
-            phase TEXT,
-            problem TEXT,
-            decision TEXT,
-            reason TEXT,
-            outcome TEXT,
-            tradeoff TEXT,
-            impact_score INTEGER,
-            supersedes TEXT,
-            status TEXT DEFAULT 'Active',
-            timestamp TEXT
-        );
-    """)
-    # babu_k0_working_memory
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS babu_k0_working_memory (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT NOT NULL,
-            goal_id TEXT NOT NULL,
-            user_query TEXT NOT NULL,
-            response TEXT,
-            response_full TEXT,
-            response_summary TEXT,
-            status TEXT NOT NULL,
-            failures TEXT,
-            retrieved_records TEXT,
-            knowledge_classes TEXT,
-            source_records TEXT,
-            conversation_reference BOOLEAN DEFAULT 0,
-            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-    """)
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_k0_session_id ON babu_k0_working_memory (session_id);")
-    conn.commit()
-    cursor.close()
 
 KNOWLEDGE_BASE = {
     "babu": (
@@ -184,31 +59,36 @@ KNOWLEDGE_BASE = {
 USER_PROFILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "user_profile.json")
 _profile_lock = threading.Lock()
 
+def get_token_costs(model_name: str) -> tuple[float, float]:
+    if not model_name:
+        return 0.15 / 1_000_000, 0.60 / 1_000_000
+    m_lower = model_name.lower().strip()
+    for key, rates in PRICING_TABLE.items():
+        if key in m_lower:
+            return rates[0] / 1_000_000, rates[1] / 1_000_000
+    return 0.15 / 1_000_000, 0.60 / 1_000_000
+
 def get_db_connection():
-    db_url = os.environ.get("DATABASE_URL")
-    if db_url:
-        if db_url.startswith("postgres://") or db_url.startswith("postgresql://"):
+    # Handle PostgreSQL via DATABASE_URL
+    if DATABASE_URL:
+        if DATABASE_URL.startswith("postgres://") or DATABASE_URL.startswith("postgresql://"):
             import psycopg2
-            url = db_url
+            url = DATABASE_URL
             if url.startswith("postgres://"):
                 url = url.replace("postgres://", "postgresql://", 1)
             try:
                 return psycopg2.connect(url, connect_timeout=3), True
             except Exception as e:
                 print(f"[DB WARNING] PostgreSQL unavailable; falling back to SQLite at {DB_PATH}: {e}", flush=True)
-        elif db_url.startswith("sqlite:///"):
-            path = db_url.replace("sqlite:///", "", 1)
-            conn = sqlite3.connect(path)
-            _ensure_sqlite_schema(conn)
-            return conn, False
-    conn = sqlite3.connect(DB_PATH)
-    _ensure_sqlite_schema(conn)
-    return conn, False
+        elif DATABASE_URL.startswith("sqlite://"):
+            # Expected format: sqlite:///absolute/path.db
+            path = DATABASE_URL.replace("sqlite:///", "", 1)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            return sqlite3.connect(path), False
+    # Default fallback to bundled checkpoint DB
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    return sqlite3.connect(DB_PATH), False
 
-def get_token_costs(model_name: str) -> tuple[float, float]:
-    if not model_name:
-        return 0.15 / 1_000_000, 0.60 / 1_000_000
-    m_lower = model_name.lower().strip()
     for key, rates in PRICING_TABLE.items():
         if key in m_lower:
             return rates[0] / 1_000_000, rates[1] / 1_000_000

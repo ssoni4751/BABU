@@ -1,0 +1,257 @@
+{
+  "name": "BABU Automation Router",
+  "flow": [
+    {
+      "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": {
+        "hook": null,
+        "maxResults": 1
+      },
+      "mapper": {},
+      "metadata": {
+        "designer": { "x": -200, "y": 0, "name": "BABU Webhook" }
+      }
+    },
+    {
+      "id": 2,
+      "module": "builtin:BasicRouter",
+      "version": 1,
+      "parameters": {},
+      "mapper": {},
+      "metadata": {
+        "designer": { "x": 150, "y": 0 }
+      },
+      "routes": [
+        {
+          "flow": [
+            {
+              "id": 3,
+              "module": "gmail:ActionSendEmail",
+              "version": 1,
+              "parameters": {
+                "account": null
+              },
+              "filter": {
+                "name": "send_email",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{1.action}}",
+                      "b": "send_email",
+                      "o": "text:equal"
+                    }
+                  ]
+                ]
+              },
+              "mapper": {
+                "to": "{{1.params.to}}",
+                "subject": "{{1.params.subject}}",
+                "content": "{{1.params.body}}",
+                "contentType": "text",
+                "cc": "{{1.params.cc}}"
+              },
+              "metadata": {
+                "designer": { "x": 450, "y": -300, "name": "Send Email (Gmail)" }
+              }
+            }
+          ]
+        },
+        {
+          "flow": [
+            {
+              "id": 4,
+              "module": "google-calendar:ActionCreateAnEvent",
+              "version": 3,
+              "parameters": {
+                "account": null,
+                "calendarId": "primary"
+              },
+              "filter": {
+                "name": "create_event",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{1.action}}",
+                      "b": "create_event",
+                      "o": "text:equal"
+                    }
+                  ]
+                ]
+              },
+              "mapper": {
+                "summary": "{{1.params.title}}",
+                "description": "{{1.params.description}}",
+                "location": "{{1.params.location}}",
+                "allDay": false,
+                "start": "{{1.params.date}} {{1.params.time}}",
+                "end": "{{1.params.date}} {{1.params.time}}"
+              },
+              "metadata": {
+                "designer": { "x": 450, "y": -100, "name": "Create Calendar Event" }
+              }
+            }
+          ]
+        },
+        {
+          "flow": [
+            {
+              "id": 5,
+              "module": "google-sheets:ActionAddRow",
+              "version": 2,
+              "parameters": {
+                "account": null,
+                "spreadsheetId": null,
+                "sheetId": null,
+                "tableFirstRowContainsHeaders": true,
+                "insertDataOption": "INSERT_ROWS",
+                "valueInputOption": "USER_ENTERED"
+              },
+              "filter": {
+                "name": "log_to_sheet",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{1.action}}",
+                      "b": "log_to_sheet",
+                      "o": "text:equal"
+                    }
+                  ]
+                ]
+              },
+              "mapper": {
+                "values": "{{1.params.data}}"
+              },
+              "metadata": {
+                "designer": { "x": 450, "y": 100, "name": "Log to Google Sheets" }
+              }
+            }
+          ]
+        },
+        {
+          "flow": [
+            {
+              "id": 6,
+              "module": "google-docs:ActionCreateADocument",
+              "version": 1,
+              "parameters": {
+                "account": null
+              },
+              "filter": {
+                "name": "create_doc",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{1.action}}",
+                      "b": "create_doc",
+                      "o": "text:equal"
+                    }
+                  ]
+                ]
+              },
+              "mapper": {
+                "name": "{{1.params.title}}",
+                "content": "{{1.params.content}}"
+              },
+              "metadata": {
+                "designer": { "x": 450, "y": 300, "name": "Create Google Doc" }
+              }
+            }
+          ]
+        },
+        {
+          "flow": [
+            {
+              "id": 7,
+              "module": "slack:ActionCreateAMessage",
+              "version": 4,
+              "parameters": {
+                "account": null
+              },
+              "filter": {
+                "name": "send_slack",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{1.action}}",
+                      "b": "send_slack",
+                      "o": "text:equal"
+                    }
+                  ]
+                ]
+              },
+              "mapper": {
+                "channelId": "{{1.params.channel}}",
+                "text": "{{1.params.message}}"
+              },
+              "metadata": {
+                "designer": { "x": 450, "y": 500, "name": "Send Slack Message" }
+              }
+            }
+          ]
+        },
+        {
+          "flow": [
+            {
+              "id": 8,
+              "module": "google-sheets:ActionAddRow",
+              "version": 2,
+              "parameters": {
+                "account": null,
+                "spreadsheetId": null,
+                "sheetId": null,
+                "tableFirstRowContainsHeaders": true,
+                "insertDataOption": "INSERT_ROWS",
+                "valueInputOption": "USER_ENTERED"
+              },
+              "filter": {
+                "name": "create_task",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{1.action}}",
+                      "b": "create_task",
+                      "o": "text:equal"
+                    }
+                  ]
+                ]
+              },
+              "mapper": {
+                "values": {
+                  "Task": "{{1.params.title}}",
+                  "Due Date": "{{1.params.due_date}}",
+                  "Notes": "{{1.params.notes}}",
+                  "Status": "To Do",
+                  "Created": "{{now}}"
+                }
+              },
+              "metadata": {
+                "designer": { "x": 450, "y": 700, "name": "Create Task (Sheets)" }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "instant": true,
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false,
+      "freshVariables": false
+    },
+    "designer": {
+      "orphans": []
+    },
+    "zone": "us2.make.com"
+  }
+}
