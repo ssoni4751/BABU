@@ -1040,7 +1040,9 @@ def task_executor_node(state: BabuState):
             "task_id": task.task_id,
             "goal_id": goal_graph.goal_id,
             "stage": "approval",
-            "graph_hash": graph_hash
+            "graph_hash": graph_hash,
+            "user_query": state.get("user_query"),
+            "routing_metadata": state.get("routing_metadata")
         }
         with _pending_actions_lock:
             _pending_actions[session_id] = pending_action_data

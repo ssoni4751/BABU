@@ -4035,5 +4035,126 @@
     "has_action": false,
     "ttl_days": 10,
     "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-24T07:05:03.079236+00:00",
+    "last_used": "2026-06-24T07:05:03.079236+00:00",
+    "session_id": "test_session",
+    "query_preview": "/launch Research the latest space tech advancements",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-24T07:05:07.720960+00:00",
+    "last_used": "2026-06-24T07:05:07.720960+00:00",
+    "session_id": "test_session",
+    "query_preview": "launch research quantum computing",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-24T07:08:50.276027+00:00",
+    "last_used": "2026-06-24T07:08:50.276027+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "what is the current time in IST",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-24T07:09:00.038028+00:00",
+    "last_used": "2026-06-24T07:09:00.038028+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "how old are you",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-24T07:09:09.005880+00:00",
+    "last_used": "2026-06-24T07:09:09.005880+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "who are you",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-24T07:09:19.085300+00:00",
+    "last_used": "2026-06-24T07:09:19.085300+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "tell me about your architecture",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-24T07:09:28.840134+00:00",
+    "last_used": "2026-06-24T07:09:28.840134+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "what are failures happened in last 5 days",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-24T07:09:41.316838+00:00",
+    "last_used": "2026-06-24T07:09:41.316838+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "system health dashboard",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-24T07:10:00.040751+00:00",
+    "last_used": "2026-06-24T07:10:00.040751+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "what upgrades did you recieve in last 20 days",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-24T07:10:17.303497+00:00",
+    "last_used": "2026-06-24T07:10:17.304460+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "what are the tradeoffs in BABU?",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-24T07:10:30.436115+00:00",
+    "last_used": "2026-06-24T07:10:30.436115+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "which upgrade had the highest impact?",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
   }
 ]

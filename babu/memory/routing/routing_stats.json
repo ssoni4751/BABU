@@ -4640,5 +4640,148 @@
     "has_action": false,
     "ttl_days": 10,
     "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-24T08:03:05.311726+00:00",
+    "last_used": "2026-06-24T08:03:05.311726+00:00",
+    "session_id": "test_session",
+    "query_preview": "/launch Research the latest space tech advancements",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-24T08:03:07.084979+00:00",
+    "last_used": "2026-06-24T08:03:07.084979+00:00",
+    "session_id": "test_session",
+    "query_preview": "launch research quantum computing",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-24T08:03:59.088135+00:00",
+    "last_used": "2026-06-24T08:03:59.088135+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "what is the current time in IST",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-24T08:04:10.236684+00:00",
+    "last_used": "2026-06-24T08:04:10.236684+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "how old are you",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-24T08:04:10.355614+00:00",
+    "last_used": "2026-06-24T08:04:10.355614+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "who are you",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-24T08:04:25.166080+00:00",
+    "last_used": "2026-06-24T08:04:25.166080+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "tell me about your architecture",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-24T08:04:37.195000+00:00",
+    "last_used": "2026-06-24T08:04:37.195000+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "what are failures happened in last 5 days",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-24T08:04:51.623126+00:00",
+    "last_used": "2026-06-24T08:04:51.623126+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "system health dashboard",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-24T08:05:06.716125+00:00",
+    "last_used": "2026-06-24T08:05:06.716125+00:00",
+    "session_id": "test_system_session",
+    "query_preview": "what upgrades did you recieve in last 20 days",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-24T08:25:52.746606+00:00",
+    "last_used": "2026-06-24T08:25:52.746606+00:00",
+    "session_id": "test_session",
+    "query_preview": "/launch Research the latest space tech advancements",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-24T08:25:53.847491+00:00",
+    "last_used": "2026-06-24T08:25:53.847491+00:00",
+    "session_id": "test_session",
+    "query_preview": "launch research quantum computing",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-24T08:45:26.298358+00:00",
+    "last_used": "2026-06-24T08:45:26.298358+00:00",
+    "session_id": "test_session",
+    "query_preview": "/launch Research the latest space tech advancements",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-06-24T08:45:32.301763+00:00",
+    "last_used": "2026-06-24T08:45:32.301763+00:00",
+    "session_id": "test_session",
+    "query_preview": "launch research quantum computing",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
   }
 ]

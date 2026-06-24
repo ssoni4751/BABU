@@ -1681,20 +1681,77 @@ def resolve_action_params(params: dict, research_text: str = "") -> dict:
             resolved_params["file_path"] = upstream_file_path
 
     return resolved_params
-
-
+def update_cached_graph_approval(session_id: str, pending: dict) -> bool:
+    import json
+    import hashlib
+    try:
+        from .services import get_db_connection
+    except ImportError:
+        from services import get_db_connection
+        
+    user_query = pending.get("user_query")
+    task_id = pending.get("task_id")
+    routing_metadata = pending.get("routing_metadata") or {}
+    intent_packet_dict = routing_metadata.get("intent_packet") or {}
+    goal_class = intent_packet_dict.get("query_category", "PUBLIC_INFORMATION")
     
+    if not user_query or not task_id:
+        return False
         
-        
-        
+    query_hash = hashlib.sha256(user_query.lower().strip().encode('utf-8')).hexdigest()
     
-        
-    
+    conn, is_pg = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        if is_pg:
+            cursor.execute(
+                "SELECT goal_graph_json FROM planned_graphs_cache WHERE session_id = %s AND query_hash = %s AND goal_class = %s",
+                (session_id, query_hash, goal_class)
+            )
+        else:
+            cursor.execute(
+                "SELECT goal_graph_json FROM planned_graphs_cache WHERE session_id = ? AND query_hash = ? AND goal_class = ?",
+                (session_id, query_hash, goal_class)
+            )
+        row = cursor.fetchone()
+        if not row:
+            cursor.close()
+            conn.close()
+            return False
             
-    
-    
+        graph_dict = json.loads(row[0])
+        updated = False
+        for task in graph_dict.get("tasks", []):
+            if task.get("task_id") == task_id:
+                task.setdefault("context", {})["approved"] = True
+                updated = True
+                break
+                
+        if not updated:
+            cursor.close()
+            conn.close()
+            return False
             
-        
+        updated_graph_json = json.dumps(graph_dict)
+        if is_pg:
+            cursor.execute(
+                "UPDATE planned_graphs_cache SET goal_graph_json = %s, created_at = CURRENT_TIMESTAMP WHERE session_id = %s AND query_hash = %s AND goal_class = %s",
+                (updated_graph_json, session_id, query_hash, goal_class)
+            )
+        else:
+            cursor.execute(
+                "UPDATE planned_graphs_cache SET goal_graph_json = ?, created_at = CURRENT_TIMESTAMP WHERE session_id = ? AND query_hash = ? AND goal_class = ?",
+                (updated_graph_json, session_id, query_hash, goal_class)
+            )
+        conn.commit()
+        cursor.close()
+        return True
+    except Exception as e:
+        print(f"[APPROVAL CACHE UPDATE ERROR] {e}", flush=True)
+        return False
+    finally:
+        conn.close()
+
 
 
 
@@ -5038,25 +5095,43 @@ class HealthHandler(BaseHTTPRequestHandler):
                         pending = _pending_actions.pop(sid, None)
                     if pending:
                         db_delete_pending_action(sid)
-                        params = resolve_action_params(pending.get("params", {}), research_text="")
-                        log_execution_ledger_event(
-                            session_id=sid,
-                            goal_id=pending.get("goal_id", "default"),
-                            task_id=pending.get("task_id"),
-                            department="execution",
-                            event_type="APPROVAL_GRANTED",
-                            state_before="WAITING",
-                            state_after="RUNNING",
-                            metadata={"by": "web_text", "action": action, "params": params}
-                        )
-                        ok, result_msg = execute_google_action(action, params)
-                        if ok:
-                            reply = f"Action executed successfully.\n\n{result_msg}"
+                        user_query = pending.get("user_query")
+                        if user_query:
+                            ok = update_cached_graph_approval(sid, pending)
+                            if ok:
+                                log_execution_ledger_event(
+                                    session_id=sid,
+                                    goal_id=pending.get("goal_id", "default"),
+                                    task_id=pending.get("task_id"),
+                                    department="execution",
+                                    event_type="APPROVAL_GRANTED",
+                                    state_before="WAITING",
+                                    state_after="RUNNING",
+                                    metadata={"by": "web_text", "action": action}
+                                )
+                                reply, gear_res, tokens = invoke_babu(user_query, sid, goal_id=pending.get("goal_id"))
+                            else:
+                                reply = "Failed to update cached goal graph approval."
                         else:
-                            with _pending_actions_lock:
-                                _pending_actions[sid] = pending
-                            db_save_pending_action(sid, pending)
-                            reply = f"Action execution failed.\n\n{result_msg}\n\nYou can type '2' / 'confirm' again to retry, or '0' / 'cancel' to discard." if is_class_c else f"Action execution failed.\n\n{result_msg}\n\nYou can type '1' / 'approve' again to retry, or '0' / 'cancel' to discard."
+                            params = resolve_action_params(pending.get("params", {}), research_text="")
+                            log_execution_ledger_event(
+                                session_id=sid,
+                                goal_id=pending.get("goal_id", "default"),
+                                task_id=pending.get("task_id"),
+                                department="execution",
+                                event_type="APPROVAL_GRANTED",
+                                state_before="WAITING",
+                                state_after="RUNNING",
+                                metadata={"by": "web_text", "action": action, "params": params}
+                            )
+                            ok, result_msg = execute_google_action(action, params)
+                            if ok:
+                                reply = f"Action executed successfully.\n\n{result_msg}"
+                            else:
+                                with _pending_actions_lock:
+                                    _pending_actions[sid] = pending
+                                db_save_pending_action(sid, pending)
+                                reply = f"Action execution failed.\n\n{result_msg}\n\nYou can type '2' / 'confirm' again to retry, or '0' / 'cancel' to discard." if is_class_c else f"Action execution failed.\n\n{result_msg}\n\nYou can type '1' / 'approve' again to retry, or '0' / 'cancel' to discard."
                 
                 # Check pending status
                 with _pending_actions_lock:
@@ -6048,6 +6123,24 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         pending = _pending_actions.pop(session_id, None)
                     if pending:
                         db_delete_pending_action(session_id)
+                        user_query = pending.get("user_query")
+                        if user_query:
+                            ok = update_cached_graph_approval(session_id, pending)
+                            if ok:
+                                log_execution_ledger_event(
+                                    session_id=session_id,
+                                    goal_id=pending.get("goal_id", "default"),
+                                    task_id=pending.get("task_id"),
+                                    department="execution",
+                                    event_type="APPROVAL_GRANTED",
+                                    state_before="WAITING",
+                                    state_after="RUNNING",
+                                    metadata={"by": "telegram_text_confirm", "action": action}
+                                )
+                                reply, gear_res, tokens = await asyncio.to_thread(invoke_babu, user_query, session_id, goal_id=pending.get("goal_id"))
+                                await update.message.reply_text(reply)
+                                return
+                        
                         params = resolve_action_params(pending.get("params", {}), research_text="")
                         log_execution_ledger_event(
                             session_id=session_id,
@@ -6089,6 +6182,24 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     pending = _pending_actions.pop(session_id, None)
                 if pending:
                     db_delete_pending_action(session_id)
+                    user_query = pending.get("user_query")
+                    if user_query:
+                        ok = update_cached_graph_approval(session_id, pending)
+                        if ok:
+                            log_execution_ledger_event(
+                                session_id=session_id,
+                                goal_id=pending.get("goal_id", "default"),
+                                task_id=pending.get("task_id"),
+                                department="execution",
+                                event_type="APPROVAL_GRANTED",
+                                state_before="WAITING",
+                                state_after="RUNNING",
+                                metadata={"by": "telegram_text", "action": action}
+                            )
+                            reply, gear_res, tokens = await asyncio.to_thread(invoke_babu, user_query, session_id, goal_id=pending.get("goal_id"))
+                            await update.message.reply_text(reply)
+                            return
+                    
                     params = resolve_action_params(pending.get("params", {}), research_text="")
                     log_execution_ledger_event(
                         session_id=session_id,
@@ -6477,6 +6588,27 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pending = _pending_actions.pop(session_id, None)
             if pending:
                 db_delete_pending_action(session_id)
+                user_query = pending.get("user_query")
+                if user_query:
+                    ok = update_cached_graph_approval(session_id, pending)
+                    if ok:
+                        log_execution_ledger_event(
+                            session_id=session_id,
+                            goal_id=pending.get("goal_id", "default"),
+                            task_id=pending.get("task_id"),
+                            department="execution",
+                            event_type="APPROVAL_GRANTED",
+                            state_before="WAITING",
+                            state_after="RUNNING",
+                            metadata={"by": "telegram_callback", "action": action}
+                        )
+                        reply, gear_res, tokens = await asyncio.to_thread(invoke_babu, user_query, session_id, goal_id=pending.get("goal_id"))
+                        await query.edit_message_text(reply)
+                        return
+                    else:
+                        await query.edit_message_text("Failed to update cached goal graph approval.")
+                        return
+
                 params = resolve_action_params(pending.get("params", {}), research_text="")
                 
                 log_execution_ledger_event(
