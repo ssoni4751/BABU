@@ -60,19 +60,17 @@ def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]
 
 
 def get_service_class(action: str) -> str:
-    """Classify execution action into Service Class A, B, or C according to V2 Vision Draft."""
-    # Class A: Read-only services (Auto Approved)
-    class_a = {"search_sheet", "search_gmail", "search_image", "web_search", "wikipedia_search"}
-    # Class C: Destructive services (Preview -> Approval -> Confirmation -> Execute)
-    class_c = {"delete_document", "delete_spreadsheet", "delete_event", "mass_update", "bulk_delete"}
-    
-    if action in class_a:
-        return "A"
-    elif action in class_c:
-        return "C"
-    else:
-        # Default all other external mutating actions to Class B (Preview -> Approval -> Execute)
+    """Return the action class (A, B, or C) using the central policy.
+    Falls back to 'B' (approval required) if the action is not found.
+    """
+    try:
+        from .policy_loader import get_action_class
+        cls = get_action_class(action)
+        return cls if cls else "B"
+    except Exception:
+        # In case the policy loader fails, default to B for safety.
         return "B"
+
 
 
 class PreExecutionGatekeeper:
@@ -94,6 +92,7 @@ class PreExecutionGatekeeper:
             "search_gmail",
             "post_to_facebook",
             "generate_image",
+            "upload_to_drive",
             # Class C Destructive actions
             "delete_document",
             "delete_spreadsheet",
@@ -149,6 +148,7 @@ class PreExecutionGatekeeper:
                 "send_email", "create_event", "log_to_sheet", "create_doc",
                 "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive",
                 "search_gmail",
+                "upload_to_drive",
                 # Class C Destructive Google actions
                 "delete_document", "delete_spreadsheet", "delete_event"
             }

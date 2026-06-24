@@ -1,0 +1,57 @@
+# config/policy.yaml
+policy_version: 1
+
+actions:
+  # Class A – fully autonomous (no human approval required)
+  research:
+    class: A
+  analyze:
+    class: A
+  search_sheet:
+    class: A
+  search_gmail:
+    class: A
+  search_image:
+    class: A
+  web_search:
+    class: A
+  wikipedia_search:
+    class: A
+
+  # Class B – requires explicit human approval before execution
+  send_email:
+    class: B
+  create_event:
+    class: B
+  log_to_sheet:
+    class: B
+  create_doc:
+    class: B
+  copy_photos_to_drive:
+    class: B
+  copy_contacts_to_drive:
+    class: B
+  send_slack:
+    class: B
+  create_task:
+    class: B
+  post_to_facebook:
+    class: B
+  generate_image:
+    class: B
+  upload_to_drive:
+    class: B
+
+  # Class C – elevated approval (e.g., destructive operations)
+  delete_document:
+    class: C
+  delete_spreadsheet:
+    class: C
+  delete_event:
+    class: C
+  mass_update:
+    class: C
+  bulk_delete:
+    class: C
+  delete_drive_file:
+    class: C

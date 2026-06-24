@@ -240,11 +240,9 @@ def has_multiple_tasks_or_requests(query: str, intent_packet_dict: Optional[dict
         allowed_depts = intent_packet_dict.get("allowed_departments", [])
         allowed_actions = intent_packet_dict.get("allowed_actions", [])
         
-        mutating_actions = {
-            "send_email", "create_event", "log_to_sheet", "create_doc", 
-            "copy_photos_to_drive", "copy_contacts_to_drive", 
-            "send_slack", "create_task", "post_to_facebook", "generate_image"
-        }
+        # Determine mutating actions based on policy classes (B or C)
+        from .policy_loader import get_action_class
+        mutating_actions = {act for act in allowed_actions if get_action_class(act) in {"B", "C"}}
         has_mutating = any(act in allowed_actions for act in mutating_actions)
         core_depts = [d for d in allowed_depts if d != "pa" and (d != "execution" or has_mutating)]
         if len(core_depts) > 1:

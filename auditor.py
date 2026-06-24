@@ -94,6 +94,7 @@ class PreExecutionGatekeeper:
             "search_gmail",
             "post_to_facebook",
             "generate_image",
+            "upload_to_drive",
             # Class C Destructive actions
             "delete_document",
             "delete_spreadsheet",
@@ -149,6 +150,7 @@ class PreExecutionGatekeeper:
                 "send_email", "create_event", "log_to_sheet", "create_doc",
                 "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive",
                 "search_gmail",
+                "upload_to_drive",
                 # Class C Destructive Google actions
                 "delete_document", "delete_spreadsheet", "delete_event"
             }
