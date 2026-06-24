@@ -1043,7 +1043,47 @@ def execute_google_action(action: str, params: dict) -> tuple[bool, str]:
 
     elif action == "upload_to_drive":
         file_path = params.get("file_path", "")
+        filename = params.get("filename", "")
+        filecontent = params.get("filecontent", params.get("content", ""))
         folder_name = params.get("folder_name", "BABU Reports")
+
+        # If file_path is missing or doesn't exist, but we have filename/filecontent, write it dynamically
+        if not file_path or not os.path.exists(file_path):
+            if filename or filecontent:
+                if not filename:
+                    filename = "Report.txt"
+                
+                clean_content = str(filecontent).strip()
+                is_placeholder = not clean_content or "no research" in clean_content.lower() or "[needs_research_context]" in clean_content.lower()
+                
+                if is_placeholder and "health" in filename.lower():
+                    try:
+                        from .gateway import get_system_health_dashboard
+                    except ImportError:
+                        try:
+                            from gateway import get_system_health_dashboard
+                        except ImportError:
+                            get_system_health_dashboard = None
+                    
+                    if get_system_health_dashboard:
+                        filecontent = get_system_health_dashboard()
+                    else:
+                        filecontent = "System Health Dashboard generation failed (import error)."
+                elif is_placeholder:
+                    filecontent = "Report generated with no content."
+                
+                import tempfile
+                safe_filename = os.path.basename(filename)
+                if not "." in safe_filename:
+                    safe_filename += ".txt"
+                temp_dir = tempfile.gettempdir()
+                file_path = os.path.join(temp_dir, safe_filename)
+                try:
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        f.write(str(filecontent))
+                except Exception as e:
+                    return False, f"Failed to write temporary file for upload: {e}"
+
         if not file_path:
             return False, "Missing 'file_path' parameter to upload."
         return upload_file_to_drive(file_path, folder_name)
