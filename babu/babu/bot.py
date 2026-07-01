@@ -6481,7 +6481,6 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
     groq_active = "🟢 ACTIVE" if os.environ.get("GROQ_API_KEY") else "🔴 NOT CONFIGURED"
     gemini_active = "🟢 ACTIVE" if os.environ.get("GEMINI_API_KEY") else "🔴 NOT CONFIGURED"
     openai_active = "🟢 ACTIVE" if os.environ.get("OPENAI_API_KEY") else "🔴 NOT CONFIGURED"
-    openrouter_active = "🟢 ACTIVE" if os.environ.get("OPENROUTER_API_KEY") else "🔴 NOT CONFIGURED"
     nvidia_active = "🟢 ACTIVE" if os.environ.get("NVIDIA_API_KEY") else "🔴 NOT CONFIGURED"
 
     args = context.args
@@ -6494,15 +6493,16 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "⚙️ **Active Providers Configuration:**\n"
             f"- **NVIDIA NIM API**: {nvidia_active}\n"
             f"- **Groq API**: {groq_active}\n"
-            f"- **OpenRouter API**: {openrouter_active}\n"
             f"- **Gemini API (Native)**: {gemini_active}\n"
             f"- **OpenAI API (Native)**: {openai_active}\n\n"
             
             "✨ **Available Models to Switch:**\n"
-            "--- *NVIDIA NIM Provider Models (PA & Swarm Defaults)* ---\n"
-            "12. `nvidia/meta/llama-3.1-8b-instruct` (Llama 3.1 8B via NVIDIA - Default PA)\n"
-            "13. `nvidia/meta/llama-3.3-70b-instruct` (Llama 3.3 70B via NVIDIA - Default Swarm)\n"
-            "14. `nvidia/deepseek-ai/deepseek-r1` (DeepSeek R1 via NVIDIA)\n\n"
+            "--- *NVIDIA NIM Provider Models (PA, Swarm & Specialized Defaults)* ---\n"
+            "7. `nvidia/meta/llama-3.1-8b-instruct` (Llama 3.1 8B via NVIDIA - Default PA)\n"
+            "8. `nvidia/meta/llama-3.3-70b-instruct` (Llama 3.3 70B via NVIDIA - Default Swarm)\n"
+            "9. `nvidia/deepseek-ai/deepseek-v4-flash` (DeepSeek V4 Flash via NVIDIA - Default Research & Code Gen)\n"
+            "10. `nvidia/deepseek-ai/deepseek-v4-pro` (DeepSeek V4 Pro via NVIDIA - Default Analysis & Self-Inspection)\n"
+            "11. `nvidia/deepseek-ai/deepseek-r1` (DeepSeek R1 via NVIDIA)\n\n"
 
             "--- *Groq Provider Models* ---\n"
             "1. `llama-3.3-70b-versatile` (Llama 3.3 - Best Quality)\n"
@@ -6514,18 +6514,13 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "--- *Gemini Native Models* ---\n"
             "6. `gemini-2.5-flash` (Gemini 2.5 Flash)\n\n"
             
-            "--- *OpenRouter Provider Models* ---\n"
-            "7. `google/gemini-2.5-flash` (Gemini 2.5 Flash via OpenRouter)\n"
-            "8. `deepseek/deepseek-chat` (DeepSeek V3 via OpenRouter)\n"
-            "9. `meta-llama/llama-3.3-70b-instruct` (Llama 3.3 via OpenRouter)\n\n"
-            
             "--- *OpenAI Native Models* ---\n"
-            "10. `gpt-4o-mini` (GPT-4o Mini)\n"
-            "11. `gpt-4o` (GPT-4o flagship)\n\n"
+            "12. `gpt-4o-mini` (GPT-4o Mini)\n"
+            "13. `gpt-4o` (GPT-4o flagship)\n\n"
             
             "🚀 **How to Switch:**\n"
-            "- `/model <1-14>` - Change the main Personal Assistant model\n"
-            "- `/model swarm <1-14>` - Change the underlying swarm/research model\n\n"
+            "- `/model <1-13>` - Change the main Personal Assistant model\n"
+            "- `/model swarm <1-13>` - Change the underlying swarm/research model\n\n"
             "Tip: You can also specify any custom model string directly, e.g. `/model deepseek/deepseek-reasoner` or `/model swarm nvidia/deepseek-ai/deepseek-r1`"
         )
         await update.message.reply_text(menu, parse_mode="Markdown")
@@ -6544,14 +6539,13 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "4": "gemma2-9b-it",
         "5": "deepseek-r1-distill-llama-70b",
         "6": "gemini-2.5-flash",
-        "7": "google/gemini-2.5-flash",
-        "8": "deepseek/deepseek-chat",
-        "9": "meta-llama/llama-3.3-70b-instruct",
-        "10": "gpt-4o-mini",
-        "11": "gpt-4o",
-        "12": "nvidia/meta/llama-3.1-8b-instruct",
-        "13": "nvidia/meta/llama-3.3-70b-instruct",
-        "14": "nvidia/deepseek-ai/deepseek-r1"
+        "7": "nvidia/meta/llama-3.1-8b-instruct",
+        "8": "nvidia/meta/llama-3.3-70b-instruct",
+        "9": "nvidia/deepseek-ai/deepseek-v4-flash",
+        "10": "nvidia/deepseek-ai/deepseek-v4-pro",
+        "11": "nvidia/deepseek-ai/deepseek-r1",
+        "12": "gpt-4o-mini",
+        "13": "gpt-4o"
     }
 
     selected_model = model_map.get(choice)
