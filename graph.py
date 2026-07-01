@@ -1388,7 +1388,13 @@ def task_executor_node(state: BabuState):
         compliance_checklist=aggregated_checklist
     )
     
-    passed, reason = auditor.audit_post(dummy_task, final_brief)
+    only_pa_tasks = all(t.department == "pa" for t in goal_graph.tasks) if goal_graph.tasks else False
+    if only_pa_tasks:
+        print("[EXECUTOR] Bypassing post-execution audit because all tasks are personal assistant passthrough tasks.", flush=True)
+        passed = True
+        reason = "Bypassed for PA passthrough tasks."
+    else:
+        passed, reason = auditor.audit_post(dummy_task, final_brief)
     
     post_audit_end_time = time.time()
     post_audit_end_iso = datetime.now(timezone.utc).isoformat()
