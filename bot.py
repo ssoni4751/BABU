@@ -6502,7 +6502,12 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "8. `nvidia/meta/llama-3.3-70b-instruct` (Llama 3.3 70B via NVIDIA - Default Swarm)\n"
             "9. `nvidia/deepseek-ai/deepseek-v4-flash` (DeepSeek V4 Flash via NVIDIA - Default Research & Code Gen)\n"
             "10. `nvidia/deepseek-ai/deepseek-v4-pro` (DeepSeek V4 Pro via NVIDIA - Default Analysis & Self-Inspection)\n"
-            "11. `nvidia/deepseek-ai/deepseek-r1` (DeepSeek R1 via NVIDIA)\n\n"
+            "11. `nvidia/deepseek-ai/deepseek-r1` (DeepSeek R1 via NVIDIA)\n"
+            "12. `nvidia/moonshotai/kimi-k2.6` (Moonshot Kimi K2.6 via NVIDIA)\n"
+            "13. `nvidia/qwen/qwen3-next-80b-a3b-instruct` (Alibaba Qwen 3 Next 80B via NVIDIA)\n"
+            "14. `nvidia/01-ai/yi-large` (01.AI Yi Large via NVIDIA)\n"
+            "15. `nvidia/mistralai/mistral-large-2-instruct` (Mistral Large 2 via NVIDIA)\n"
+            "16. `nvidia/microsoft/phi-4-mini-instruct` (Microsoft Phi-4 Mini via NVIDIA)\n\n"
 
             "--- *Groq Provider Models* ---\n"
             "1. `llama-3.3-70b-versatile` (Llama 3.3 - Best Quality)\n"
@@ -6515,12 +6520,12 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "6. `gemini-2.5-flash` (Gemini 2.5 Flash)\n\n"
             
             "--- *OpenAI Native Models* ---\n"
-            "12. `gpt-4o-mini` (GPT-4o Mini)\n"
-            "13. `gpt-4o` (GPT-4o flagship)\n\n"
+            "17. `gpt-4o-mini` (GPT-4o Mini)\n"
+            "18. `gpt-4o` (GPT-4o flagship)\n\n"
             
             "🚀 **How to Switch:**\n"
-            "- `/model <1-13>` - Change the main Personal Assistant model\n"
-            "- `/model swarm <1-13>` - Change the underlying swarm/research model\n\n"
+            "- `/model <1-18>` - Change the main Personal Assistant model\n"
+            "- `/model swarm <1-18>` - Change the underlying swarm/research model\n\n"
             "Tip: You can also specify any custom model string directly, e.g. `/model deepseek/deepseek-reasoner` or `/model swarm nvidia/deepseek-ai/deepseek-r1`"
         )
         await update.message.reply_text(menu, parse_mode="Markdown")
@@ -6544,8 +6549,13 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "9": "nvidia/deepseek-ai/deepseek-v4-flash",
         "10": "nvidia/deepseek-ai/deepseek-v4-pro",
         "11": "nvidia/deepseek-ai/deepseek-r1",
-        "12": "gpt-4o-mini",
-        "13": "gpt-4o"
+        "12": "nvidia/moonshotai/kimi-k2.6",
+        "13": "nvidia/qwen/qwen3-next-80b-a3b-instruct",
+        "14": "nvidia/01-ai/yi-large",
+        "15": "nvidia/mistralai/mistral-large-2-instruct",
+        "16": "nvidia/microsoft/phi-4-mini-instruct",
+        "17": "gpt-4o-mini",
+        "18": "gpt-4o"
     }
 
     selected_model = model_map.get(choice)
