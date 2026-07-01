@@ -6502,12 +6502,11 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "8. `nvidia/meta/llama-3.3-70b-instruct` (Llama 3.3 70B via NVIDIA - Default Swarm)\n"
             "9. `nvidia/deepseek-ai/deepseek-v4-flash` (DeepSeek V4 Flash via NVIDIA - Default Research & Code Gen)\n"
             "10. `nvidia/deepseek-ai/deepseek-v4-pro` (DeepSeek V4 Pro via NVIDIA - Default Analysis & Self-Inspection)\n"
-            "11. `nvidia/deepseek-ai/deepseek-r1` (DeepSeek R1 via NVIDIA)\n"
-            "12. `nvidia/moonshotai/kimi-k2.6` (Moonshot Kimi K2.6 via NVIDIA)\n"
-            "13. `nvidia/qwen/qwen3-next-80b-a3b-instruct` (Alibaba Qwen 3 Next 80B via NVIDIA)\n"
-            "14. `nvidia/01-ai/yi-large` (01.AI Yi Large via NVIDIA)\n"
-            "15. `nvidia/mistralai/mistral-large-2-instruct` (Mistral Large 2 via NVIDIA)\n"
-            "16. `nvidia/microsoft/phi-4-mini-instruct` (Microsoft Phi-4 Mini via NVIDIA)\n\n"
+            "11. `nvidia/moonshotai/kimi-k2.6` (Moonshot Kimi K2.6 via NVIDIA)\n"
+            "12. `nvidia/qwen/qwen3-next-80b-a3b-instruct` (Alibaba Qwen 3 Next 80B via NVIDIA)\n"
+            "13. `nvidia/01-ai/yi-large` (01.AI Yi Large via NVIDIA)\n"
+            "14. `nvidia/mistralai/mistral-large-2-instruct` (Mistral Large 2 via NVIDIA)\n"
+            "15. `nvidia/microsoft/phi-4-mini-instruct` (Microsoft Phi-4 Mini via NVIDIA)\n\n"
 
             "--- *Groq Provider Models* ---\n"
             "1. `llama-3.3-70b-versatile` (Llama 3.3 - Best Quality)\n"
@@ -6548,14 +6547,13 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "8": "nvidia/meta/llama-3.3-70b-instruct",
         "9": "nvidia/deepseek-ai/deepseek-v4-flash",
         "10": "nvidia/deepseek-ai/deepseek-v4-pro",
-        "11": "nvidia/deepseek-ai/deepseek-r1",
-        "12": "nvidia/moonshotai/kimi-k2.6",
-        "13": "nvidia/qwen/qwen3-next-80b-a3b-instruct",
-        "14": "nvidia/01-ai/yi-large",
-        "15": "nvidia/mistralai/mistral-large-2-instruct",
-        "16": "nvidia/microsoft/phi-4-mini-instruct",
-        "17": "gpt-4o-mini",
-        "18": "gpt-4o"
+        "11": "nvidia/moonshotai/kimi-k2.6",
+        "12": "nvidia/qwen/qwen3-next-80b-a3b-instruct",
+        "13": "nvidia/01-ai/yi-large",
+        "14": "nvidia/mistralai/mistral-large-2-instruct",
+        "15": "nvidia/microsoft/phi-4-mini-instruct",
+        "16": "gpt-4o-mini",
+        "17": "gpt-4o"
     }
 
     selected_model = model_map.get(choice)
