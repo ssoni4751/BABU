@@ -740,7 +740,8 @@ def build_llm(model_name: str, temp: float):
                 model=clean_model,
                 temperature=temp,
                 api_key=nvidia_key,
-                base_url="https://integrate.api.nvidia.com/v1"
+                base_url="https://integrate.api.nvidia.com/v1",
+                timeout=25.0
             )
         elif openrouter_key:
             print(f"[LLM FALLBACK] NVIDIA key missing. Routing '{target_model}' through OpenRouter.", flush=True)
@@ -749,7 +750,8 @@ def build_llm(model_name: str, temp: float):
                 model=clean_model,
                 temperature=temp,
                 api_key=openrouter_key,
-                base_url="https://openrouter.ai/api/v1"
+                base_url="https://openrouter.ai/api/v1",
+                timeout=25.0
             )
         else:
             fallback = "llama-3.1-8b-instant" if "8b" in target_model.lower() else "llama-3.3-70b-versatile"
@@ -769,7 +771,8 @@ def build_llm(model_name: str, temp: float):
                 model=or_model,
                 temperature=temp,
                 api_key=openrouter_key,
-                base_url="https://openrouter.ai/api/v1"
+                base_url="https://openrouter.ai/api/v1",
+                timeout=25.0
             )
         else:
             fallback = "llama-3.1-8b-instant"
@@ -786,7 +789,8 @@ def build_llm(model_name: str, temp: float):
             model=clean_model,
             temperature=temp,
             api_key=openrouter_key,
-            base_url="https://openrouter.ai/api/v1"
+            base_url="https://openrouter.ai/api/v1",
+            timeout=25.0
         )
 
     # 4. OpenAI Native Support
@@ -794,7 +798,12 @@ def build_llm(model_name: str, temp: float):
         if not openai_key:
             raise ValueError("OPENAI_API_KEY is not configured in environment variables.")
         from langchain_openai import ChatOpenAI
-        return ChatOpenAI(model=target_model, temperature=temp, api_key=openai_key)
+        return ChatOpenAI(
+            model=target_model,
+            temperature=temp,
+            api_key=openai_key,
+            timeout=25.0
+        )
 
     # 5. Default: Groq Support
     else:
@@ -809,8 +818,8 @@ llm_dept = build_llm(CURRENT_DEPT_MODEL, 0.7)
 
 # Map models to their OpenRouter equivalents and alternate models
 _FALLBACK_CHAIN = {
-    "nvidia/meta/llama-3.1-8b-instruct": ["nvidia/meta/llama-3.3-70b-instruct", "nvidia/deepseek-ai/deepseek-v4-pro"],
-    "nvidia/meta/llama-3.3-70b-instruct": ["nvidia/deepseek-ai/deepseek-v4-pro"],
+    "nvidia/meta/llama-3.1-8b-instruct": ["nvidia/meta/llama-3.3-70b-instruct", "nvidia/deepseek-ai/deepseek-v4-pro", "gemini-2.5-flash", "llama-3.3-70b-versatile"],
+    "nvidia/meta/llama-3.3-70b-instruct": ["nvidia/deepseek-ai/deepseek-v4-pro", "gemini-2.5-flash", "llama-3.3-70b-versatile"],
     "llama-3.1-8b-instant":    ["llama-3.3-70b-versatile", "nvidia/meta/llama-3.3-70b-instruct", "google/gemini-2.5-flash"],
     "llama-3.3-70b-versatile": ["nvidia/meta/llama-3.3-70b-instruct", "google/gemini-2.5-flash"],
 }
