@@ -718,20 +718,46 @@ GEMINI_KEY      = os.environ.get("GEMINI_API_KEY", "")
 OPENAI_KEY      = os.environ.get("OPENAI_API_KEY", "")
 API_CHAT_TOKEN  = os.environ.get("API_CHAT_TOKEN", "").strip()
 
-CURRENT_PA_MODEL   = "llama-3.1-8b-instant"
-CURRENT_DEPT_MODEL = "llama-3.3-70b-versatile"
+CURRENT_PA_MODEL   = "nvidia/meta/llama-3.1-8b-instruct"
+CURRENT_DEPT_MODEL = "nvidia/meta/llama-3.3-70b-instruct"
 
 def build_llm(model_name: str, temp: float):
-    """Dynamically construct ChatGroq, ChatGoogleGenerativeAI, or ChatOpenAI based on model name and available credentials."""
+    """Dynamically construct ChatGroq, ChatGoogleGenerativeAI, ChatOpenAI, or NVIDIA ChatOpenAI based on model name and available credentials."""
     groq_key = os.environ.get("GROQ_API_KEY", "")
     gemini_key = os.environ.get("GEMINI_API_KEY", "")
     openai_key = os.environ.get("OPENAI_API_KEY", "")
     openrouter_key = os.environ.get("OPENROUTER_API_KEY", "")
+    nvidia_key = os.environ.get("NVIDIA_API_KEY", "")
 
     target_model = model_name.strip()
 
-    # 1. Google Gemini Native Support
-    if target_model.startswith("gemini-"):
+    # 1. NVIDIA NIM Support (Model name starting with 'nvidia/')
+    if target_model.startswith("nvidia/"):
+        clean_model = target_model.replace("nvidia/", "")
+        if nvidia_key:
+            from langchain_openai import ChatOpenAI
+            return ChatOpenAI(
+                model=clean_model,
+                temperature=temp,
+                api_key=nvidia_key,
+                base_url="https://integrate.api.nvidia.com/v1"
+            )
+        elif openrouter_key:
+            print(f"[LLM FALLBACK] NVIDIA key missing. Routing '{target_model}' through OpenRouter.", flush=True)
+            from langchain_openai import ChatOpenAI
+            return ChatOpenAI(
+                model=clean_model,
+                temperature=temp,
+                api_key=openrouter_key,
+                base_url="https://openrouter.ai/api/v1"
+            )
+        else:
+            fallback = "llama-3.1-8b-instant" if "8b" in target_model.lower() else "llama-3.3-70b-versatile"
+            print(f"[LLM REDIRECT] NVIDIA & OpenRouter keys missing. Mapping '{target_model}' to Groq '{fallback}'.", flush=True)
+            return ChatGroq(model=fallback, temperature=temp, api_key=groq_key)
+
+    # 2. Google Gemini Native Support
+    elif target_model.startswith("gemini-"):
         if gemini_key:
             from langchain_google_genai import ChatGoogleGenerativeAI
             return ChatGoogleGenerativeAI(model=target_model, temperature=temp, google_api_key=gemini_key)
@@ -750,7 +776,7 @@ def build_llm(model_name: str, temp: float):
             print(f"[LLM REDIRECT] Both Gemini and OpenRouter keys missing. Mapping '{target_model}' to Groq '{fallback}'.", flush=True)
             return ChatGroq(model=fallback, temperature=temp, api_key=groq_key)
 
-    # 2. OpenRouter Support (Any model containing '/' or starting with 'openrouter/')
+    # 3. OpenRouter Support (Any model containing '/' or starting with 'openrouter/')
     elif "/" in target_model or target_model.startswith("openrouter/"):
         clean_model = target_model.replace("openrouter/", "")
         if not openrouter_key:
@@ -763,14 +789,14 @@ def build_llm(model_name: str, temp: float):
             base_url="https://openrouter.ai/api/v1"
         )
 
-    # 3. OpenAI Native Support
+    # 4. OpenAI Native Support
     elif target_model.startswith("gpt-"):
         if not openai_key:
             raise ValueError("OPENAI_API_KEY is not configured in environment variables.")
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(model=target_model, temperature=temp, api_key=openai_key)
 
-    # 4. Default: Groq Support
+    # 5. Default: Groq Support
     else:
         return ChatGroq(model=target_model, temperature=temp, api_key=groq_key)
 
@@ -781,10 +807,12 @@ llm_dept = build_llm(CURRENT_DEPT_MODEL, 0.7)
 # Provider-level auto-failover for rate limits
 # ---------------------------------------------------------------------------
 
-# Map Groq models to their OpenRouter equivalents and alternate Groq models
+# Map models to their OpenRouter equivalents and alternate models
 _FALLBACK_CHAIN = {
-    "llama-3.1-8b-instant":    ["gemma2-9b-it", "meta-llama/llama-3.1-8b-instruct", "google/gemini-2.5-flash"],
-    "llama-3.3-70b-versatile": ["llama-3.1-8b-instant", "gemma2-9b-it", "meta-llama/llama-3.3-70b-instruct", "google/gemini-2.5-flash"],
+    "nvidia/meta/llama-3.1-8b-instruct": ["nvidia/meta/llama-3.3-70b-instruct", "nvidia/deepseek-ai/deepseek-v4-pro"],
+    "nvidia/meta/llama-3.3-70b-instruct": ["nvidia/deepseek-ai/deepseek-v4-pro"],
+    "llama-3.1-8b-instant":    ["llama-3.3-70b-versatile", "nvidia/meta/llama-3.3-70b-instruct", "google/gemini-2.5-flash"],
+    "llama-3.3-70b-versatile": ["nvidia/meta/llama-3.3-70b-instruct", "google/gemini-2.5-flash"],
 }
 _RATE_LIMIT_SIGNALS = ("429", "rate limit", "rate_limit_exceeded", "too many requests", "tpd", "tpm")
 
@@ -6454,6 +6482,7 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
     gemini_active = "🟢 ACTIVE" if os.environ.get("GEMINI_API_KEY") else "🔴 NOT CONFIGURED"
     openai_active = "🟢 ACTIVE" if os.environ.get("OPENAI_API_KEY") else "🔴 NOT CONFIGURED"
     openrouter_active = "🟢 ACTIVE" if os.environ.get("OPENROUTER_API_KEY") else "🔴 NOT CONFIGURED"
+    nvidia_active = "🟢 ACTIVE" if os.environ.get("NVIDIA_API_KEY") else "🔴 NOT CONFIGURED"
 
     args = context.args
     if not args:
@@ -6463,12 +6492,18 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"👥 **Current Swarm (Research) Model**: `{CURRENT_DEPT_MODEL}`\n\n"
             
             "⚙️ **Active Providers Configuration:**\n"
+            f"- **NVIDIA NIM API**: {nvidia_active}\n"
             f"- **Groq API**: {groq_active}\n"
             f"- **OpenRouter API**: {openrouter_active}\n"
             f"- **Gemini API (Native)**: {gemini_active}\n"
             f"- **OpenAI API (Native)**: {openai_active}\n\n"
             
             "✨ **Available Models to Switch:**\n"
+            "--- *NVIDIA NIM Provider Models (PA & Swarm Defaults)* ---\n"
+            "12. `nvidia/meta/llama-3.1-8b-instruct` (Llama 3.1 8B via NVIDIA - Default PA)\n"
+            "13. `nvidia/meta/llama-3.3-70b-instruct` (Llama 3.3 70B via NVIDIA - Default Swarm)\n"
+            "14. `nvidia/deepseek-ai/deepseek-r1` (DeepSeek R1 via NVIDIA)\n\n"
+
             "--- *Groq Provider Models* ---\n"
             "1. `llama-3.3-70b-versatile` (Llama 3.3 - Best Quality)\n"
             "2. `llama-3.1-8b-instant` (Llama 3.1 8B - Fastest / Best Limits)\n"
@@ -6489,9 +6524,9 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "11. `gpt-4o` (GPT-4o flagship)\n\n"
             
             "🚀 **How to Switch:**\n"
-            "- `/model <1-11>` - Change the main Personal Assistant model\n"
-            "- `/model swarm <1-11>` - Change the underlying swarm/research model\n\n"
-            "Tip: You can also specify any custom model string directly, e.g. `/model deepseek/deepseek-reasoner` or `/model swarm gemini-2.5-flash`"
+            "- `/model <1-14>` - Change the main Personal Assistant model\n"
+            "- `/model swarm <1-14>` - Change the underlying swarm/research model\n\n"
+            "Tip: You can also specify any custom model string directly, e.g. `/model deepseek/deepseek-reasoner` or `/model swarm nvidia/deepseek-ai/deepseek-r1`"
         )
         await update.message.reply_text(menu, parse_mode="Markdown")
         return
@@ -6513,12 +6548,15 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "8": "deepseek/deepseek-chat",
         "9": "meta-llama/llama-3.3-70b-instruct",
         "10": "gpt-4o-mini",
-        "11": "gpt-4o"
+        "11": "gpt-4o",
+        "12": "nvidia/meta/llama-3.1-8b-instruct",
+        "13": "nvidia/meta/llama-3.3-70b-instruct",
+        "14": "nvidia/deepseek-ai/deepseek-r1"
     }
 
     selected_model = model_map.get(choice)
     if not selected_model:
-        if choice in model_map.values() or "/" in choice or choice.startswith("gemini-") or choice.startswith("gpt-"):
+        if choice in model_map.values() or "/" in choice or choice.startswith("gemini-") or choice.startswith("gpt-") or choice.startswith("nvidia/"):
             selected_model = choice
         else:
             await update.message.reply_text("Invalid choice. Use `/model` to see valid options or pass a valid model string.")

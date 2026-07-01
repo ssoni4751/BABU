@@ -1155,11 +1155,32 @@ def task_executor_node(state: BabuState):
         )
         
         try:
+            # Determine correct model for the specific task dynamically
+            objective = (task.objective or "").lower()
+            department = (task.department or "").lower()
+            
+            # 1. Self-Inspection
+            if any(k in objective for k in ("self-inspection", "constitution", "policy", "self-audit", "auditor", "failures", "system_index", "knowledge")):
+                target_model = "nvidia/deepseek-ai/deepseek-v4-pro"
+            # 2. Architecture Analysis
+            elif any(k in objective for k in ("architecture", "adr", "diagram", "components", "design", "flowchart", "system structure")):
+                target_model = "nvidia/deepseek-ai/deepseek-v4-pro"
+            # 3. Code Generation
+            elif any(k in objective for k in ("code", "coding", "python", "script", "generate code", "write code")):
+                target_model = "nvidia/deepseek-ai/deepseek-v4-flash"
+            # 4. Research
+            elif department in ("research", "information") or any(k in objective for k in ("search", "lookup", "retrieve", "research")):
+                target_model = "nvidia/deepseek-ai/deepseek-v4-flash"
+            else:
+                target_model = CURRENT_DEPT_MODEL
+                
+            task_llm = build_llm(target_model, 0.7)
+            
             run_method = getattr(dept_head, "run", None)
             dispatch_method = getattr(dept_head, "dispatch", None)
-            worker_payload = run_method(task, llm_dept) if callable(run_method) else None
+            worker_payload = run_method(task, task_llm) if callable(run_method) else None
             if not (isinstance(worker_payload, tuple) and len(worker_payload) == 2):
-                worker_payload = dispatch_method(task, {}, llm_dept) if callable(dispatch_method) else worker_payload
+                worker_payload = dispatch_method(task, {}, task_llm) if callable(dispatch_method) else worker_payload
             worker_result, node_tokens = worker_payload
             error_msg = None
         except Exception as e:
@@ -1874,8 +1895,8 @@ def pa_node(state: BabuState):
     except Exception as e:
         err_msg = str(e)
         if "413" in err_msg or "too large" in err_msg.lower() or "limit exceeded" in err_msg.lower():
-            print(f"[PA NODE WARNING] Model {CURRENT_PA_MODEL} failed with 413/limit exceeded. Falling back to llama-3.3-70b-versatile. Error: {err_msg}", flush=True)
-            used_model = "llama-3.3-70b-versatile"
+            used_model = "nvidia/meta/llama-3.3-70b-instruct" if CURRENT_PA_MODEL.startswith("nvidia/") else "llama-3.3-70b-versatile"
+            print(f"[PA NODE WARNING] Model {CURRENT_PA_MODEL} failed with 413/limit exceeded. Falling back to bigger model {used_model}. Error: {err_msg}", flush=True)
             llm_pa = build_llm(used_model, 0.2)
             response = llm_pa.invoke([SystemMessage(content=manifesto), HumanMessage(content="\n\n".join(parts))])
         else:
