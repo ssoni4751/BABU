@@ -895,6 +895,24 @@ def publish_to_facebook_page(image_path: str, caption: str) -> tuple[bool, str]:
             res_json = response.json()
             if response.status_code == 200 and "id" in res_json:
                 post_id = res_json["id"]
+                
+                # Auto-backup to Google Drive if credentials exist
+                try:
+                    try:
+                        from .google_service import upload_file_to_drive
+                    except ImportError:
+                        from google_service import upload_file_to_drive
+                    
+                    folder_name = "BABU Marketing Posts"
+                    print(f"[DRIVE] Backing up published graphic '{os.path.basename(image_path)}' to Google Drive folder '{folder_name}'...", flush=True)
+                    ok_drv, drv_msg = upload_file_to_drive(image_path, folder_name)
+                    if ok_drv:
+                        print(f"[DRIVE SUCCESS] Backup complete: {drv_msg}", flush=True)
+                    else:
+                        print(f"[DRIVE WARNING] Backup skipped/failed: {drv_msg}", flush=True)
+                except Exception as drv_err:
+                    print(f"[DRIVE WARNING] Google Drive upload failed: {drv_err}", flush=True)
+                
                 return True, f"Successfully published to Facebook Page! Post ID: {post_id}"
             else:
                 error_msg = res_json.get("error", {}).get("message", "Unknown Graph API error")
@@ -944,7 +962,30 @@ def generate_social_post_draft(custom_topic: str = None) -> dict:
         clean_old_temp_files(temp_dir)
         
     import random
-    is_catalog = (custom_topic == "FORCE_CATALOG") or (custom_topic is None and random.random() < 0.5)
+    import datetime
+    
+    # Determine the daily schedule calendar topic based on day of week in India (Asia/Kolkata)
+    try:
+        tz_offset = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+        now = datetime.datetime.now(tz_offset)
+    except Exception:
+        now = datetime.datetime.now()
+        
+    day_of_week = now.weekday()  # 0 = Monday, ..., 6 = Sunday
+    
+    day_topics = {
+        0: "ITR Filing Reminder & Tax Compliance advice",
+        1: "PF Withdrawal Services & EPF Claim Settlement solutions",
+        2: "GST Compliance, registration, and monthly return filing advice",
+        3: "Pension, PPO Services, and Jeevan Pramaan advice",
+        4: "CSC and Digital Citizen Services (Aadhaar, government schemes)",
+        5: "Customer Testimonials, trust, and success stories for tax/PF help",
+        6: "Motivational Business, Finance, or Compliance Quote for growth"
+    }
+    today_topic = day_topics.get(day_of_week, "General Tax and PF Compliance consultancy advice")
+    
+    # Renders catalog poster with 30% probability on autonomous runs, otherwise follows day-of-week single service
+    is_catalog = (custom_topic == "FORCE_CATALOG") or (custom_topic is None and random.random() < 0.3)
     
     if is_catalog:
         print("[SOCIAL] Generating Multi-Service Catalog Poster...", flush=True)
@@ -952,11 +993,13 @@ def generate_social_post_draft(custom_topic: str = None) -> dict:
         caption, img_prompt, card_title, card_tips, category = generate_daily_post(catalog_topic)
         img_path = generate_catalog_poster()
     else:
-        caption, img_prompt, card_title, card_tips, category = generate_daily_post(custom_topic)
+        selected_topic = custom_topic if custom_topic else today_topic
+        print(f"[SOCIAL] Generating Featured Single-Service Post for topic: '{selected_topic}'...", flush=True)
+        caption, img_prompt, card_title, card_tips, category = generate_daily_post(selected_topic)
         
         bg_path = None
         try:
-            print(f"[SOCIAL] Attempting to generate rich FLUX background image for topic '{custom_topic}'...", flush=True)
+            print(f"[SOCIAL] Attempting to generate rich FLUX background image for topic '{selected_topic}'...", flush=True)
             bg_path = generate_flux_graphic(img_prompt)
         except Exception as e:
             print(f"[SOCIAL WARNING] Rich background generation failed: {e}. Falling back to default layout.", flush=True)
