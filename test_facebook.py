@@ -12,8 +12,10 @@ if not os.environ.get("GEMINI_API_KEY"):
     load_dotenv()
     if os.environ.get("GROQ_API_KEY"):
         os.environ["GEMINI_API_KEY"] = os.environ["GROQ_API_KEY"]
+    elif os.environ.get("NVIDIA_API_KEY"):
+        os.environ["GEMINI_API_KEY"] = "mock_key_since_nvidia_is_active"
     else:
-        raise RuntimeError("GEMINI_API_KEY or GROQ_API_KEY is required in environment for this test.")
+        raise RuntimeError("GEMINI_API_KEY, GROQ_API_KEY or NVIDIA_API_KEY is required in environment for this test.")
 
 # Add babu to python path so we can import from it
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -27,24 +29,13 @@ def main():
     print("="*60)
     
     try:
-        # 1. Generate Caption and Image Prompt
-        print("\n[STEP 1] Generating caption and FLUX prompt via Groq...")
-        caption, img_prompt, card_title, card_tips, category = generate_daily_post()
+        # 1. Generate Social Post Draft (forcing Catalog Poster style)
+        print("\n[STEP 1 & 2] Generating social post draft (forcing Catalog style)...")
+        from babu.social_media import generate_social_post_draft
+        draft = generate_social_post_draft("FORCE_CATALOG")
+        caption = draft["caption"]
+        img_path = draft["image_path"]
         print(f"\n✨ Generated Caption:\n{caption}")
-        print(f"\n🎨 Generated FLUX Prompt:\n{img_prompt}")
-        
-        # 2. Download Image via FLUX & render Pillow glass card
-        print("\n[STEP 2] Downloading custom graphic from Pollinations.ai FLUX...")
-        bg_path = None
-        try:
-            bg_path = generate_flux_graphic(img_prompt)
-            print(f"✅ Backdrop saved at: {bg_path}")
-        except Exception as e:
-            print(f"⚠️ Backdrop download failed: {e}. Falling back to default layout.")
-        
-        print("\n[STEP 2.5] Rendering premium Pillow dashboard graphic card...")
-        from babu.social_media import generate_pillow_graphic
-        img_path = generate_pillow_graphic(card_title, card_tips, background_path=bg_path, category=category)
         print(f"✅ Finished Graphic saved at: {img_path}")
         print(f"Size of graphic: {os.path.getsize(img_path)} bytes")
         

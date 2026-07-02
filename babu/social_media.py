@@ -421,21 +421,258 @@ def generate_pillow_graphic(title: str, tips: list, background_path: str = None,
     return image_path
 
 
+def generate_catalog_poster() -> str:
+    """Generate a comprehensive 9:16 portrait flyer detailing all services.
+    
+    Renders Anshu Computer & Tax Consultancy's 6 core service catalog cards
+    complete with trust badges, address details, gold leader badge, and a shopfront
+    illustration drawn programmatically. Output size is 1080x1920.
+    """
+    from PIL import Image, ImageDraw, ImageFont
+    import os
+    import uuid
+    
+    print("[POSTER] Rendering comprehensive multi-service catalog poster (1080x1920)...", flush=True)
+    
+    # 1. Base Canvas
+    width, height = 1080, 1920
+    img = Image.new("RGB", (width, height), (248, 249, 252))
+    draw = ImageDraw.Draw(img)
+    
+    # Draw background gradient
+    color_start = (242, 245, 250)
+    color_end = (255, 255, 255)
+    for y in range(height):
+        r = int(color_start[0] + (color_end[0] - color_start[0]) * y / height)
+        g = int(color_start[1] + (color_end[1] - color_start[1]) * y / height)
+        b = int(color_start[2] + (color_end[2] - color_start[2]) * y / height)
+        draw.line([(0, y), (width, y)], fill=(r, g, b))
+        
+    # Draw top corner wave/design (navy accent)
+    draw.polygon([(0, 0), (250, 0), (0, 150)], fill=(15, 34, 64))
+    draw.polygon([(width, 0), (width, 220), (width - 180, 0)], fill=(15, 34, 64))
+    
+    # 2. Fonts
+    font_logo = get_font("Segoeuib", 90)
+    font_brand = get_font("Segoeuib", 42)
+    font_tagline = get_font("Segoeuib", 28)
+    font_slogan = get_font("Segoeuib", 30)
+    font_section = get_font("Segoeuib", 24)
+    font_card_title = get_font("Segoeuib", 26)
+    font_bullet = get_font("Segoeui", 22)
+    font_footer = get_font("Segoeuib", 20)
+    font_badge = get_font("Segoeuib", 16)
+    font_badge_bold = get_font("Segoeuib", 20)
+    
+    # 3. Header Drawing
+    # Logo "A"
+    logo_cx, logo_cy = 130, 175
+    # Yellow swoosh arc
+    draw.arc([logo_cx - 60, logo_cy - 60, logo_cx + 60, logo_cy + 60], start=45, end=275, fill=(230, 175, 45), width=8)
+    # Blue swoosh arc
+    draw.arc([logo_cx - 48, logo_cy - 48, logo_cx + 48, logo_cy + 48], start=180, end=90, fill=(15, 34, 64), width=6)
+    draw.text((logo_cx, logo_cy - 5), "A", fill=(15, 34, 64), font=font_logo, anchor="mm")
+    
+    # Brand Text
+    draw.text((220, 115), "ANSHU", fill=(15, 34, 64), font=get_font("Segoeuib", 64))
+    draw.text((220, 195), "COMPUTER & TAX CONSULTANCY", fill=(15, 34, 64), font=font_brand)
+    # Yellow divider line
+    draw.line([(220, 248), (950, 248)], fill=(230, 175, 45), width=3)
+    draw.text((220, 260), "PF, TAX & COMPLIANCE SOLUTIONS", fill=(230, 175, 45), font=font_tagline)
+    
+    # Slogan
+    draw.text((width/2, 335), "Reliable Services. Maximum Value.", fill=(15, 34, 64), font=font_slogan, anchor="mm")
+    
+    # 4. Trust Markers Row
+    trust_y = 410
+    trust_x = [230, 540, 850]
+    labels = [
+        ("TRUSTED BY", "HUNDREDS OF CLIENTS"),
+        ("TIMELY SERVICE", "QUALITY ASSURED"),
+        ("100% SECURE", "& CONFIDENTIAL")
+    ]
+    
+    for idx, cx in enumerate(trust_x):
+        # Draw dark navy circle with gold border
+        cy = trust_y
+        draw.ellipse([cx - 32, cy - 32, cx + 32, cy + 32], fill=(15, 34, 64), outline=(230, 175, 45), width=2)
+        
+        # Draw simple icon outlines
+        if idx == 0: # Trusted checkmark shield
+            draw.line([(cx - 8, cy), (cx - 2, cy + 8)], fill=(255, 255, 255), width=3)
+            draw.line([(cx - 2, cy + 8), (cx + 10, cy - 6)], fill=(255, 255, 255), width=3)
+        elif idx == 1: # Timely clock
+            draw.arc([cx - 15, cy - 15, cx + 15, cy + 15], start=0, end=360, fill=(255, 255, 255), width=2)
+            draw.line([(cx, cy), (cx, cy - 10)], fill=(255, 255, 255), width=2)
+            draw.line([(cx, cy), (cx + 8, cy)], fill=(255, 255, 255), width=2)
+        elif idx == 2: # Secure shield
+            draw.polygon([(cx - 12, cy - 14), (cx + 12, cy - 14), (cx + 12, cy), (cx, cy + 14), (cx - 12, cy)], outline=(255, 255, 255), width=2)
+            
+        # Draw text labels underneath
+        line1, line2 = labels[idx]
+        draw.text((cx, cy + 50), line1, fill=(15, 34, 64), font=get_font("Segoeuib", 16), anchor="mm")
+        draw.text((cx, cy + 70), line2, fill=(230, 175, 45), font=get_font("Segoeui", 16), anchor="mm")
+        
+    # 5. Section Header Badge
+    badge_rect = [width/2 - 180, 520, width/2 + 180, 570]
+    draw.rounded_rectangle(badge_rect, radius=25, fill=(15, 34, 64))
+    draw.text((width/2, 545), "OUR SERVICES", fill=(255, 255, 255), font=font_section, anchor="mm")
+    
+    # 6. Grid Cards Configuration
+    cards_data = [
+        {
+            "title": "PF SERVICES",
+            "color": (26, 115, 232),
+            "bullets": ["PF KYC & Corrections", "Advance PF Claim", "PF Settlement", "PPO (Pension) Services", "Multiple Company Adjustments"]
+        },
+        {
+            "title": "INCOME TAX",
+            "color": (19, 115, 51),
+            "bullets": ["ITR Filing (Salary/Business)", "Tax Planning & Audit Help", "Refund Assistance", "Form 16 & AIS Correction"]
+        },
+        {
+            "title": "GST SERVICES",
+            "color": (104, 29, 168),
+            "bullets": ["GST Registration", "Monthly/Quarterly Return Filing", "GST Compliance Audits", "Notice Reply & Reconciliation"]
+        },
+        {
+            "title": "CSC SERVICES",
+            "color": (232, 113, 10),
+            "bullets": ["Digital Seva Registrations", "Central/State Govt. Schemes", "Online Application Processing", "Aadhaar & Citizen Services"]
+        },
+        {
+            "title": "COMPLIANCE",
+            "color": (190, 30, 30),
+            "bullets": ["Udyam (MSME) Registration", "Digital Signature (DSC) Class 3", "PAN / TAN Registration", "Trade License & Business Support"]
+        },
+        {
+            "title": "CONSULTANCY",
+            "color": (15, 140, 140),
+            "bullets": ["Expert Guidance on Compliance", "Fast & Secure Claims", "Personalized Support", "Bilingual Consultation (B2B/B2C)"]
+        }
+    ]
+
+    card_w, card_h = 440, 310
+    col_x = [80, 560]
+    row_y = [600, 930, 1260]
+    
+    for idx, card in enumerate(cards_data):
+        col = idx % 2
+        row = idx // 2
+        x1 = col_x[col]
+        y1 = row_y[row]
+        x2 = x1 + card_w
+        y2 = y1 + card_h
+        
+        # Draw shadow and card shape
+        draw.rounded_rectangle([x1 + 3, y1 + 3, x2 + 3, y2 + 3], radius=16, fill=(230, 235, 245))
+        draw.rounded_rectangle([x1, y1, x2, y2], radius=16, fill=(255, 255, 255), outline=(215, 220, 230), width=2)
+        
+        # Colored circle for icon badge
+        circle_cx, circle_cy = x1 + 60, y1 + 55
+        draw.ellipse([circle_cx - 24, circle_cy - 24, circle_cx + 24, circle_cy + 24], fill=card["color"])
+        draw.text((circle_cx, circle_cy - 1), card["title"][:2], fill=(255, 255, 255), font=font_badge, anchor="mm")
+        
+        # Card Title
+        draw.text((x1 + 105, y1 + 53), card["title"], fill=(15, 34, 64), font=font_card_title, anchor="lm")
+        # Divider line
+        draw.line([(x1 + 30, y1 + 95), (x2 - 30, y1 + 95)], fill=(230, 235, 245), width=1)
+        
+        # Bullet list points
+        bullet_start_y = y1 + 125
+        spacing = 35
+        for b_idx, bullet in enumerate(card["bullets"]):
+            by = bullet_start_y + b_idx * spacing
+            draw.ellipse([x1 + 38, by - 5, x1 + 44, by + 1], fill=card["color"])
+            draw.text((x1 + 60, by), bullet, fill=(50, 55, 65), font=font_bullet, anchor="lm")
+            
+    # 7. Bottom Section & Slogan
+    # Slogan placed between cards and bottom section
+    draw.text((width/2, 1590), "We Simplify Compliance, You Focus on Growth.", fill=(15, 34, 64), font=get_font("Segoeuii", 24), anchor="mm")
+    
+    bottom_y = 1610
+    
+    # Left: Gold Badge
+    badge_cx, badge_cy = 240, bottom_y + 80
+    draw.polygon([(badge_cx - 60, badge_cy + 60), (badge_cx + 60, badge_cy + 60), (badge_cx + 80, badge_cy + 100), (badge_cx, badge_cy + 85), (badge_cx - 80, badge_cy + 100)], fill=(15, 34, 64))
+    
+    draw.ellipse([badge_cx - 80, badge_cy - 80, badge_cx + 80, badge_cy + 80], fill=(255, 235, 150), outline=(225, 175, 45), width=4)
+    draw.ellipse([badge_cx - 68, badge_cy - 68, badge_cx + 68, badge_cy + 68], fill=(255, 242, 185), outline=(225, 175, 45), width=2)
+    
+    draw.text((badge_cx, badge_cy - 45), "★ ★ ★", fill=(225, 175, 45), font=font_badge_bold, anchor="mm")
+    draw.text((badge_cx, badge_cy - 12), "MARKET", fill=(15, 34, 64), font=font_badge_bold, anchor="mm")
+    draw.text((badge_cx, badge_cy + 12), "LEADER", fill=(15, 34, 64), font=font_badge_bold, anchor="mm")
+    draw.text((badge_cx, badge_cy + 36), "IN DISTRICT", fill=(225, 175, 45), font=font_badge, anchor="mm")
+    draw.text((badge_cx, badge_cy + 75), "IN PF SERVICES", fill=(255, 255, 255), font=get_font("Segoeuib", 14), anchor="mm")
+    
+    # Right: Storefront Line-Drawing Illustration
+    shop_cx, shop_cy = 780, bottom_y + 80
+    draw.rectangle([shop_cx - 150, shop_cy - 40, shop_cx + 150, shop_cy + 80], fill=(245, 248, 255), outline=(15, 34, 64), width=3)
+    draw.polygon([
+        (shop_cx - 170, shop_cy - 40), 
+        (shop_cx + 170, shop_cy - 40), 
+        (shop_cx + 140, shop_cy - 80), 
+        (shop_cx - 140, shop_cy - 80)
+    ], fill=(15, 34, 64))
+    
+    draw.rectangle([shop_cx - 110, shop_cy - 72, shop_cx + 110, shop_cy - 48], fill=(255, 242, 185), outline=(225, 175, 45), width=2)
+    draw.text((shop_cx, shop_cy - 60), "ANSHU COMPUTER & TAX", fill=(15, 34, 64), font=get_font("Segoeuib", 14), anchor="mm")
+    
+    # Windows & Door
+    draw.rectangle([shop_cx - 120, shop_cy - 10, shop_cx - 40, shop_cy + 40], fill=(230, 245, 255), outline=(15, 34, 64), width=2)
+    draw.line([(shop_cx - 80, shop_cy - 10), (shop_cx - 80, shop_cy + 40)], fill=(15, 34, 64), width=2)
+    
+    draw.rectangle([shop_cx + 40, shop_cy - 10, shop_cx + 120, shop_cy + 40], fill=(230, 245, 255), outline=(15, 34, 64), width=2)
+    draw.line([(shop_cx + 80, shop_cy - 10), (shop_cx + 80, shop_cy + 40)], fill=(15, 34, 64), width=2)
+    
+    draw.rectangle([shop_cx - 25, shop_cy - 10, shop_cx + 25, shop_cy + 80], fill=(255, 255, 255), outline=(15, 34, 64), width=2)
+    draw.ellipse([shop_cx + 12, shop_cy + 35, shop_cx + 18, shop_cy + 41], fill=(15, 34, 64))
+    
+    # 8. Footer address and contact bar (multi-line structured bar)
+    footer_rect = [0, height - 140, width, height]
+    draw.rectangle(footer_rect, fill=(15, 34, 64))
+    draw.line([(0, height - 140), (width, height - 140)], fill=(230, 175, 45), width=3)
+    
+    # Row 1: WhatsApp / Call & Email
+    row1_text = "📞 Call / WhatsApp: +91 7217646673   •   ✉️ Email: anshucomputerorai@gmail.com"
+    draw.text((width/2, height - 105), row1_text, fill=(255, 255, 255), font=font_footer, anchor="mm")
+    
+    # Row 2: Website & Twitter / X
+    row2_text = "🌐 Web: anshu-computer-and-tax-consultants.onrender.com   •   🐦 Twitter/X: @ssoni0007"
+    draw.text((width/2, height - 70), row2_text, fill=(230, 175, 45), font=font_footer, anchor="mm")
+    
+    # Row 3: Address
+    row3_text = "📍 Office: Kaushal Market, Rath Road, Orai (Jalaun) U.P. - 285001"
+    draw.text((width/2, height - 35), row3_text, fill=(255, 255, 255), font=font_footer, anchor="mm")
+    
+    # Save output image with a unique filename
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    temp_dir = os.path.join(current_dir, "temp")
+    os.makedirs(temp_dir, exist_ok=True)
+    unique_id = uuid.uuid4().hex[:8]
+    image_path = os.path.join(temp_dir, f"catalog_poster_{unique_id}.jpg")
+    img.save(image_path, "JPEG", quality=95)
+    print(f"[POSTER SUCCESS] Renders multi-service catalog poster saved to {image_path}", flush=True)
+    return image_path
+
+
 def generate_flux_graphic(prompt: str) -> str:
     """Generate or retrieve a high-quality campaign poster background.
     
     Tries:
-    1. Google Gemini API (Imagen 4) if GEMINI_API_KEY is configured. (Free, custom AI generation)
-    2. Hugging Face Inference API if HF_TOKEN or HUGGINGFACE_API_KEY is configured. (Free, custom AI generation)
-    3. DuckDuckGo Images search as a keyless high-quality stock illustration fallback (optimized keywords).
-    4. Pollinations.ai (Flux) as a keyless AI fallback.
-    5. Hercai v3 as a secondary keyless AI fallback.
+    1. NVIDIA NIM API (FLUX.1-schnell) if NVIDIA_API_KEY is configured. (Free, custom AI generation)
+    2. Google Gemini API (Imagen 4) if GEMINI_API_KEY is configured. (Free, custom AI generation)
+    3. Hugging Face Inference API if HF_TOKEN or HUGGINGFACE_API_KEY is configured. (Free, custom AI generation)
+    4. DuckDuckGo Images search as a keyless high-quality stock illustration fallback (optimized keywords).
+    5. Pollinations.ai (Flux) as a keyless AI fallback.
+    6. Hercai v3 as a secondary keyless AI fallback.
     """
     import uuid
     import time
     import requests
     import urllib.parse
     import re
+    import base64
     
     current_dir = os.path.dirname(os.path.abspath(__file__))
     temp_dir = os.path.join(current_dir, "temp")
@@ -443,11 +680,54 @@ def generate_flux_graphic(prompt: str) -> str:
     unique_id = uuid.uuid4().hex[:8]
     image_path = os.path.join(temp_dir, f"flux_backdrop_{unique_id}.jpg")
     
+    # Attempt 1: NVIDIA NIM API (FLUX.1-schnell)
+    nvidia_key = os.environ.get("NVIDIA_API_KEY")
+    if nvidia_key:
+        print("[IMAGE ENGINE] Attempting image generation via NVIDIA FLUX.1-schnell...", flush=True)
+        try:
+            url = "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell"
+            headers = {
+                "Authorization": f"Bearer {nvidia_key}",
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+            payload = {
+                "prompt": prompt,
+                "steps": 4,
+                "seed": 0,
+                "width": 1024,
+                "height": 1024
+            }
+            # Set a timeout of 15 seconds so we don't hang the thread if the key has no access/times out
+            resp = requests.post(url, headers=headers, json=payload, timeout=15)
+            if resp.status_code == 200:
+                res_json = resp.json()
+                if "artifacts" in res_json and res_json["artifacts"]:
+                    item = res_json["artifacts"][0]
+                    if "base64" in item:
+                        img_bytes = base64.b64decode(item["base64"])
+                        with open(image_path, "wb") as f:
+                            f.write(img_bytes)
+                        print(f"[IMAGE ENGINE SUCCESS] Generated image via NVIDIA FLUX.1-schnell saved to {image_path}", flush=True)
+                        return image_path
+                elif "data" in res_json and res_json["data"]:
+                    item = res_json["data"][0]
+                    if "b64_json" in item:
+                        img_bytes = base64.b64decode(item["b64_json"])
+                        with open(image_path, "wb") as f:
+                            f.write(img_bytes)
+                        print(f"[IMAGE ENGINE SUCCESS] Generated image via NVIDIA FLUX.1-schnell saved to {image_path}", flush=True)
+                        return image_path
+            else:
+                print(f"[IMAGE ENGINE WARNING] NVIDIA API returned status code {resp.status_code}: {resp.text[:200]}", flush=True)
+        except Exception as e:
+            print(f"[IMAGE ENGINE WARNING] NVIDIA image generation failed: {e}", flush=True)
+
     gemini_key = os.environ.get("GEMINI_API_KEY")
     if not gemini_key:
         gemini_key = os.environ.get("GOOGLE_API_KEY")
         
-    # Attempt 1: Google Gemini API (Imagen 4)
+    # Attempt 2: Google Gemini API (Imagen 4)
     if gemini_key:
         print("[IMAGE ENGINE] Attempting image generation via Google Imagen 4...", flush=True)
         try:
@@ -475,7 +755,7 @@ def generate_flux_graphic(prompt: str) -> str:
         except Exception as e:
             print(f"[IMAGE ENGINE WARNING] Gemini Imagen 4 generation failed: {e}", flush=True)
             
-    # Attempt 2: Hugging Face Inference API (Flux Schnell)
+    # Attempt 3: Hugging Face Inference API (Flux Schnell)
     hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_API_KEY")
     if hf_token:
         print("[IMAGE ENGINE] Attempting image generation via Hugging Face Inference API...", flush=True)
@@ -494,49 +774,6 @@ def generate_flux_graphic(prompt: str) -> str:
         except Exception as e:
             print(f"[IMAGE ENGINE WARNING] Hugging Face generation failed: {e}", flush=True)
 
-    # Attempt 3: DuckDuckGo Images stock photo fallback (Zero-key, reliable and fast!)
-    print("[IMAGE ENGINE] Attempting to retrieve stock background illustration via DuckDuckGo Images...", flush=True)
-    try:
-        from ddgs import DDGS
-        
-        # Clean prompt and extract core keywords to make a concise search term
-        words = [w for w in re.split(r'[\s,.:;!?()"\']', prompt) if w.strip()]
-        stop_words = {"a", "an", "the", "and", "or", "but", "with", "featuring", "representing", "minimalist", "minimalism", "3d", "illustration", "premium", "style", "features", "sleek", "abstract", "elements", "vibrant", "corporate", "colors", "clean"}
-        keywords = [w for w in words if w.lower() not in stop_words]
-        
-        # Build search query (max 4 keywords)
-        search_term = "minimalist 3d " + " ".join(keywords[:4])
-        search_term = search_term[:100]
-        
-        print(f"[IMAGE ENGINE] Searching DuckDuckGo for: '{search_term}'", flush=True)
-        with DDGS() as ddgs:
-            results = list(ddgs.images(search_term, max_results=3))
-            
-        if results:
-            for idx, result in enumerate(results):
-                img_url = result.get("image")
-                if not img_url:
-                    continue
-                try:
-                    print(f"[IMAGE ENGINE] Downloading stock photo (option {idx+1}): {img_url}", flush=True)
-                    resp = requests.get(
-                        img_url, 
-                        timeout=15, 
-                        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
-                    )
-                    resp.raise_for_status()
-                    with open(image_path, "wb") as f:
-                        f.write(resp.content)
-                    print(f"[IMAGE ENGINE SUCCESS] Retrieved stock background saved to {image_path}", flush=True)
-                    return image_path
-                except Exception as ex:
-                    print(f"[IMAGE ENGINE WARNING] Failed to download from {img_url}: {ex}", flush=True)
-            print("[IMAGE ENGINE WARNING] All retrieved DuckDuckGo Image options failed to download.", flush=True)
-        else:
-            print("[IMAGE ENGINE WARNING] DuckDuckGo Images returned no results.", flush=True)
-    except Exception as e:
-        print(f"[IMAGE ENGINE WARNING] DuckDuckGo Images fallback failed: {e}", flush=True)
-        
     # Attempt 4: Pollinations.ai (Flux) keyless AI fallback
     print("[IMAGE ENGINE] Attempting keyless generation via Pollinations.ai...", flush=True)
     encoded_prompt = urllib.parse.quote_plus(prompt)
@@ -584,6 +821,49 @@ def generate_flux_graphic(prompt: str) -> str:
             print(f"[IMAGE ENGINE WARNING] Hercai API returned status: {resp.status_code}", flush=True)
     except Exception as e:
         print(f"[IMAGE ENGINE WARNING] Hercai fallback failed: {e}", flush=True)
+
+    # Attempt 6: DuckDuckGo Images stock photo fallback (Zero-key, reliable and fast!)
+    print("[IMAGE ENGINE] Attempting to retrieve stock background illustration via DuckDuckGo Images...", flush=True)
+    try:
+        from ddgs import DDGS
+        
+        # Clean prompt and extract core keywords to make a concise search term
+        words = [w for w in re.split(r'[\s,.:;!?()"\']', prompt) if w.strip()]
+        stop_words = {"a", "an", "the", "and", "or", "but", "with", "featuring", "representing", "minimalist", "minimalism", "3d", "illustration", "premium", "style", "features", "sleek", "abstract", "elements", "vibrant", "corporate", "colors", "clean"}
+        keywords = [w for w in words if w.lower() not in stop_words]
+        
+        # Build search query (max 4 keywords)
+        search_term = "minimalist 3d " + " ".join(keywords[:4])
+        search_term = search_term[:100]
+        
+        print(f"[IMAGE ENGINE] Searching DuckDuckGo for: '{search_term}'", flush=True)
+        with DDGS() as ddgs:
+            results = list(ddgs.images(search_term, max_results=3))
+            
+        if results:
+            for idx, result in enumerate(results):
+                img_url = result.get("image")
+                if not img_url:
+                    continue
+                try:
+                    print(f"[IMAGE ENGINE] Downloading stock photo (option {idx+1}): {img_url}", flush=True)
+                    resp = requests.get(
+                        img_url, 
+                        timeout=15, 
+                        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+                    )
+                    resp.raise_for_status()
+                    with open(image_path, "wb") as f:
+                        f.write(resp.content)
+                    print(f"[IMAGE ENGINE SUCCESS] Retrieved stock background saved to {image_path}", flush=True)
+                    return image_path
+                except Exception as ex:
+                    print(f"[IMAGE ENGINE WARNING] Failed to download from {img_url}: {ex}", flush=True)
+            print("[IMAGE ENGINE WARNING] All retrieved DuckDuckGo Image options failed to download.", flush=True)
+        else:
+            print("[IMAGE ENGINE WARNING] DuckDuckGo Images returned no results.", flush=True)
+    except Exception as e:
+        print(f"[IMAGE ENGINE WARNING] DuckDuckGo Images fallback failed: {e}", flush=True)
         
     raise RuntimeError("All background image generation/retrieval engines failed.")
 
@@ -649,7 +929,7 @@ def clean_old_temp_files(temp_dir: str):
         now = time.time()
         for f in os.listdir(temp_dir):
             path = os.path.join(temp_dir, f)
-            if os.path.isfile(path) and (f.startswith("daily_post_") or f.startswith("flux_backdrop_")):
+            if os.path.isfile(path) and (f.startswith("daily_post_") or f.startswith("flux_backdrop_") or f.startswith("catalog_poster_")):
                 if now - os.path.getmtime(path) > 43200:
                     os.remove(path)
     except Exception as e:
@@ -663,16 +943,25 @@ def generate_social_post_draft(custom_topic: str = None) -> dict:
     if os.path.exists(temp_dir):
         clean_old_temp_files(temp_dir)
         
-    caption, img_prompt, card_title, card_tips, category = generate_daily_post(custom_topic)
+    import random
+    is_catalog = (custom_topic == "FORCE_CATALOG") or (custom_topic is None and random.random() < 0.5)
     
-    bg_path = None
-    try:
-        print(f"[SOCIAL] Attempting to generate rich FLUX background image for topic '{custom_topic}'...", flush=True)
-        bg_path = generate_flux_graphic(img_prompt)
-    except Exception as e:
-        print(f"[SOCIAL WARNING] Rich background generation failed: {e}. Falling back to default layout.", flush=True)
+    if is_catalog:
+        print("[SOCIAL] Generating Multi-Service Catalog Poster...", flush=True)
+        catalog_topic = "complete services overview and brand introduction listing PF, Income Tax, GST, CSC and Compliance"
+        caption, img_prompt, card_title, card_tips, category = generate_daily_post(catalog_topic)
+        img_path = generate_catalog_poster()
+    else:
+        caption, img_prompt, card_title, card_tips, category = generate_daily_post(custom_topic)
         
-    img_path = generate_pillow_graphic(card_title, card_tips, background_path=bg_path, category=category)
+        bg_path = None
+        try:
+            print(f"[SOCIAL] Attempting to generate rich FLUX background image for topic '{custom_topic}'...", flush=True)
+            bg_path = generate_flux_graphic(img_prompt)
+        except Exception as e:
+            print(f"[SOCIAL WARNING] Rich background generation failed: {e}. Falling back to default layout.", flush=True)
+            
+        img_path = generate_pillow_graphic(card_title, card_tips, background_path=bg_path, category=category)
     
     return {
         "caption": caption,
