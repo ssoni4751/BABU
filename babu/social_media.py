@@ -239,15 +239,22 @@ def draw_glass_card(image, x, y, w, h, bg_color=(20, 24, 30, 200), border_color=
     return Image.alpha_composite(image.convert("RGBA"), overlay).convert("RGB")
 
 
+def round_image_corners(im, radius):
+    from PIL import Image, ImageDraw
+    mask = Image.new("L", im.size, 0)
+    draw_mask = ImageDraw.Draw(mask)
+    draw_mask.rounded_rectangle([0, 0, im.size[0], im.size[1]], radius=radius, fill=255)
+    result = Image.new("RGBA", im.size)
+    result.paste(im, (0, 0), mask=mask)
+    return result
+
 def generate_pillow_graphic(title: str, tips: list, background_path: str = None, category: str = "itr") -> str:
-    """Generate a high-fidelity fintech dashboard graphic card using PIL.
+    """Generate a high-fidelity business flyer campaign poster using PIL.
     
-    Loads the creative FLUX backdrop and overlays a floating, highly translucent
-    bilingual header bar at the top, and a sleek, compact horizontal glass panel 
-    at the bottom. This bottom panel includes bullet points and a custom-drawn
-    compliance dial/ring gauge, leaving the center of the image completely open
-    to display the gorgeous FLUX AI illustration. All text sizes are maximized
-    to provide a bold, premium branding presence visible in plain sight.
+    Layout is modeled directly after the user's reference design, featuring
+    clean corporate colors, brand logo, headline tag, structured service card
+    on the left, custom AI illustration/vector on the right, trust badges,
+    CTA banner, and a three-column structured footer. Output size is 1080x1620.
     """
     from PIL import Image, ImageDraw, ImageFont
     import math
@@ -256,160 +263,292 @@ def generate_pillow_graphic(title: str, tips: list, background_path: str = None,
     if category not in ["pf", "itr", "gst", "digital"]:
         category = "itr"
         
-    print(f"[PILLOW] Rendering floating graphic card for category '{category}' and title '{title}'...", flush=True)
+    print(f"[PILLOW] Rendering corporate flyer poster for category '{category}' and title '{title}'...", flush=True)
     
-    # 1. Category Theme Definitions
-    themes = {
-        "pf": {
-            "name": "PF",
-            "theme_color": (19, 115, 51),       # Corporate Green
-            "accent_color": (0, 230, 118),      # Emerald Green
-            "tagline": "EPF Settlement & Compliance Resolution",
-        },
-        "itr": {
-            "name": "ITR",
-            "theme_color": (26, 115, 232),      # Corporate Blue
-            "accent_color": (0, 242, 254),      # Cyan Tech Accent
-            "tagline": "Tax Planning & Accurate ITR Filing",
-        },
-        "gst": {
-            "name": "GST",
-            "theme_color": (232, 113, 10),      # Corporate Orange
-            "accent_color": (255, 215, 0),      # Glowing Gold
-            "tagline": "Seamless GST Registration & Compliance",
-        },
-        "digital": {
-            "name": "DIGITAL",
-            "theme_color": (104, 29, 168),     # Royal Purple
-            "accent_color": (179, 136, 255),    # Electric Violet
-            "tagline": "CSC E-Governance & Citizen Services",
-        }
+    # 1. Theme Configuration
+    theme_color = (15, 34, 64)       # Corporate Navy Blue
+    accent_color = (230, 175, 45)    # Corporate Gold
+    
+    category_colors = {
+        "pf": (19, 115, 51),        # Green
+        "itr": (26, 115, 232),      # Blue
+        "gst": (232, 113, 10),      # Orange
+        "digital": (104, 29, 168)   # Purple
     }
+    category_color = category_colors[category]
     
-    theme = themes[category]
-    theme_color = theme["theme_color"]
-    accent_color = theme["accent_color"]
-    category_tagline = theme["tagline"]
+    category_ribbons = {
+        "pf": ["AAPKA PF", "HAMARI", "ZIMMEDARI"],
+        "itr": ["TAX SAVED", "ACCURATE", "ITR FILING"],
+        "gst": ["GST FILING", "COMPLIANT", "& SECURE"],
+        "digital": ["DIGITAL", "SERVICES", "BY CSC"]
+    }
+    ribbon_text = category_ribbons[category]
     
-    # 2. Load background or create fallback
+    category_headlines = {
+        "pf": "PF FILING MADE EASY!",
+        "itr": "ITR FILING MADE EASY!",
+        "gst": "GST FILING MADE EASY!",
+        "digital": "E-SERVICES MADE EASY!"
+    }
+    headline_text = category_headlines[category]
+    
+    category_tags = {
+        "pf": "Apna PF Claim, Hamare Saath Jaldi, Sahi aur Bharosemand",
+        "itr": "Sahi ITR Filing, Maximum Tax Refund aur Peace of Mind",
+        "gst": "GST Registration, Return Filing aur Comprehensive Compliance Help",
+        "digital": "Aadhaar, PAN Card, Passport aur Government Scheme Applications"
+    }
+    tag_text = category_tags[category]
+    
+    category_card_headers = {
+        "pf": "HAMARI PF SERVICES",
+        "itr": "HAMARI ITR SERVICES",
+        "gst": "HAMARI GST SERVICES",
+        "digital": "HAMARI DIGITAL SERVICES"
+    }
+    card_header_text = category_card_headers[category]
+    
+    category_defaults = {
+        "pf": ["PF Advance Withdrawal", "PF Final Settlement", "PF Member Transfer", "PF KYC Corrections", "Pension & PPO Help", "PF Related Support"],
+        "itr": ["Salary ITR Filing", "Business Tax Filing", "ITR U (Updated Return)", "Tax Planning & Audit", "TDS Return Filing", "Income Tax Help"],
+        "gst": ["GST Registration", "Monthly Return Filing", "Annual Return Filing", "GST Notice Replies", "Reconciliation & ITC", "GST Compliance Support"],
+        "digital": ["Aadhaar Services", "PAN Card Application", "Passport Application", "PM-Kisan & Govt Schemes", "Digital Signature (DSC)", "Citizen E-Services"]
+    }
+    default_list = category_defaults[category]
+    
+    category_ctas = {
+        "pf": ("PF KA KAAM, AB HOGA AARAM SE!", "Sahi Salah, Sahi Process, Sahi Samay par."),
+        "itr": ("ITR FILE KAREN, TAX BACHAYEN!", "Sahi Returns, Sahi Refund, Tension Free."),
+        "gst": ("GST COMPLIANCE MEIN NO DERI!", "Business Badhaye, Compliance Hum Par Chhode."),
+        "digital": ("DIGITAL SARKARI YOJNA KA LABH!", "Aadhaar, PAN aur Passport Aasani Se Banwayen.")
+    }
+    cta_title, cta_desc = category_ctas[category]
+    
+    # 2. Base Canvas
+    width, height = 1080, 1620
+    img = Image.new("RGB", (width, height), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    
+    # Soft light-gray background gradient
+    color_start = (248, 250, 254)
+    color_end = (255, 255, 255)
+    for y in range(height):
+        r = int(color_start[0] + (color_end[0] - color_start[0]) * y / height)
+        g = int(color_start[1] + (color_end[1] - color_start[1]) * y / height)
+        b = int(color_start[2] + (color_end[2] - color_start[2]) * y / height)
+        draw.line([(0, y), (width, y)], fill=(r, g, b))
+        
+    # Top accents
+    draw.polygon([(0, 0), (300, 0), (0, 120)], fill=(235, 242, 255))
+    draw.polygon([(width, 0), (width, 180), (width - 150, 0)], fill=(235, 242, 255))
+    
+    # 3. Fonts
+    font_brand = get_font("Segoeuib", 42)
+    font_brand_sub = get_font("Segoeui", 26)
+    font_ribbon = get_font("Segoeuib", 20)
+    font_headline = get_font("Segoeuib", 64)
+    font_sub_headline = get_font("Segoeuib", 26)
+    font_card_header = get_font("Segoeuib", 26)
+    font_bullet = get_font("Segoeui", 22)
+    font_trust_title = get_font("Segoeuib", 24)
+    font_trust_sub = get_font("Segoeuib", 14)
+    font_cta = get_font("Segoeuib", 32)
+    font_cta_sub = get_font("Segoeui", 20)
+    font_footer_label = get_font("Segoeui", 16)
+    font_footer_val = get_font("Segoeuib", 20)
+    font_bottom_badge = get_font("Segoeuib", 16)
+    
+    # 4. Header Section
+    logo_cx, logo_cy = 100, 95
+    draw.arc([logo_cx - 40, logo_cy - 40, logo_cx + 40, logo_cy + 40], start=45, end=275, fill=accent_color, width=6)
+    draw.arc([logo_cx - 30, logo_cy - 30, logo_cx + 30, logo_cy + 30], start=180, end=90, fill=theme_color, width=4)
+    draw.text((logo_cx, logo_cy - 4), "A", fill=theme_color, font=get_font("Segoeuib", 60), anchor="mm")
+    
+    draw.text((170, 50), "ANSHU", fill=theme_color, font=get_font("Segoeuib", 50))
+    draw.text((170, 105), "COMPUTER & TAX CONSULTANCY", fill=theme_color, font=get_font("Segoeuib", 32))
+    draw.line([(170, 150), (600, 150)], fill=accent_color, width=2)
+    draw.text((170, 158), "PF, Tax & Compliance Solutions", fill=theme_color, font=font_brand_sub)
+    
+    # Right Ribbon Badge
+    ribbon_w, ribbon_h = 240, 110
+    ribbon_x = width - ribbon_w - 40
+    draw.rectangle([ribbon_x, 0, ribbon_x + ribbon_w, ribbon_h], fill=theme_color)
+    draw.rectangle([ribbon_x, ribbon_h - 10, ribbon_x + ribbon_w, ribbon_h], fill=accent_color)
+    draw.polygon([(ribbon_x, ribbon_h), (ribbon_x + ribbon_w/2, ribbon_h + 30), (ribbon_x + ribbon_w, ribbon_h)], fill=theme_color)
+    
+    draw.text((ribbon_x + ribbon_w/2, 35), ribbon_text[0], fill=(255, 255, 255), font=font_ribbon, anchor="mm")
+    draw.text((ribbon_x + ribbon_w/2, 65), ribbon_text[1], fill=accent_color, font=font_ribbon, anchor="mm")
+    draw.text((ribbon_x + ribbon_w/2, 95), ribbon_text[2], fill=(255, 255, 255), font=font_ribbon, anchor="mm")
+    
+    # 5. Headline Section
+    draw.text((60, 230), headline_text, fill=theme_color, font=font_headline)
+    
+    # Yellow tag capsule
+    tag_rect = [60, 310, 800, 365]
+    draw.rounded_rectangle(tag_rect, radius=12, fill=accent_color)
+    draw.text((430, 337), tag_text, fill=theme_color, font=font_sub_headline, anchor="mm")
+    
+    # 6. Main Section: Left Card
+    card_x1, card_y1, card_x2, card_y2 = 60, 420, 520, 1180
+    draw.rounded_rectangle([card_x1 + 3, card_y1 + 3, card_x2 + 3, card_y2 + 3], radius=16, fill=(230, 235, 245))
+    draw.rounded_rectangle([card_x1, card_y1, card_x2, card_y2], radius=16, fill=(255, 255, 255), outline=(215, 220, 230), width=2)
+    
+    draw.rounded_rectangle([card_x1, card_y1, card_x2, card_y1 + 65], radius=16, fill=theme_color)
+    draw.rectangle([card_x1, card_y1 + 40, card_x2, card_y1 + 65], fill=theme_color)
+    draw.text(((card_x1 + card_x2)/2, card_y1 + 32), card_header_text, fill=(255, 255, 255), font=font_card_header, anchor="mm")
+    
+    # Bullets blending
+    merged_bullets = []
+    for tip in tips:
+        cleaned = str(tip).strip().replace("\n", " ")
+        if cleaned:
+            merged_bullets.append(cleaned)
+    for d_bullet in default_list:
+        if len(merged_bullets) >= 6:
+            break
+        if d_bullet not in merged_bullets:
+            merged_bullets.append(d_bullet)
+            
+    start_y = 530
+    spacing = 105
+    for idx, bullet in enumerate(merged_bullets[:6]):
+        by = start_y + idx * spacing
+        icon_cx, icon_cy = card_x1 + 45, by + 10
+        draw.ellipse([icon_cx - 22, icon_cy - 22, icon_cx + 22, icon_cy + 22], fill=category_color)
+        
+        # Draw checkmark
+        draw.line([(icon_cx - 7, icon_cy), (icon_cx - 2, icon_cy + 5)], fill=(255, 255, 255), width=3)
+        draw.line([(icon_cx - 2, icon_cy + 5), (icon_cx + 8, icon_cy - 5)], fill=(255, 255, 255), width=3)
+        
+        # Multiline text wrap helper
+        words = bullet.split(" ")
+        line1, line2 = "", ""
+        if len(words) > 3:
+            line1 = " ".join(words[:3])
+            line2 = " ".join(words[3:])
+        else:
+            line1 = bullet
+            
+        draw.text((card_x1 + 85, by - 5), line1, fill=theme_color, font=get_font("Segoeuib", 20))
+        if line2:
+            draw.text((card_x1 + 85, by + 18), line2, fill=(80, 90, 105), font=get_font("Segoeui", 16))
+            
+    # 7. Right Section: Custom AI backdrop illustration
+    illustration_rect = [560, 420, 1020, 850]
+    draw.rounded_rectangle(illustration_rect, radius=20, fill=(245, 248, 255), outline=(215, 220, 230), width=2)
+    
+    has_custom_bg = False
     if background_path and os.path.exists(background_path):
         try:
-            img = Image.open(background_path).convert("RGB").resize((1080, 1080), Image.Resampling.LANCZOS)
-            print("[PILLOW] Loaded rich FLUX background graphic successfully, resized to 1080x1080.", flush=True)
+            bg_im = Image.open(background_path).convert("RGBA").resize((460, 430), Image.Resampling.LANCZOS)
+            bg_rounded = round_image_corners(bg_im, radius=20)
+            img.paste(bg_rounded, (560, 420), mask=bg_rounded)
+            has_custom_bg = True
+            print("[PILLOW] Integrated custom FLUX background graphic successfully into flyer card.", flush=True)
         except Exception as e:
-            print(f"[PILLOW WARNING] Failed to open background image: {e}. Falling back to gradient.", flush=True)
-            background_path = None
+            print(f"[PILLOW WARNING] Failed to blend custom image: {e}", flush=True)
             
-    if not background_path:
-        img = Image.new("RGB", (1080, 1080), (13, 17, 23))
-        # Draw gradient background matching the category theme
-        gradient_end = (int(theme_color[0]*0.3), int(theme_color[1]*0.3), int(theme_color[2]*0.3))
-        draw_gradient_background(img, (10, 12, 18), gradient_end)
-        # Draw tech grid
-        img = draw_tech_grid(img, grid_size=60, color=(accent_color[0], accent_color[1], accent_color[2], 12))
+    if not has_custom_bg:
+        # Fallback vector phone drawing
+        phone_cx, phone_cy = 790, 630
+        draw.rectangle([phone_cx - 60, phone_cy - 120, phone_cx + 60, phone_cy + 120], fill=(255, 255, 255), outline=theme_color, width=4)
+        draw.ellipse([phone_cx - 24, phone_cy - 40, phone_cx + 24, phone_cy + 8], fill=(76, 175, 80))
+        draw.line([(phone_cx - 9, phone_cy - 18), (phone_cx - 2, phone_cy - 11)], fill=(255, 255, 255), width=3)
+        draw.line([(phone_cx - 2, phone_cy - 11), (phone_cx + 10, phone_cy - 23)], fill=(255, 255, 255), width=3)
+        draw.text((phone_cx, phone_cy + 40), "SUCCESS!", fill=theme_color, font=get_font("Segoeuib", 14), anchor="mm")
+        draw.text((phone_cx, phone_cy + 65), "TENSION FREE", fill=category_color, font=get_font("Segoeuib", 12), anchor="mm")
+        draw.text((phone_cx, phone_cy - 160), "👉 Safe & Smart", fill=theme_color, font=get_font("Segoeuib", 20), anchor="mm")
         
-    # 3. Fonts Loading (Enlarged for supreme visibility and readability)
-    font_brand = get_font("Segoeuib", 38)            # Bold, prominent brand title
-    font_logo = get_font("Segoeuib", 44)             # Authoritative emblem text
-    font_title = get_font("Segoeuib", 42)            # Clear card header
-    font_tips = get_font("Segoeui", 26)              # Highly visible bullet body
-    font_tips_bold = get_font("Segoeuib", 26)         # Step digits
-    font_footer_details = get_font("Segoeui", 20)     # Clean contact info
-    font_footer_stats = get_font("Segoeui", 18)       # Crisp trust stats
-    font_hindi_slogan = get_font("Nirmala", 20)       # Clear, visible Devanagari slogan
+    # 8. Right Section: Trust Card (Safe & Secure)
+    trust_x1, trust_y1, trust_x2, trust_y2 = 560, 900, 1020, 1180
+    draw.rounded_rectangle([trust_x1 + 3, trust_y1 + 3, trust_x2 + 3, trust_y2 + 3], radius=16, fill=(230, 235, 245))
+    draw.rounded_rectangle([trust_x1, trust_y1, trust_x2, trust_y2], radius=16, fill=theme_color, outline=accent_color, width=2)
     
-    # 4. Draw Floating Header Bar (y = 30 to 190, expanded height = 160)
-    # Background glass panel for header (45% opacity for solid contrast against busy visuals)
-    img = draw_glass_card(img, 40, 30, 1000, 160, bg_color=(10, 16, 28, 115), border_color=(accent_color[0], accent_color[1], accent_color[2], 130), border_width=2, radius=20)
+    badge_cx, badge_cy = trust_x1 + 65, trust_y1 + 60
+    draw.ellipse([badge_cx - 25, badge_cy - 25, badge_cx + 25, badge_cy + 25], fill=accent_color)
+    draw.line([(badge_cx - 8, badge_cy), (badge_cx - 2, badge_cy + 6)], fill=theme_color, width=4)
+    draw.line([(badge_cx - 2, badge_cy + 6), (badge_cx + 10, badge_cy - 6)], fill=theme_color, width=4)
     
-    draw = ImageDraw.Draw(img)
+    draw.text((trust_x1 + 110, trust_y1 + 45), "100%", fill=accent_color, font=get_font("Segoeuib", 36))
+    draw.text((trust_x1 + 110, trust_y1 + 85), f"SAFE & SECURE {category.upper()}", fill=(255, 255, 255), font=get_font("Segoeuib", 18))
     
-    # Helper to draw a regular hexagon
-    def draw_hexagon(d, cx, cy, r, f, o=None, w=1):
-        pts = []
-        for i in range(6):
-            angle = math.radians(60 * i - 30)
-            px = cx + r * math.cos(angle)
-            py = cy + r * math.sin(angle)
-            pts.append((px, py))
-        d.polygon(pts, fill=f, outline=o, width=w)
+    # Mini stats row
+    stats_y = trust_y1 + 138
+    stats_cx = [trust_x1 + 80, trust_x1 + 230, trust_x1 + 380]
+    labels = [
+        ("FAST", "PROCESS"),
+        ("EXPERT", "SUPPORT"),
+        ("TRUSTED BY", "HUNDREDS")
+    ]
+    for idx, cx in enumerate(stats_cx):
+        draw.ellipse([cx - 15, stats_y - 15, cx + 15, stats_y + 15], fill=(255, 255, 255, 30))
+        draw.line([(cx - 5, stats_y), (cx - 1, stats_y + 4)], fill=accent_color, width=2)
+        draw.line([(cx - 1, stats_y + 4), (cx + 5, stats_y - 2)], fill=accent_color, width=2)
         
-    # Hexagon Logo emblem
-    logo_cx, logo_cy = 100, 110
-    draw_hexagon(draw, logo_cx, logo_cy, 36, (19, 115, 51), o=(255, 255, 255), w=2)
-    draw.text((logo_cx, logo_cy - 2), "A", fill=(255, 255, 255), font=font_logo, anchor="mm")
-    
-    # Brand title
-    draw.text((160, 85), "ANSHU COMPUTER & TAX CONSULTANCY", fill=(255, 255, 255), font=font_brand, anchor="lm")
-    
-    # Header slogan / subtitle (Devanagari Poppins)
-    slogan_text = "आस्था भरोसा, हमारी जिम्मेदारी  •  TAX • PF • GST • DIGITAL SOLUTIONS"
-    draw.text((160, 138), slogan_text, fill=accent_color, font=font_hindi_slogan, anchor="lm")
-    
-    # Category capsule badge in top-right
-    badge_w, badge_h = 200, 44
-    badge_x, badge_y = 1010 - badge_w, 88
-    badge_rgba = (theme_color[0], theme_color[1], theme_color[2], 160)
-    draw.rounded_rectangle([badge_x, badge_y, badge_x + badge_w, badge_y + badge_h], radius=22, fill=badge_rgba, outline=accent_color, width=2)
-    draw.text((badge_x + badge_w/2, badge_y + badge_h/2), f"{theme['name']} SERVICE", fill=(255, 255, 255), font=get_font("Segoeuib", 18), anchor="mm")
-    
-    # 5. Draw Bottom Info Dashboard (y = 560 to 1030, height = 470)
-    # Lighter glass panel for bottom dashboard (55% opacity)
-    img = draw_glass_card(img, 40, 560, 1000, 470, bg_color=(10, 16, 28, 140), border_color=(accent_color[0], accent_color[1], accent_color[2], 150), border_width=3, radius=24)
-    
-    # Refresh draw interface
-    draw = ImageDraw.Draw(img)
-    
-    # --- Left Column (Text & Tips) ---
-    # Section Tagline
-    draw.text((80, 600), category_tagline.upper(), fill=accent_color, font=get_font("Segoeuib", 18), anchor="lm")
-    # Large Section Title
-    draw.text((80, 640), title, fill=(255, 255, 255), font=font_title, anchor="lm")
-    
-    # Draw checkmark bullet points
-    start_y = 705
-    spacing = 70
-    for idx, tip in enumerate(tips[:3]):
-        y_pos = start_y + idx * spacing
-        cx, cy = 100, y_pos
+        lbl1, lbl2 = labels[idx]
+        draw.text((cx, stats_y + 25), lbl1, fill=(255, 255, 255), font=font_trust_sub, anchor="mm")
+        draw.text((cx, stats_y + 40), lbl2, fill=accent_color, font=font_trust_sub, anchor="mm")
         
-        # Draw checkmark circle in theme color
-        draw.ellipse([cx - 15, cy - 15, cx + 15, cy + 15], fill=theme_color, outline=accent_color, width=2)
-        # Draw custom tick symbol programmatically
-        draw.line([(cx - 6, cy), (cx - 2, cy + 4)], fill=(255, 255, 255), width=2)
-        draw.line([(cx - 2, cy + 4), (cx + 8, cy - 4)], fill=(255, 255, 255), width=2)
+    # 9. Yellow CTA Banner
+    cta_rect = [0, 1220, width, 1315]
+    draw.rectangle(cta_rect, fill=accent_color)
+    draw.text((80, 1267), cta_title, fill=theme_color, font=font_cta, anchor="lm")
+    draw.text((width - 80, 1267), cta_desc, fill=theme_color, font=font_cta_sub, anchor="rm")
+    
+    # 10. Bottom Footer Section (Navy background with complete contact details)
+    footer_rect = [0, 1315, width, height]
+    draw.rectangle(footer_rect, fill=theme_color)
+    
+    # --- Row 1: Gold divider bar with Call/WhatsApp + Email ---
+    bar_y = 1325
+    draw.rectangle([0, bar_y, width, bar_y + 40], fill=accent_color)
+    draw.text((width/2, bar_y + 20), "📞 Call / WhatsApp: +91 7217646673   •   ✉ Email: anshucomputerorai@gmail.com", fill=theme_color, font=get_font("Segoeuib", 16), anchor="mm")
+    
+    # --- Row 2: Website URL (centered, prominent) ---
+    web_y = 1380
+    draw.text((width/2, web_y), "🌐", fill=accent_color, font=get_font("Segoeui", 18), anchor="mm")
+    draw.text((width/2, web_y + 25), "anshu-computer-and-tax-consultants.onrender.com", fill=(255, 255, 255), font=get_font("Segoeuib", 18), anchor="mm")
+    
+    # --- Row 3: Three columns - Address | Twitter | WhatsApp ---
+    row3_y = 1430
+    
+    # Thin separator line
+    draw.line([(60, row3_y - 5), (width - 60, row3_y - 5)], fill=(50, 70, 100), width=1)
+    
+    # Col 1: Visit Us (Address)
+    col1_cx = 180
+    draw.ellipse([col1_cx - 16, row3_y + 12, col1_cx + 16, row3_y + 44], fill=accent_color)
+    draw.text((col1_cx, row3_y + 28), "📍", fill=theme_color, font=get_font("Segoeui", 14), anchor="mm")
+    draw.text((col1_cx + 30, row3_y + 10), "VISIT US", fill=(180, 195, 220), font=get_font("Segoeui", 13), anchor="lm")
+    draw.text((col1_cx + 30, row3_y + 28), "Kaushal Market, Rath Road", fill=(255, 255, 255), font=get_font("Segoeuib", 14), anchor="lm")
+    draw.text((col1_cx + 30, row3_y + 46), "Orai (Jalaun) U.P. - 285001", fill=(200, 210, 230), font=get_font("Segoeui", 13), anchor="lm")
+    
+    # Col 2: Twitter/X
+    col2_cx = 560
+    draw.ellipse([col2_cx - 16, row3_y + 12, col2_cx + 16, row3_y + 44], fill=accent_color)
+    draw.text((col2_cx, row3_y + 28), "𝕏", fill=theme_color, font=get_font("Segoeuib", 16), anchor="mm")
+    draw.text((col2_cx + 30, row3_y + 10), "FOLLOW US", fill=(180, 195, 220), font=get_font("Segoeui", 13), anchor="lm")
+    draw.text((col2_cx + 30, row3_y + 32), "@ssoni0007", fill=(255, 255, 255), font=get_font("Segoeuib", 18), anchor="lm")
+    
+    # Col 3: WhatsApp Available
+    col3_cx = 830
+    draw.ellipse([col3_cx - 16, row3_y + 12, col3_cx + 16, row3_y + 44], fill=(37, 211, 102))
+    draw.text((col3_cx, row3_y + 28), "💬", fill=(255, 255, 255), font=get_font("Segoeui", 14), anchor="mm")
+    draw.text((col3_cx + 30, row3_y + 10), "WHATSAPP", fill=(180, 195, 220), font=get_font("Segoeui", 13), anchor="lm")
+    draw.text((col3_cx + 30, row3_y + 32), "Available", fill=(37, 211, 102), font=get_font("Segoeuib", 18), anchor="lm")
+    
+    # --- Row 4: Bottom Trust Ribbon (White background) ---
+    ribbon_y1 = height - 65
+    draw.rectangle([0, ribbon_y1, width, height], fill=(255, 255, 255))
+    draw.line([(0, ribbon_y1), (width, ribbon_y1)], fill=accent_color, width=3)
+    
+    ribbon_cx = [200, 540, 880]
+    ribbon_labels = ["★ EXPERT TEAM", "★ ON TIME SERVICE", "★ YOUR TRUST OUR PRIORITY"]
+    for idx, cx in enumerate(ribbon_cx):
+        draw.text((cx, ribbon_y1 + 33), ribbon_labels[idx], fill=theme_color, font=font_bottom_badge, anchor="mm")
         
-        # Step number in accent color
-        draw.text((140, y_pos), f"0{idx+1}.", fill=accent_color, font=font_tips_bold, anchor="lm")
-        # Tip body text in white
-        draw.text((190, y_pos), tip, fill=(255, 255, 255), font=font_tips, anchor="lm")
-        
-    # --- Right Column (Creative circular progress dial) ---
-    # Center of dial
-    dial_cx, dial_cy = 840, 735
-    dial_r = 75
-    # Background track arc
-    draw.arc([dial_cx - dial_r, dial_cy - dial_r, dial_cx + dial_r, dial_cy + dial_r], start=-225, end=45, fill=(255, 255, 255, 30), width=12)
-    # Glowing active track (98% compliance = spanning 260 degrees of arc)
-    draw.arc([dial_cx - dial_r, dial_cy - dial_r, dial_cx + dial_r, dial_cy + dial_r], start=-225, end=35, fill=accent_color, width=12)
-    
-    # Inner Dial Text
-    draw.text((dial_cx, dial_cy - 10), "98%", fill=(255, 255, 255), font=get_font("Segoeuib", 32), anchor="mm")
-    draw.text((dial_cx, dial_cy + 22), "Accuracy", fill=accent_color, font=get_font("Segoeui", 16), anchor="mm")
-    # Under Dial Label
-    draw.text((dial_cx, dial_cy + 95), "Compliance Score", fill=(170, 185, 200), font=get_font("Segoeuib", 16), anchor="mm")
-    
-    # --- Footer Area ---
-    # Thin divider line
-    draw.line([(80, 915), (1000, 915)], fill=(255, 255, 255, 30), width=1)
-    
-    # Contact Details Line (Bilingual + Trust stats)
-    draw.text((540, 945), "Phone: +91 7217646673    |    Web: anshu-computer-and-tax-consultants.onrender.com", fill=(170, 185, 200), font=font_footer_details, anchor="mm")
-    
-    footer_stats_text = "Rated 5.0  •  23+ Verified Google Reviews  •  Serving Nationwide"
-    draw.text((540, 980), footer_stats_text, fill=accent_color, font=font_footer_stats, anchor="mm")
-    
-    # Save output with a unique filename to prevent overwriting/race conditions
+    # Save output with a unique filename
     import uuid
     current_dir = os.path.dirname(os.path.abspath(__file__))
     temp_dir = os.path.join(current_dir, "temp")
@@ -417,7 +556,7 @@ def generate_pillow_graphic(title: str, tips: list, background_path: str = None,
     unique_id = uuid.uuid4().hex[:8]
     image_path = os.path.join(temp_dir, f"daily_post_{unique_id}.jpg")
     img.save(image_path, "JPEG", quality=95)
-    print(f"[PILLOW] High-fidelity centered floating card saved to: {image_path}", flush=True)
+    print(f"[PILLOW] High-fidelity flyer card saved to: {image_path}", flush=True)
     return image_path
 
 

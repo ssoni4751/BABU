@@ -97,11 +97,12 @@ def main():
         print("❌ ERROR: TELEGRAM_BOT_TOKEN or TELEGRAM_USER_CHAT_ID missing from .env")
         sys.exit(1)
 
-    # Step 1 & 2: Generate social post draft (forcing catalog poster style for preview)
-    print("\n[STEP 1 & 2] Generating social post draft (forcing Catalog style)...")
+    # Step 1 & 2: Generate social post draft (single-service promotional flyer)
+    print("\n[STEP 1 & 2] Generating single-service promotional poster...")
     try:
         from babu.social_media import generate_social_post_draft
-        draft = generate_social_post_draft("FORCE_CATALOG")
+        # Force a PF service topic to guarantee single-service promotional flyer
+        draft = generate_social_post_draft("PF Withdrawal Services & EPF Claim Settlement solutions")
         caption = draft["caption"]
         img_path = draft["image_path"]
     except Exception as e:
