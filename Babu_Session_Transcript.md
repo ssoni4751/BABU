@@ -230,7 +230,7 @@ Once you provide the key, we'll be ready to bring BABU live!
 
 ### 👤 User (2026-05-24 06:36)
 
-grok api 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
+grok api [REDACTED_GROQ_KEY]
 
 
 ### 🤖 Antigravity Assistant (2026-05-24 06:37)
@@ -1548,7 +1548,7 @@ I see you already have the **Render** tab open in your browser! Let's get the bo
 6. Scroll down to the **Instance Type** section and make sure the **Free** tier is selected.
 7. Click the **Advanced** button at the bottom of the page and find the **Environment Vbabubles** section. Add these two keys:
    *   `TELEGRAM_BOT_TOKEN` = `8604192307:AAH4slCPMvsB3UeH04CZwpDSmGDoj8gn70o`
-   *   `GROQ_API_KEY` = `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`
+   *   `GROQ_API_KEY` = `[REDACTED_GROQ_KEY]`
 8. Click **Create Web Service** at the bottom of the page!
 
 Render will now start building and launching your bot. Let me know once you click Create Web Service and if you run into any issues during the build!
@@ -1594,7 +1594,7 @@ Now, open your **Render Dashboard** tab that you have open at the top, and follo
 5. Ensure the **Free** tier is selected under **Instance Type**.
 6. Click the **Advanced** button at the bottom of the page, and add these two **Environment Vbabubles**:
    *   `TELEGRAM_BOT_TOKEN` = `8604192307:AAH4slCPMvsB3UeH04CZwpDSmGDoj8gn70o`
-   *   `GROQ_API_KEY` = `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`
+   *   `GROQ_API_KEY` = `[REDACTED_GROQ_KEY]`
 7. Click **Create Web Service**!
 
 Let me know once you've started the Render deployment, and we'll watch the logs build together!
@@ -2327,7 +2327,7 @@ Let me know once you have committed these and successfully run `/model` in Teleg
 
 ### 👤 User (2026-05-24 12:56)
 
-Gemini API Key AIzaSyDvdk3YviRanZywosse2rF8ZumBGzZqLbc
+Gemini API Key [REDACTED_GEMINI_KEY]
 
 
 ### 🤖 Antigravity Assistant (2026-05-24 12:59)
@@ -2355,7 +2355,7 @@ Before uploading the code, let's configure your key in Render so the bot can rea
 4. Click **Add Environment Vbabuble**.
 5. Set:
    *   **Key:** `GEMINI_API_KEY`
-   *   **Value:** `AIzaSyDvdk3YviRanZywosse2rF8ZumBGzZqLbc` *(Your actual key!)*
+   *   **Value:** `[REDACTED_GEMINI_KEY]` *(Your actual key!)*
 6. Click **Save Changes** at the bottom of the page.
 
 ---
