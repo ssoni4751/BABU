@@ -82,3 +82,8 @@ temp/
 attached_assets/
 scratch/
 
+# Backups & Archives
+babu_backup.zip
+*.zip
+*.tar.gz
+*.tgz
