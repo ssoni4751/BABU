@@ -1283,6 +1283,8 @@ def send_facebook_comment_reply(comment_id: str, message_text: str) -> tuple[boo
 def process_facebook_webhook_event(payload: dict):
     """Process incoming Meta Webhook events (Messenger DMs & Post Comments) and auto-reply."""
     try:
+        page_id = os.environ.get("FACEBOOK_PAGE_ID", "")
+        print(f"[FACEBOOK WEBHOOK RAW PAYLOAD] {json.dumps(payload)}", flush=True)
         entries = payload.get("entry", [])
         for entry in entries:
             # 1. Handle Messenger DMs
@@ -1293,7 +1295,7 @@ def process_facebook_webhook_event(payload: dict):
                 user_text = message.get("text")
                 is_echo = message.get("is_echo", False)
                 
-                if sender_id and user_text and not is_echo:
+                if sender_id and user_text and not is_echo and sender_id != page_id:
                     print(f"[FACEBOOK WEBHOOK] Incoming DM from {sender_id}: '{user_text}'", flush=True)
                     # Generate AI answer using BABU PA/Services
                     try:
@@ -1323,15 +1325,22 @@ def process_facebook_webhook_event(payload: dict):
             # 2. Handle Post Comments
             changes = entry.get("changes", [])
             for change in changes:
+                field = change.get("field")
                 value = change.get("value", {})
                 item = value.get("item")
-                verb = value.get("verb")
-                comment_id = value.get("comment_id")
+                verb = value.get("verb", "add")
+                comment_id = value.get("comment_id") or value.get("id")
                 comment_text = value.get("message")
+                sender_id = value.get("from", {}).get("id")
                 sender_name = value.get("from", {}).get("name", "Customer")
                 
-                if item == "comment" and verb == "add" and comment_id and comment_text:
-                    print(f"[FACEBOOK WEBHOOK] Incoming Comment from {sender_name} on comment {comment_id}: '{comment_text}'", flush=True)
+                # Filter out self-comments from Page itself
+                if sender_id and str(sender_id) == str(page_id):
+                    print(f"[FACEBOOK WEBHOOK] Skipping self-comment by Page Admin ({sender_name})", flush=True)
+                    continue
+
+                if (field == "feed" or item in ("comment", "post")) and verb in ("add", "created") and comment_id and comment_text:
+                    print(f"[FACEBOOK WEBHOOK] Incoming Comment from {sender_name} ({sender_id}) on comment {comment_id}: '{comment_text}'", flush=True)
                     sys_prompt = (
                         "You are JARVIS, replying publicly to a comment on an Anshu Computer & Tax Consultancy Facebook post. "
                         "Draft a polite, short 1-2 sentence response thanking them and offering quick expert assistance for ITR, GST, or PF consultancy. Plain text only."
@@ -1348,5 +1357,6 @@ def process_facebook_webhook_event(payload: dict):
 
     except Exception as e:
         print(f"[FACEBOOK WEBHOOK ERROR] Exception in process_facebook_webhook_event: {e}", flush=True)
+
 
   
