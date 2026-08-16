@@ -1065,6 +1065,19 @@ def publish_to_facebook_page(image_path: str, caption: str) -> tuple[bool, str]:
                 # Auto-backup to Google Drive if credentials exist
                 try:
                     try:
+                        from .services import get_business_profile_text
+                    except ImportError:
+                        from services import get_business_profile_text
+                    
+                    profile_info = get_business_profile_text()
+                    sys_prompt = (
+                        "You are JARVIS, the official AI Customer Support Assistant for 'Anshu Computer & Tax Consultancy' "
+                        "(Kaushal Market, Rath Road, Orai, UP, India). "
+                        "Answer using the provided official Business Context and Client FAQs. "
+                        "Keep your reply friendly, helpful, professional, and concise (under 3-4 sentences). "
+                        "Plain text only, no markdown stars."
+                    )
+                    try:
                         from .google_service import upload_file_to_drive
                     except ImportError:
                         from google_service import upload_file_to_drive

@@ -1297,19 +1297,17 @@ def process_facebook_webhook_event(payload: dict):
                     print(f"[FACEBOOK WEBHOOK] Incoming DM from {sender_id}: '{user_text}'", flush=True)
                     # Generate AI answer using BABU PA/Services
                     try:
-                        from .gateway import get_babu_self_context
-                        from .services import get_user_profile_text
+                        from .services import get_business_profile_text
                     except ImportError:
-                        from gateway import get_babu_self_context
-                        from services import get_user_profile_text
+                        from services import get_business_profile_text
                     
-                    profile_info = get_user_profile_text()
+                    profile_info = get_business_profile_text()
                     sys_prompt = (
                         "You are JARVIS, the official AI Customer Support Assistant for 'Anshu Computer & Tax Consultancy' "
-                        "(run by Shubham Swarnkar / Anshu in Kaushal Market, Rath Road, Orai, UP, India). "
+                        "(Kaushal Market, Rath Road, Orai, UP, India). "
+                        "Answer using the provided official Business Context and Client FAQs. "
                         "Keep your reply friendly, helpful, professional, and concise (under 3-4 sentences). "
-                        "Mention relevant consultancy services (ITR Filing, GST Registration, PF Claims & Corrections, CSC digital services) "
-                        "and encourage them to visit the office or contact Anshu directly. Plain text only, no markdown stars."
+                        "Plain text only, no markdown stars."
                     )
                     
                     try:

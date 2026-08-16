@@ -363,6 +363,42 @@ def load_user_profile() -> dict:
 
 USER_PROFILE = load_user_profile()
 
+BUSINESS_PROFILE_PATH = os.path.join(os.path.dirname(__file__), "business_profile.json")
+
+def load_business_profile() -> dict:
+    if os.path.exists(BUSINESS_PROFILE_PATH):
+        try:
+            with open(BUSINESS_PROFILE_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"[BUSINESS PROFILE LOAD ERROR] {e}", flush=True)
+    return {}
+
+def get_business_profile_text() -> str:
+    """Format decoupled public business facts and client FAQs for public customer support (Facebook/Web)."""
+    bp = load_business_profile()
+    if not bp:
+        return ""
+    
+    lines = [
+        f"Business Name: {bp.get('business_name')}",
+        f"Business Type: {bp.get('business_type')}",
+        f"Office Location: {bp.get('location', {}).get('office')}",
+        f"Contact Phone/WhatsApp: {bp.get('contact', {}).get('whatsapp')}",
+        f"Contact Email: {bp.get('contact', {}).get('email')}",
+        "\nCore Services Offered:",
+        f"- PF Consultancy: {', '.join(bp.get('core_services', {}).get('pf_consultancy', []))}",
+        f"- Income Tax Services: {', '.join(bp.get('core_services', {}).get('tax_services', []))}",
+        f"- GST Services: {', '.join(bp.get('core_services', {}).get('gst_services', []))}",
+        f"- CSC E-Governance: {', '.join(bp.get('core_services', {}).get('csc_e_governance_services', []))}",
+        "\nOfficial Client FAQs & Pricing Guidelines:"
+    ]
+    
+    for faq in bp.get("client_faqs", []):
+        lines.append(f"Q: {faq.get('question')}\nA: {faq.get('answer')}\n")
+        
+    return "\n".join(lines)
+
 def get_current_profile() -> dict:
     return load_user_profile()
 

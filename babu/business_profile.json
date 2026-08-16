@@ -1,0 +1,101 @@
+{
+  "business_name": "Anshu Computer & Tax Consultancy",
+  "legacy_name": "Anshu Computer and CSC Centre",
+  "business_type": "Tax, Compliance and E-Governance Consultancy",
+  "location": {
+    "office": "Kaushal Market, Rath Road, Orai, Uttar Pradesh, India",
+    "service_area": "India"
+  },
+  "contact": {
+    "website": "https://anshu-computer-and-tax-consultants.onrender.com",
+    "email": "anshucomputerorai@gmail.com",
+    "whatsapp": "+91 7217646673",
+    "x_twitter": "@ssoni0007"
+  },
+  "core_services": {
+    "pf_consultancy": [
+      "PF Claim Settlement",
+      "UAN Consolidation",
+      "KYC Correction",
+      "Name/DOB Correction",
+      "Joint Declaration",
+      "Ex-Employer Cases",
+      "PF Transfer"
+    ],
+    "tax_services": [
+      "ITR Filing",
+      "Tax Computation",
+      "Tax Compliance",
+      "Tax Notice Assistance"
+    ],
+    "gst_services": [
+      "GST Registration",
+      "GST Filing",
+      "GSTR-1",
+      "GSTR-3B",
+      "GST Compliance"
+    ],
+    "csc_e_governance_services": [
+      "Digital Citizen Services",
+      "Jeevan Pramaan",
+      "Government Registrations",
+      "Online Applications",
+      "Document Services"
+    ]
+  },
+  "target_customers": [
+    "Salaried Employees",
+    "Small Business Owners",
+    "Shopkeepers",
+    "PF Claimants",
+    "Pensioners",
+    "MSMEs"
+  ],
+  "business_positioning": {
+    "primary": "Tax and Compliance Consultancy",
+    "secondary": "CSC E-Governance Services",
+    "specialization": "PF Consultancy and Compliance Resolution"
+  },
+  "brand_principles": [
+    "Accuracy First",
+    "Compliance Focused",
+    "Trust Based Service",
+    "Problem Solving Approach",
+    "Digital First Operations"
+  ],
+  "marketing_identity": {
+    "preferred_brand": "Anshu Computer & Tax Consultancy",
+    "avoid_positioning_as": "Only a CSC Centre",
+    "tagline": "PF, Tax & Compliance Solutions"
+  },
+  "growth_focus": [
+    "PF Consultancy Expansion",
+    "GST Retainer Services",
+    "Annual ITR Clients",
+    "Local SEO",
+    "WhatsApp Lead Generation",
+    "Nationwide Digital Consultancy"
+  ],
+  "client_faqs": [
+    {
+      "question": "Where is your shop or consultancy located?",
+      "answer": "Anshu Computer & Tax Consultancy is located at Kaushal Market, Rath Road, Orai, Uttar Pradesh, India. Open Monday to Saturday from 9:30 AM to 8:00 PM."
+    },
+    {
+      "question": "What are your service charges?",
+      "answer": "Our service charges are highly affordable and depend on the specific work (ITR Filing, GST Registration, or PF Claim Resolution). For a quick transparent quote, call/WhatsApp us at +91 7217646673 or visit our consultancy in Kaushal Market, Orai."
+    },
+    {
+      "question": "What services do you offer?",
+      "answer": "We specialize in: 1) PF Consultancy (PF Claim Settlement, UAN Consolidation, KYC Correction, Name/DOB Correction, Joint Declaration, Ex-Employer Cases), 2) Tax Services (Income Tax Return - ITR Filing, Tax Computation, Notice Assistance), 3) GST Services (New GST Registration, GSTR-1, GSTR-3B Monthly Filing), and 4) CSC Digital Services (Digital Citizen Services, Jeevan Pramaan, Pension & Govt Registrations)."
+    },
+    {
+      "question": "What documents are required for PF Withdrawal or Correction?",
+      "answer": "For PF claim settlement or KYC correction, please bring your Aadhaar Card, PAN Card, Bank Passbook or Cancelled Cheque, UAN Number, and registered Mobile Number."
+    },
+    {
+      "question": "What documents are required for ITR Filing?",
+      "answer": "For Income Tax Return filing, please bring Form 16 (if salaried), Bank Statements for the financial year, Aadhaar Card, PAN Card, and investment proof documents."
+    }
+  ]
+}
