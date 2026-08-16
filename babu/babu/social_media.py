@@ -589,7 +589,8 @@ def generate_flux_graphic(prompt: str) -> str:
 
 
 def publish_to_facebook_page(image_path: str, caption: str) -> tuple[bool, str]:
-    """Publish the photo (if provided) or caption to Facebook Page via Graph API."""
+    """Publish photo or caption directly to the Facebook Page Timeline Feed via Graph API."""
+    import json
     page_id = os.environ.get("FACEBOOK_PAGE_ID")
     page_token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN")
     
@@ -599,28 +600,74 @@ def publish_to_facebook_page(image_path: str, caption: str) -> tuple[bool, str]:
     has_image = image_path and os.path.exists(image_path)
     
     if has_image:
-        url = f"https://graph.facebook.com/v19.0/{page_id}/photos"
+        # Step 1: Upload photo to /{page_id}/photos as published=false to obtain media_fbid
+        photo_url = f"https://graph.facebook.com/v19.0/{page_id}/photos"
         try:
             with open(image_path, "rb") as img_file:
-                files = {
-                    "source": img_file
-                }
+                files = {"source": img_file}
                 data = {
-                    "message": caption,
+                    "published": "false",
                     "access_token": page_token
                 }
-                print(f"[FACEBOOK] Publishing photo to page {page_id}...", flush=True)
-                response = requests.post(url, files=files, data=data, timeout=30)
+                print(f"[FACEBOOK] Step 1: Uploading media asset to page {page_id} (published=false)...", flush=True)
+                response = requests.post(photo_url, files=files, data=data, timeout=30)
                 
             res_json = response.json()
-            if response.status_code == 200 and "id" in res_json:
-                post_id = res_json["id"]
-                return True, f"Successfully published to Facebook Page! Post ID: {post_id}"
+            if response.status_code != 200 or "id" not in res_json:
+                # Fallback: if published=false fails, try legacy direct photo upload
+                error_msg = res_json.get("error", {}).get("message", "Unknown Graph API photo upload error")
+                print(f"[FACEBOOK WARNING] Step 1 published=false failed ({error_msg}). Retrying standard photo post...", flush=True)
+                with open(image_path, "rb") as img_file:
+                    files = {"source": img_file}
+                    data = {"message": caption, "access_token": page_token}
+                    resp_legacy = requests.post(photo_url, files=files, data=data, timeout=30)
+                    res_leg_json = resp_legacy.json()
+                    if resp_legacy.status_code == 200 and "id" in res_leg_json:
+                        return True, f"Successfully published to Facebook Page via photo API! Post ID: {res_leg_json['id']}"
+                    else:
+                        leg_err = res_leg_json.get("error", {}).get("message", "Unknown error")
+                        return False, f"Facebook API Error: {leg_err}"
+
+            photo_id = res_json["id"]
+            print(f"[FACEBOOK] Step 1 complete. Photo FBID: {photo_id}. Step 2: Creating Page Timeline Feed post...", flush=True)
+
+            # Step 2: Publish Timeline Feed Story referencing attached media_fbid
+            feed_url = f"https://graph.facebook.com/v19.0/{page_id}/feed"
+            feed_data = {
+                "message": caption,
+                "attached_media": json.dumps([{"media_fbid": photo_id}]),
+                "access_token": page_token
+            }
+            feed_resp = requests.post(feed_url, data=feed_data, timeout=30)
+            feed_json = feed_resp.json()
+
+            if feed_resp.status_code == 200 and "id" in feed_json:
+                post_id = feed_json["id"]
+                
+                # Auto-backup to Google Drive if credentials exist
+                try:
+                    try:
+                        from .google_service import upload_file_to_drive
+                    except ImportError:
+                        from google_service import upload_file_to_drive
+                    
+                    folder_name = "BABU Marketing Posts"
+                    print(f"[DRIVE] Backing up published graphic '{os.path.basename(image_path)}' to Google Drive folder '{folder_name}'...", flush=True)
+                    ok_drv, drv_msg = upload_file_to_drive(image_path, folder_name)
+                    if ok_drv:
+                        print(f"[DRIVE SUCCESS] Backup complete: {drv_msg}", flush=True)
+                    else:
+                        print(f"[DRIVE WARNING] Backup skipped/failed: {drv_msg}", flush=True)
+                except Exception as drv_err:
+                    print(f"[DRIVE WARNING] Google Drive upload failed: {drv_err}", flush=True)
+                
+                return True, f"Successfully published photo post directly to Facebook Page Feed! Post ID: {post_id}"
             else:
-                error_msg = res_json.get("error", {}).get("message", "Unknown Graph API error")
-                return False, f"Facebook API Error: {error_msg}"
+                feed_err = feed_json.get("error", {}).get("message", "Unknown Feed API error")
+                return False, f"Facebook Feed API Error: {feed_err}"
+
         except Exception as e:
-            return False, f"Failed to publish to Facebook: {e}"
+            return False, f"Failed to publish photo post to Facebook Feed: {e}"
     else:
         url = f"https://graph.facebook.com/v19.0/{page_id}/feed"
         try:
@@ -628,18 +675,18 @@ def publish_to_facebook_page(image_path: str, caption: str) -> tuple[bool, str]:
                 "message": caption,
                 "access_token": page_token
             }
-            print(f"[FACEBOOK] Publishing text update to page {page_id}...", flush=True)
+            print(f"[FACEBOOK] Publishing text update to page feed {page_id}...", flush=True)
             response = requests.post(url, data=data, timeout=30)
             
             res_json = response.json()
             if response.status_code == 200 and "id" in res_json:
                 post_id = res_json["id"]
-                return True, f"Successfully published to Facebook Page! Post ID: {post_id}"
+                return True, f"Successfully published text post to Facebook Page Feed! Post ID: {post_id}"
             else:
                 error_msg = res_json.get("error", {}).get("message", "Unknown Graph API error")
                 return False, f"Facebook API Error: {error_msg}"
         except Exception as e:
-            return False, f"Failed to publish to Facebook: {e}"
+            return False, f"Failed to publish to Facebook Feed: {e}"
 
 
 def clean_old_temp_files(temp_dir: str):
