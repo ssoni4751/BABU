@@ -4888,6 +4888,24 @@ class HealthHandler(BaseHTTPRequestHandler):
                 self._cors()
                 self.end_headers()
                 self.wfile.write(body)
+            elif path in ("/webhook/facebook", "/webhook/facebook/"):
+                query_params = parse_qs(parsed_path.query)
+                mode = query_params.get("hub.mode", [""])[0]
+                token = query_params.get("hub.verify_token", [""])[0]
+                challenge = query_params.get("hub.challenge", [""])[0]
+                expected_token = os.environ.get("FACEBOOK_VERIFY_TOKEN", "anshu_tax_webhook_secret_2026")
+                
+                if mode == "subscribe" and token == expected_token:
+                    print(f"[FACEBOOK WEBHOOK VERIFICATION SUCCESS] Verified challenge for token '{token}'", flush=True)
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/plain")
+                    self._cors()
+                    self.end_headers()
+                    self.wfile.write(challenge.encode("utf-8"))
+                else:
+                    print(f"[FACEBOOK WEBHOOK VERIFICATION FAILED] Invalid token '{token}' (expected '{expected_token}') or mode '{mode}'", flush=True)
+                    self.send_response(403)
+                    self.end_headers()
             elif path == "/api/image":
                 query_params = parse_qs(parsed_path.query)
                 img_path = query_params.get("path", [""])[0]
@@ -4914,7 +4932,33 @@ class HealthHandler(BaseHTTPRequestHandler):
             print(f"[HTTP SERVER WARNING] Client disconnected during GET {self.path}: {e}", flush=True)
 
     def do_POST(self):
-        if self.path == "/api/models/switch":
+        if self.path in ("/webhook/facebook", "/webhook/facebook/"):
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                raw_body = self.rfile.read(length)
+                payload = json.loads(raw_body.decode("utf-8"))
+                
+                # Respond 200 OK instantly to Meta within 3s
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self._cors()
+                self.end_headers()
+                self.wfile.write(json.dumps({"status": "EVENT_RECEIVED"}).encode("utf-8"))
+                
+                # Process webhook payload asynchronously in background thread
+                try:
+                    from .social_media import process_facebook_webhook_event
+                except ImportError:
+                    from social_media import process_facebook_webhook_event
+                    
+                threading.Thread(target=process_facebook_webhook_event, args=(payload,), daemon=True).start()
+            except Exception as e:
+                print(f"[FACEBOOK WEBHOOK POST ERROR] {e}", flush=True)
+                self.send_response(200)
+                self.end_headers()
+            return
+
+        elif self.path == "/api/models/switch":
             try:
                 if API_CHAT_TOKEN:
                     auth_header = str(self.headers.get("Authorization", "")).strip()

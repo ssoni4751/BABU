@@ -1234,4 +1234,121 @@ def run_autonomous_social_post() -> tuple[bool, str, str, str]:
         import gc
         gc.collect()
         return False, f"Autonomous workflow failed: {error_msg}", caption, img_path
+
+
+def send_facebook_messenger_reply(sender_id: str, message_text: str) -> tuple[bool, str]:
+    """Send a private reply to a Facebook Messenger user via Meta Graph API."""
+    page_token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN")
+    if not page_token:
+        return False, "Missing FACEBOOK_PAGE_ACCESS_TOKEN."
+    
+    url = f"https://graph.facebook.com/v19.0/me/messages?access_token={page_token}"
+    payload = {
+        "recipient": {"id": sender_id},
+        "message": {"text": message_text}
+    }
+    try:
+        res = requests.post(url, json=payload, timeout=15)
+        if res.status_code == 200:
+            return True, f"Sent Messenger DM to {sender_id} successfully."
+        else:
+            err = res.json().get("error", {}).get("message", res.text)
+            return False, f"Messenger API Error: {err}"
+    except Exception as e:
+        return False, f"Messenger request failed: {e}"
+
+
+def send_facebook_comment_reply(comment_id: str, message_text: str) -> tuple[bool, str]:
+    """Post a comment reply to a Facebook post comment via Meta Graph API."""
+    page_token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN")
+    if not page_token:
+        return False, "Missing FACEBOOK_PAGE_ACCESS_TOKEN."
+    
+    url = f"https://graph.facebook.com/v19.0/{comment_id}/comments"
+    data = {
+        "message": message_text,
+        "access_token": page_token
+    }
+    try:
+        res = requests.post(url, data=data, timeout=15)
+        if res.status_code == 200:
+            return True, f"Replied to comment {comment_id} successfully."
+        else:
+            err = res.json().get("error", {}).get("message", res.text)
+            return False, f"Comment API Error: {err}"
+    except Exception as e:
+        return False, f"Comment request failed: {e}"
+
+
+def process_facebook_webhook_event(payload: dict):
+    """Process incoming Meta Webhook events (Messenger DMs & Post Comments) and auto-reply."""
+    try:
+        entries = payload.get("entry", [])
+        for entry in entries:
+            # 1. Handle Messenger DMs
+            messaging = entry.get("messaging", [])
+            for msg_event in messaging:
+                sender_id = msg_event.get("sender", {}).get("id")
+                message = msg_event.get("message", {})
+                user_text = message.get("text")
+                is_echo = message.get("is_echo", False)
+                
+                if sender_id and user_text and not is_echo:
+                    print(f"[FACEBOOK WEBHOOK] Incoming DM from {sender_id}: '{user_text}'", flush=True)
+                    # Generate AI answer using BABU PA/Services
+                    try:
+                        from .gateway import get_babu_self_context
+                        from .services import get_user_profile_text
+                    except ImportError:
+                        from gateway import get_babu_self_context
+                        from services import get_user_profile_text
+                    
+                    profile_info = get_user_profile_text()
+                    sys_prompt = (
+                        "You are JARVIS, the official AI Customer Support Assistant for 'Anshu Computer & Tax Consultancy' "
+                        "(run by Shubham Swarnkar / Anshu in Kaushal Market, Rath Road, Orai, UP, India). "
+                        "Keep your reply friendly, helpful, professional, and concise (under 3-4 sentences). "
+                        "Mention relevant consultancy services (ITR Filing, GST Registration, PF Claims & Corrections, CSC digital services) "
+                        "and encourage them to visit the office or contact Anshu directly. Plain text only, no markdown stars."
+                    )
+                    
+                    try:
+                        llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.5)
+                        ai_res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=f"Customer Query: {user_text}\n\nBusiness Context:\n{profile_info}")])
+                        reply = ai_res.content.strip().replace("*", "").replace("_", "")
+                    except Exception:
+                        reply = "Namaste! Thank you for contacting Anshu Computer & Tax Consultancy, Orai. We specialize in ITR filing, GST compliance, and PF claim solutions. How can we assist you today?"
+                    
+                    ok, msg = send_facebook_messenger_reply(sender_id, reply)
+                    print(f"[FACEBOOK WEBHOOK DM REPLY] {msg}", flush=True)
+
+            # 2. Handle Post Comments
+            changes = entry.get("changes", [])
+            for change in changes:
+                value = change.get("value", {})
+                item = value.get("item")
+                verb = value.get("verb")
+                comment_id = value.get("comment_id")
+                comment_text = value.get("message")
+                sender_name = value.get("from", {}).get("name", "Customer")
+                
+                if item == "comment" and verb == "add" and comment_id and comment_text:
+                    print(f"[FACEBOOK WEBHOOK] Incoming Comment from {sender_name} on comment {comment_id}: '{comment_text}'", flush=True)
+                    sys_prompt = (
+                        "You are JARVIS, replying publicly to a comment on an Anshu Computer & Tax Consultancy Facebook post. "
+                        "Draft a polite, short 1-2 sentence response thanking them and offering quick expert assistance for ITR, GST, or PF consultancy. Plain text only."
+                    )
+                    try:
+                        llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.5)
+                        ai_res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=f"User Comment: {comment_text}")])
+                        reply = ai_res.content.strip().replace("*", "").replace("_", "")
+                    except Exception:
+                        reply = "Thank you for reaching out! Contact Anshu Computer & Tax Consultancy in Orai for expert ITR, GST, and PF solutions."
+                    
+                    ok, msg = send_facebook_comment_reply(comment_id, reply)
+                    print(f"[FACEBOOK WEBHOOK COMMENT REPLY] {msg}", flush=True)
+
+    except Exception as e:
+        print(f"[FACEBOOK WEBHOOK ERROR] Exception in process_facebook_webhook_event: {e}", flush=True)
+
   
