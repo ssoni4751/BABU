@@ -86,28 +86,44 @@ def generate_daily_post(custom_topic: str = None) -> tuple[str, str, str, list, 
         )
     
     res = None
-    try:
-        llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.7)
-        res = llm.invoke([SystemMessage(content=DAILY_POST_PROMPT), HumanMessage(content=user_prompt)])
-    except Exception as groq_err:
-        print(f"[SOCIAL LLM WARNING] Groq Llama-3.3 failed: {groq_err}. Falling back to gemini-2.5-flash...", flush=True)
-        gemini_key = os.environ.get("GEMINI_API_KEY", "")
-        openrouter_key = os.environ.get("OPENROUTER_API_KEY", "")
-        if gemini_key:
-            from langchain_google_genai import ChatGoogleGenerativeAI
-            llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7, google_api_key=gemini_key)
-            res = llm.invoke([SystemMessage(content=DAILY_POST_PROMPT), HumanMessage(content=user_prompt)])
-        elif openrouter_key:
-            from langchain_openai import ChatOpenAI
-            llm = ChatOpenAI(
-                model="google/gemini-2.5-flash",
-                temperature=0.7,
-                api_key=openrouter_key,
-                base_url="https://openrouter.ai/api/v1",
-                max_tokens=1500
-            )
-            res = llm.invoke([SystemMessage(content=DAILY_POST_PROMPT), HumanMessage(content=user_prompt)])
-        else:
+    models_to_try = [
+        ("groq", "groq/compound"),
+        ("groq", "groq/compound-mini"),
+        ("groq", "openai/gpt-oss-120b"),
+        ("nvidia", "meta/llama-3.3-70b-instruct"),
+        ("gemini", "gemini-2.5-flash")
+    ]
+    
+    for provider, model_name in models_to_try:
+        try:
+            if provider == "groq" and os.environ.get("GROQ_API_KEY"):
+                llm = ChatGroq(model=model_name, temperature=0.7)
+                res = llm.invoke([SystemMessage(content=DAILY_POST_PROMPT), HumanMessage(content=user_prompt)])
+                if res and res.content:
+                    print(f"[SOCIAL LLM SUCCESS] Generated post using {provider}:{model_name}", flush=True)
+                    break
+            elif provider == "nvidia" and os.environ.get("NVIDIA_API_KEY"):
+                from langchain_openai import ChatOpenAI
+                llm = ChatOpenAI(
+                    model=model_name,
+                    temperature=0.7,
+                    api_key=os.environ.get("NVIDIA_API_KEY"),
+                    base_url="https://integrate.api.nvidia.com/v1",
+                    timeout=25.0
+                )
+                res = llm.invoke([SystemMessage(content=DAILY_POST_PROMPT), HumanMessage(content=user_prompt)])
+                if res and res.content:
+                    print(f"[SOCIAL LLM SUCCESS] Generated post using {provider}:{model_name}", flush=True)
+                    break
+            elif provider == "gemini" and os.environ.get("GEMINI_API_KEY"):
+                from langchain_google_genai import ChatGoogleGenerativeAI
+                llm = ChatGoogleGenerativeAI(model=model_name, temperature=0.7, google_api_key=os.environ.get("GEMINI_API_KEY"))
+                res = llm.invoke([SystemMessage(content=DAILY_POST_PROMPT), HumanMessage(content=user_prompt)])
+                if res and res.content:
+                    print(f"[SOCIAL LLM SUCCESS] Generated post using {provider}:{model_name}", flush=True)
+                    break
+        except Exception as err:
+            print(f"[SOCIAL LLM FAILOVER] {provider}:{model_name} failed ({err}). Trying next model...", flush=True)
             raise groq_err
     
     text = res.content.strip()
@@ -1378,11 +1394,31 @@ def process_facebook_webhook_event(payload: dict):
                         "Plain text only, no markdown stars."
                     )
                     
-                    try:
-                        llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.5)
-                        ai_res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=f"Customer Query: {user_text}\n\nBusiness Context:\n{profile_info}")])
-                        reply = ai_res.content.strip().replace("*", "").replace("_", "")
-                    except Exception:
+                    reply = None
+                    dm_models = [("groq", "groq/compound-mini"), ("groq", "openai/gpt-oss-20b"), ("nvidia", "meta/llama-3.1-8b-instruct"), ("gemini", "gemini-2.5-flash")]
+                    for prov, mod in dm_models:
+                        try:
+                            if prov == "groq" and os.environ.get("GROQ_API_KEY"):
+                                llm = ChatGroq(model=mod, temperature=0.5)
+                                ai_res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=f"Customer Query: {user_text}\n\nBusiness Context:\n{profile_info}")])
+                                reply = ai_res.content.strip().replace("*", "").replace("_", "")
+                                break
+                            elif prov == "nvidia" and os.environ.get("NVIDIA_API_KEY"):
+                                from langchain_openai import ChatOpenAI
+                                llm = ChatOpenAI(model=mod, temperature=0.5, api_key=os.environ.get("NVIDIA_API_KEY"), base_url="https://integrate.api.nvidia.com/v1")
+                                ai_res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=f"Customer Query: {user_text}\n\nBusiness Context:\n{profile_info}")])
+                                reply = ai_res.content.strip().replace("*", "").replace("_", "")
+                                break
+                            elif prov == "gemini" and os.environ.get("GEMINI_API_KEY"):
+                                from langchain_google_genai import ChatGoogleGenerativeAI
+                                llm = ChatGoogleGenerativeAI(model=mod, temperature=0.5, google_api_key=os.environ.get("GEMINI_API_KEY"))
+                                ai_res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=f"Customer Query: {user_text}\n\nBusiness Context:\n{profile_info}")])
+                                reply = ai_res.content.strip().replace("*", "").replace("_", "")
+                                break
+                        except Exception:
+                            continue
+
+                    if not reply:
                         reply = "Namaste! Thank you for contacting Anshu Computer & Tax Consultancy, Orai. We specialize in ITR filing, GST compliance, and PF claim solutions. How can we assist you today?"
                     
                     ok, msg = send_facebook_messenger_reply(sender_id, reply)
@@ -1412,11 +1448,31 @@ def process_facebook_webhook_event(payload: dict):
                         "You are JARVIS, replying publicly to a comment on an Anshu Computer & Tax Consultancy Facebook post. "
                         "Draft a polite, short 1-2 sentence response thanking them and offering quick expert assistance for ITR, GST, or PF consultancy. Plain text only."
                     )
-                    try:
-                        llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.5)
-                        ai_res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=f"User Comment: {comment_text}")])
-                        reply = ai_res.content.strip().replace("*", "").replace("_", "")
-                    except Exception:
+                    reply = None
+                    c_models = [("groq", "groq/compound-mini"), ("groq", "openai/gpt-oss-20b"), ("nvidia", "meta/llama-3.1-8b-instruct"), ("gemini", "gemini-2.5-flash")]
+                    for prov, mod in c_models:
+                        try:
+                            if prov == "groq" and os.environ.get("GROQ_API_KEY"):
+                                llm = ChatGroq(model=mod, temperature=0.5)
+                                ai_res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=f"User Comment: {comment_text}")])
+                                reply = ai_res.content.strip().replace("*", "").replace("_", "")
+                                break
+                            elif prov == "nvidia" and os.environ.get("NVIDIA_API_KEY"):
+                                from langchain_openai import ChatOpenAI
+                                llm = ChatOpenAI(model=mod, temperature=0.5, api_key=os.environ.get("NVIDIA_API_KEY"), base_url="https://integrate.api.nvidia.com/v1")
+                                ai_res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=f"User Comment: {comment_text}")])
+                                reply = ai_res.content.strip().replace("*", "").replace("_", "")
+                                break
+                            elif prov == "gemini" and os.environ.get("GEMINI_API_KEY"):
+                                from langchain_google_genai import ChatGoogleGenerativeAI
+                                llm = ChatGoogleGenerativeAI(model=mod, temperature=0.5, google_api_key=os.environ.get("GEMINI_API_KEY"))
+                                ai_res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=f"User Comment: {comment_text}")])
+                                reply = ai_res.content.strip().replace("*", "").replace("_", "")
+                                break
+                        except Exception:
+                            continue
+
+                    if not reply:
                         reply = "Thank you for reaching out! Contact Anshu Computer & Tax Consultancy in Orai for expert ITR, GST, and PF solutions."
                     
                     ok, msg = send_facebook_comment_reply(comment_id, reply)

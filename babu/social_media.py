@@ -86,28 +86,44 @@ def generate_daily_post(custom_topic: str = None) -> tuple[str, str, str, list, 
         )
     
     res = None
-    try:
-        llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.7)
-        res = llm.invoke([SystemMessage(content=DAILY_POST_PROMPT), HumanMessage(content=user_prompt)])
-    except Exception as groq_err:
-        print(f"[SOCIAL LLM WARNING] Groq Llama-3.3 failed: {groq_err}. Falling back to gemini-2.5-flash...", flush=True)
-        gemini_key = os.environ.get("GEMINI_API_KEY", "")
-        openrouter_key = os.environ.get("OPENROUTER_API_KEY", "")
-        if gemini_key:
-            from langchain_google_genai import ChatGoogleGenerativeAI
-            llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7, google_api_key=gemini_key)
-            res = llm.invoke([SystemMessage(content=DAILY_POST_PROMPT), HumanMessage(content=user_prompt)])
-        elif openrouter_key:
-            from langchain_openai import ChatOpenAI
-            llm = ChatOpenAI(
-                model="google/gemini-2.5-flash",
-                temperature=0.7,
-                api_key=openrouter_key,
-                base_url="https://openrouter.ai/api/v1",
-                max_tokens=1500
-            )
-            res = llm.invoke([SystemMessage(content=DAILY_POST_PROMPT), HumanMessage(content=user_prompt)])
-        else:
+    models_to_try = [
+        ("groq", "groq/compound"),
+        ("groq", "groq/compound-mini"),
+        ("groq", "openai/gpt-oss-120b"),
+        ("nvidia", "meta/llama-3.3-70b-instruct"),
+        ("gemini", "gemini-2.5-flash")
+    ]
+    
+    for provider, model_name in models_to_try:
+        try:
+            if provider == "groq" and os.environ.get("GROQ_API_KEY"):
+                llm = ChatGroq(model=model_name, temperature=0.7)
+                res = llm.invoke([SystemMessage(content=DAILY_POST_PROMPT), HumanMessage(content=user_prompt)])
+                if res and res.content:
+                    print(f"[SOCIAL LLM SUCCESS] Generated post using {provider}:{model_name}", flush=True)
+                    break
+            elif provider == "nvidia" and os.environ.get("NVIDIA_API_KEY"):
+                from langchain_openai import ChatOpenAI
+                llm = ChatOpenAI(
+                    model=model_name,
+                    temperature=0.7,
+                    api_key=os.environ.get("NVIDIA_API_KEY"),
+                    base_url="https://integrate.api.nvidia.com/v1",
+                    timeout=25.0
+                )
+                res = llm.invoke([SystemMessage(content=DAILY_POST_PROMPT), HumanMessage(content=user_prompt)])
+                if res and res.content:
+                    print(f"[SOCIAL LLM SUCCESS] Generated post using {provider}:{model_name}", flush=True)
+                    break
+            elif provider == "gemini" and os.environ.get("GEMINI_API_KEY"):
+                from langchain_google_genai import ChatGoogleGenerativeAI
+                llm = ChatGoogleGenerativeAI(model=model_name, temperature=0.7, google_api_key=os.environ.get("GEMINI_API_KEY"))
+                res = llm.invoke([SystemMessage(content=DAILY_POST_PROMPT), HumanMessage(content=user_prompt)])
+                if res and res.content:
+                    print(f"[SOCIAL LLM SUCCESS] Generated post using {provider}:{model_name}", flush=True)
+                    break
+        except Exception as err:
+            print(f"[SOCIAL LLM FAILOVER] {provider}:{model_name} failed ({err}). Trying next model...", flush=True)
             raise groq_err
     
     text = res.content.strip()
@@ -690,7 +706,7 @@ def generate_catalog_poster() -> str:
             "bullets": ["Expert Guidance on Compliance", "Fast & Secure Claims", "Personalized Support", "Bilingual Consultation (B2B/B2C)"]
         }
     ]
-
+    
     card_w, card_h = 440, 310
     col_x = [80, 560]
     row_y = [600, 930, 1260]
@@ -1007,94 +1023,6 @@ def generate_flux_graphic(prompt: str) -> str:
     raise RuntimeError("All background image generation/retrieval engines failed.")
 
 
-def auto_refresh_facebook_token() -> str:
-    """Attempts to exchange short-lived tokens for long-lived page token if APP_SECRET is configured in environment."""
-    cur_token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN", "")
-    app_id = os.environ.get("FACEBOOK_APP_ID", "947606281427456")
-    app_secret = os.environ.get("FACEBOOK_APP_SECRET", "")
-    page_id = os.environ.get("FACEBOOK_PAGE_ID", "901875296346087")
-    
-    if cur_token and app_id and app_secret:
-        try:
-            ex_url = f"https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id={app_id}&client_secret={app_secret}&fb_exchange_token={cur_token}"
-            r1 = requests.get(ex_url, timeout=10).json()
-            long_user = r1.get("access_token")
-            if long_user:
-                p_url = f"https://graph.facebook.com/v19.0/{page_id}?fields=access_token&access_token={long_user}"
-                r2 = requests.get(p_url, timeout=10).json()
-                never_exp_token = r2.get("access_token")
-                if never_exp_token:
-                    os.environ["FACEBOOK_PAGE_ACCESS_TOKEN"] = never_exp_token
-                    print(f"[FACEBOOK TOKEN AUTO-REFRESH] Exchanged token into Never-Expiring Page Token successfully!", flush=True)
-                    return never_exp_token
-        except Exception as e:
-            print(f"[FACEBOOK TOKEN AUTO-REFRESH ERROR] {e}", flush=True)
-    return cur_token
-
-
-def send_facebook_comment_reply(comment_id: str, message_text: str) -> tuple[bool, str]:
-    """Post a comment reply to a Facebook post comment, with automatic fallback to Private Messenger Reply."""
-    page_token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN")
-    if not page_token:
-        return False, "Missing FACEBOOK_PAGE_ACCESS_TOKEN."
-    
-    clean_id = comment_id.split("_")[-1] if "_" in comment_id else comment_id
-    errors = []
-    
-    # 1. Try public comment reply (with raw comment_id and clean_id)
-    for cid in list(dict.fromkeys([comment_id, clean_id])):
-        url = f"https://graph.facebook.com/v19.0/{cid}/comments"
-        data = {"message": message_text, "access_token": page_token}
-        try:
-            res = requests.post(url, data=data, timeout=15)
-            if res.status_code == 200:
-                print(f"[FACEBOOK COMMENT SUCCESS] Public comment reply posted to {cid}: {res.json()}", flush=True)
-                return True, f"Replied to comment {cid} successfully."
-            else:
-                errors.append(f"Public {cid}: {res.text}")
-        except Exception as e:
-            errors.append(f"Public Exception {cid}: {e}")
-
-    # 2. Try official Messenger Private DM reply (uses recipient.comment_id with pages_messaging)
-    for cid in list(dict.fromkeys([comment_id, clean_id])):
-        url_dm = f"https://graph.facebook.com/v19.0/me/messages?access_token={page_token}"
-        dm_payload = {
-            "recipient": {"comment_id": cid},
-            "message": {"text": message_text}
-        }
-        try:
-            res_dm = requests.post(url_dm, json=dm_payload, timeout=15)
-            if res_dm.status_code == 200:
-                print(f"[FACEBOOK MESSENGER COMMENT REPLY SUCCESS] Sent Private DM for comment {cid}: {res_dm.json()}", flush=True)
-                return True, f"Sent Private Messenger DM for comment {cid} successfully."
-            else:
-                err_json = res_dm.json().get("error", {})
-                code = err_json.get("code")
-                msg = err_json.get("message", "")
-                if code == 10900 or "already replied" in msg.lower():
-                    print(f"[FACEBOOK MESSENGER COMMENT REPLY SUCCESS] Comment {cid} was already replied to: {msg}", flush=True)
-                    return True, f"Comment {cid} was already replied to."
-                errors.append(f"Messenger DM {cid}: {res_dm.text}")
-        except Exception as e:
-            errors.append(f"Messenger DM Exception {cid}: {e}")
-            
-    # 3. Try legacy private_replies endpoint
-    for cid in list(dict.fromkeys([comment_id, clean_id])):
-        priv_url = f"https://graph.facebook.com/v19.0/{cid}/private_replies"
-        priv_data = {"message": message_text, "access_token": page_token}
-        try:
-            res_priv = requests.post(priv_url, data=priv_data, timeout=15)
-            if res_priv.status_code == 200:
-                print(f"[FACEBOOK PRIVATE REPLY SUCCESS] Private reply sent for comment {cid}: {res_priv.json()}", flush=True)
-                return True, f"Sent Private Messenger Reply for comment {cid} successfully."
-            else:
-                errors.append(f"Private {cid}: {res_priv.text}")
-        except Exception as e:
-            errors.append(f"Private Exception {cid}: {e}")
-
-    return False, f"Could not dispatch comment reply for {comment_id}. Details: {' | '.join(errors)}"
-
-
 def publish_to_facebook_page(image_path: str, caption: str) -> tuple[bool, str]:
     """Publish photo or caption directly to the Facebook Page Timeline Feed via Graph API."""
     page_id = os.environ.get("FACEBOOK_PAGE_ID")
@@ -1152,19 +1080,6 @@ def publish_to_facebook_page(image_path: str, caption: str) -> tuple[bool, str]:
                 
                 # Auto-backup to Google Drive if credentials exist
                 try:
-                    try:
-                        from .services import get_business_profile_text
-                    except ImportError:
-                        from services import get_business_profile_text
-                    
-                    profile_info = get_business_profile_text()
-                    sys_prompt = (
-                        "You are JARVIS, the official AI Customer Support Assistant for 'Anshu Computer & Tax Consultancy' "
-                        "(Kaushal Market, Rath Road, Orai, UP, India). "
-                        "Answer using the provided official Business Context and Client FAQs. "
-                        "Keep your reply friendly, helpful, professional, and concise (under 3-4 sentences). "
-                        "Plain text only, no markdown stars."
-                    )
                     try:
                         from .google_service import upload_file_to_drive
                     except ImportError:
@@ -1335,4 +1250,236 @@ def run_autonomous_social_post() -> tuple[bool, str, str, str]:
         import gc
         gc.collect()
         return False, f"Autonomous workflow failed: {error_msg}", caption, img_path
+
+
+def send_facebook_messenger_reply(sender_id: str, message_text: str) -> tuple[bool, str]:
+    """Send a private reply to a Facebook Messenger user via Meta Graph API."""
+    page_token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN")
+    if not page_token:
+        return False, "Missing FACEBOOK_PAGE_ACCESS_TOKEN."
+    
+    url = f"https://graph.facebook.com/v19.0/me/messages?access_token={page_token}"
+    payload = {
+        "recipient": {"id": sender_id},
+        "message": {"text": message_text}
+    }
+    try:
+        res = requests.post(url, json=payload, timeout=15)
+        if res.status_code == 200:
+            return True, f"Sent Messenger DM to {sender_id} successfully."
+        else:
+            err = res.json().get("error", {}).get("message", res.text)
+            return False, f"Messenger API Error: {err}"
+    except Exception as e:
+        return False, f"Messenger request failed: {e}"
+
+
+def auto_refresh_facebook_token() -> str:
+    """Attempts to exchange short-lived tokens for long-lived page token if APP_SECRET is configured in environment."""
+    cur_token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN", "")
+    app_id = os.environ.get("FACEBOOK_APP_ID", "947606281427456")
+    app_secret = os.environ.get("FACEBOOK_APP_SECRET", "")
+    page_id = os.environ.get("FACEBOOK_PAGE_ID", "901875296346087")
+    
+    if cur_token and app_id and app_secret:
+        try:
+            ex_url = f"https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id={app_id}&client_secret={app_secret}&fb_exchange_token={cur_token}"
+            r1 = requests.get(ex_url, timeout=10).json()
+            long_user = r1.get("access_token")
+            if long_user:
+                p_url = f"https://graph.facebook.com/v19.0/{page_id}?fields=access_token&access_token={long_user}"
+                r2 = requests.get(p_url, timeout=10).json()
+                never_exp_token = r2.get("access_token")
+                if never_exp_token:
+                    os.environ["FACEBOOK_PAGE_ACCESS_TOKEN"] = never_exp_token
+                    print(f"[FACEBOOK TOKEN AUTO-REFRESH] Exchanged token into Never-Expiring Page Token successfully!", flush=True)
+                    return never_exp_token
+        except Exception as e:
+            print(f"[FACEBOOK TOKEN AUTO-REFRESH ERROR] {e}", flush=True)
+    return cur_token
+
+
+def send_facebook_comment_reply(comment_id: str, message_text: str) -> tuple[bool, str]:
+    """Post a comment reply to a Facebook post comment, with automatic fallback to Private Messenger Reply."""
+    page_token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN")
+    if not page_token:
+        return False, "Missing FACEBOOK_PAGE_ACCESS_TOKEN."
+    
+    clean_id = comment_id.split("_")[-1] if "_" in comment_id else comment_id
+    errors = []
+    
+    # 1. Try public comment reply (with raw comment_id and clean_id)
+    for cid in list(dict.fromkeys([comment_id, clean_id])):
+        url = f"https://graph.facebook.com/v19.0/{cid}/comments"
+        data = {"message": message_text, "access_token": page_token}
+        try:
+            res = requests.post(url, data=data, timeout=15)
+            if res.status_code == 200:
+                print(f"[FACEBOOK COMMENT SUCCESS] Public comment reply posted to {cid}: {res.json()}", flush=True)
+                return True, f"Replied to comment {cid} successfully."
+            else:
+                errors.append(f"Public {cid}: {res.text}")
+        except Exception as e:
+            errors.append(f"Public Exception {cid}: {e}")
+
+    # 2. Try official Messenger Private DM reply (uses recipient.comment_id with pages_messaging)
+    for cid in list(dict.fromkeys([comment_id, clean_id])):
+        url_dm = f"https://graph.facebook.com/v19.0/me/messages?access_token={page_token}"
+        dm_payload = {
+            "recipient": {"comment_id": cid},
+            "message": {"text": message_text}
+        }
+        try:
+            res_dm = requests.post(url_dm, json=dm_payload, timeout=15)
+            if res_dm.status_code == 200:
+                print(f"[FACEBOOK MESSENGER COMMENT REPLY SUCCESS] Sent Private DM for comment {cid}: {res_dm.json()}", flush=True)
+                return True, f"Sent Private Messenger DM for comment {cid} successfully."
+            else:
+                err_json = res_dm.json().get("error", {})
+                code = err_json.get("code")
+                msg = err_json.get("message", "")
+                if code == 10900 or "already replied" in msg.lower():
+                    print(f"[FACEBOOK MESSENGER COMMENT REPLY SUCCESS] Comment {cid} was already replied to: {msg}", flush=True)
+                    return True, f"Comment {cid} was already replied to."
+                errors.append(f"Messenger DM {cid}: {res_dm.text}")
+        except Exception as e:
+            errors.append(f"Messenger DM Exception {cid}: {e}")
+            
+    # 3. Try legacy private_replies endpoint
+    for cid in list(dict.fromkeys([comment_id, clean_id])):
+        priv_url = f"https://graph.facebook.com/v19.0/{cid}/private_replies"
+        priv_data = {"message": message_text, "access_token": page_token}
+        try:
+            res_priv = requests.post(priv_url, data=priv_data, timeout=15)
+            if res_priv.status_code == 200:
+                print(f"[FACEBOOK PRIVATE REPLY SUCCESS] Private reply sent for comment {cid}: {res_priv.json()}", flush=True)
+                return True, f"Sent Private Messenger Reply for comment {cid} successfully."
+            else:
+                errors.append(f"Private {cid}: {res_priv.text}")
+        except Exception as e:
+            errors.append(f"Private Exception {cid}: {e}")
+
+    return False, f"Could not dispatch comment reply for {comment_id}. Details: {' | '.join(errors)}"
+
+
+def process_facebook_webhook_event(payload: dict):
+    """Process incoming Meta Webhook events (Messenger DMs & Post Comments) and auto-reply."""
+    try:
+        page_id = os.environ.get("FACEBOOK_PAGE_ID", "")
+        print(f"[FACEBOOK WEBHOOK RAW PAYLOAD] {json.dumps(payload)}", flush=True)
+        entries = payload.get("entry", [])
+        for entry in entries:
+            # 1. Handle Messenger DMs
+            messaging = entry.get("messaging", [])
+            for msg_event in messaging:
+                sender_id = msg_event.get("sender", {}).get("id")
+                message = msg_event.get("message", {})
+                user_text = message.get("text")
+                is_echo = message.get("is_echo", False)
+                
+                if sender_id and user_text and not is_echo and sender_id != page_id:
+                    print(f"[FACEBOOK WEBHOOK] Incoming DM from {sender_id}: '{user_text}'", flush=True)
+                    # Generate AI answer using BABU PA/Services
+                    try:
+                        from .services import get_business_profile_text
+                    except ImportError:
+                        from services import get_business_profile_text
+                    
+                    profile_info = get_business_profile_text()
+                    sys_prompt = (
+                        "You are JARVIS, the official AI Customer Support Assistant for 'Anshu Computer & Tax Consultancy' "
+                        "(Kaushal Market, Rath Road, Orai, UP, India). "
+                        "Answer using the provided official Business Context and Client FAQs. "
+                        "Keep your reply friendly, helpful, professional, and concise (under 3-4 sentences). "
+                        "Plain text only, no markdown stars."
+                    )
+                    
+                    reply = None
+                    dm_models = [("groq", "groq/compound-mini"), ("groq", "openai/gpt-oss-20b"), ("nvidia", "meta/llama-3.1-8b-instruct"), ("gemini", "gemini-2.5-flash")]
+                    for prov, mod in dm_models:
+                        try:
+                            if prov == "groq" and os.environ.get("GROQ_API_KEY"):
+                                llm = ChatGroq(model=mod, temperature=0.5)
+                                ai_res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=f"Customer Query: {user_text}\n\nBusiness Context:\n{profile_info}")])
+                                reply = ai_res.content.strip().replace("*", "").replace("_", "")
+                                break
+                            elif prov == "nvidia" and os.environ.get("NVIDIA_API_KEY"):
+                                from langchain_openai import ChatOpenAI
+                                llm = ChatOpenAI(model=mod, temperature=0.5, api_key=os.environ.get("NVIDIA_API_KEY"), base_url="https://integrate.api.nvidia.com/v1")
+                                ai_res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=f"Customer Query: {user_text}\n\nBusiness Context:\n{profile_info}")])
+                                reply = ai_res.content.strip().replace("*", "").replace("_", "")
+                                break
+                            elif prov == "gemini" and os.environ.get("GEMINI_API_KEY"):
+                                from langchain_google_genai import ChatGoogleGenerativeAI
+                                llm = ChatGoogleGenerativeAI(model=mod, temperature=0.5, google_api_key=os.environ.get("GEMINI_API_KEY"))
+                                ai_res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=f"Customer Query: {user_text}\n\nBusiness Context:\n{profile_info}")])
+                                reply = ai_res.content.strip().replace("*", "").replace("_", "")
+                                break
+                        except Exception:
+                            continue
+
+                    if not reply:
+                        reply = "Namaste! Thank you for contacting Anshu Computer & Tax Consultancy, Orai. We specialize in ITR filing, GST compliance, and PF claim solutions. How can we assist you today?"
+                    
+                    ok, msg = send_facebook_messenger_reply(sender_id, reply)
+                    print(f"[FACEBOOK WEBHOOK DM REPLY] {msg}", flush=True)
+
+            # 2. Handle Post Comments
+            changes = entry.get("changes", [])
+            for change in changes:
+                field = change.get("field")
+                value = change.get("value", {})
+                item = value.get("item")
+                verb = value.get("verb", "add")
+                comment_id = value.get("comment_id") or value.get("id")
+                comment_text = value.get("message")
+                sender_id = value.get("from", {}).get("id")
+                raw_name = value.get("from", {}).get("name", "Customer")
+                sender_name = str(raw_name).encode("ascii", "replace").decode("ascii")
+                
+                # Filter out self-comments from Page itself
+                if sender_id and str(sender_id) == str(page_id):
+                    print(f"[FACEBOOK WEBHOOK] Skipping self-comment by Page Admin ({sender_name})", flush=True)
+                    continue
+
+                if (field == "feed" or item in ("comment", "post")) and verb in ("add", "created") and comment_id and comment_text:
+                    print(f"[FACEBOOK WEBHOOK] Incoming Comment from {sender_name} ({sender_id}) on comment {comment_id}: '{str(comment_text).encode('ascii', 'replace').decode('ascii')}'", flush=True)
+                    sys_prompt = (
+                        "You are JARVIS, replying publicly to a comment on an Anshu Computer & Tax Consultancy Facebook post. "
+                        "Draft a polite, short 1-2 sentence response thanking them and offering quick expert assistance for ITR, GST, or PF consultancy. Plain text only."
+                    )
+                    reply = None
+                    c_models = [("groq", "groq/compound-mini"), ("groq", "openai/gpt-oss-20b"), ("nvidia", "meta/llama-3.1-8b-instruct"), ("gemini", "gemini-2.5-flash")]
+                    for prov, mod in c_models:
+                        try:
+                            if prov == "groq" and os.environ.get("GROQ_API_KEY"):
+                                llm = ChatGroq(model=mod, temperature=0.5)
+                                ai_res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=f"User Comment: {comment_text}")])
+                                reply = ai_res.content.strip().replace("*", "").replace("_", "")
+                                break
+                            elif prov == "nvidia" and os.environ.get("NVIDIA_API_KEY"):
+                                from langchain_openai import ChatOpenAI
+                                llm = ChatOpenAI(model=mod, temperature=0.5, api_key=os.environ.get("NVIDIA_API_KEY"), base_url="https://integrate.api.nvidia.com/v1")
+                                ai_res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=f"User Comment: {comment_text}")])
+                                reply = ai_res.content.strip().replace("*", "").replace("_", "")
+                                break
+                            elif prov == "gemini" and os.environ.get("GEMINI_API_KEY"):
+                                from langchain_google_genai import ChatGoogleGenerativeAI
+                                llm = ChatGoogleGenerativeAI(model=mod, temperature=0.5, google_api_key=os.environ.get("GEMINI_API_KEY"))
+                                ai_res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=f"User Comment: {comment_text}")])
+                                reply = ai_res.content.strip().replace("*", "").replace("_", "")
+                                break
+                        except Exception:
+                            continue
+
+                    if not reply:
+                        reply = "Thank you for reaching out! Contact Anshu Computer & Tax Consultancy in Orai for expert ITR, GST, and PF solutions."
+                    
+                    ok, msg = send_facebook_comment_reply(comment_id, reply)
+                    print(f"[FACEBOOK WEBHOOK COMMENT REPLY] {msg}", flush=True)
+
+    except Exception as e:
+        print(f"[FACEBOOK WEBHOOK ERROR] Exception in process_facebook_webhook_event: {e}", flush=True)
+
+
   
