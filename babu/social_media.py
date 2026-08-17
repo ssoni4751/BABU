@@ -1014,30 +1014,43 @@ def send_facebook_comment_reply(comment_id: str, message_text: str) -> tuple[boo
         return False, "Missing FACEBOOK_PAGE_ACCESS_TOKEN."
     
     clean_id = comment_id.split("_")[-1] if "_" in comment_id else comment_id
+    errors = []
     
     # 1. Try public comment reply (with raw comment_id and clean_id)
-    for cid in set([comment_id, clean_id]):
+    for cid in list(dict.fromkeys([comment_id, clean_id])):
         url = f"https://graph.facebook.com/v19.0/{cid}/comments"
         data = {"message": message_text, "access_token": page_token}
         try:
             res = requests.post(url, data=data, timeout=15)
             if res.status_code == 200:
+                print(f"[FACEBOOK COMMENT SUCCESS] Public comment reply posted to {cid}: {res.json()}", flush=True)
                 return True, f"Replied to comment {cid} successfully."
-        except Exception:
-            pass
+            else:
+                err_text = res.text
+                errors.append(f"Public {cid}: {err_text}")
+                print(f"[FACEBOOK COMMENT API RESPONSE] Public reply to {cid} returned HTTP {res.status_code}: {err_text}", flush=True)
+        except Exception as e:
+            errors.append(f"Public Exception {cid}: {e}")
+            print(f"[FACEBOOK COMMENT API EXCEPTION] Public reply exception for {cid}: {e}", flush=True)
             
     # 2. Fallback: Private Reply via Messenger (uses pages_messaging)
-    for cid in set([comment_id, clean_id]):
+    for cid in list(dict.fromkeys([comment_id, clean_id])):
         priv_url = f"https://graph.facebook.com/v19.0/{cid}/private_replies"
         priv_data = {"message": message_text, "access_token": page_token}
         try:
             res_priv = requests.post(priv_url, data=priv_data, timeout=15)
             if res_priv.status_code == 200:
+                print(f"[FACEBOOK PRIVATE REPLY SUCCESS] Private reply sent for comment {cid}: {res_priv.json()}", flush=True)
                 return True, f"Sent Private Messenger Reply for comment {cid} successfully."
-        except Exception:
-            pass
+            else:
+                err_priv = res_priv.text
+                errors.append(f"Private {cid}: {err_priv}")
+                print(f"[FACEBOOK PRIVATE REPLY API RESPONSE] Private reply to {cid} returned HTTP {res_priv.status_code}: {err_priv}", flush=True)
+        except Exception as e:
+            errors.append(f"Private Exception {cid}: {e}")
+            print(f"[FACEBOOK PRIVATE REPLY API EXCEPTION] Private reply exception for {cid}: {e}", flush=True)
 
-    return False, f"Could not dispatch comment reply for {comment_id}."
+    return False, f"Could not dispatch comment reply for {comment_id}. Details: {' | '.join(errors)}"
 
 
 def publish_to_facebook_page(image_path: str, caption: str) -> tuple[bool, str]:
