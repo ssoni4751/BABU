@@ -1043,6 +1043,12 @@ def send_facebook_comment_reply(comment_id: str, message_text: str) -> tuple[boo
                 print(f"[FACEBOOK MESSENGER COMMENT REPLY SUCCESS] Sent Private DM for comment {cid}: {res_dm.json()}", flush=True)
                 return True, f"Sent Private Messenger DM for comment {cid} successfully."
             else:
+                err_json = res_dm.json().get("error", {})
+                code = err_json.get("code")
+                msg = err_json.get("message", "")
+                if code == 10900 or "already replied" in msg.lower():
+                    print(f"[FACEBOOK MESSENGER COMMENT REPLY SUCCESS] Comment {cid} was already replied to: {msg}", flush=True)
+                    return True, f"Comment {cid} was already replied to."
                 errors.append(f"Messenger DM {cid}: {res_dm.text}")
         except Exception as e:
             errors.append(f"Messenger DM Exception {cid}: {e}")
