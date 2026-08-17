@@ -1013,34 +1013,31 @@ def send_facebook_comment_reply(comment_id: str, message_text: str) -> tuple[boo
     if not page_token:
         return False, "Missing FACEBOOK_PAGE_ACCESS_TOKEN."
     
-    # 1. Try public comment reply
-    url = f"https://graph.facebook.com/v19.0/{comment_id}/comments"
-    data = {
-        "message": message_text,
-        "access_token": page_token
-    }
-    try:
-        res = requests.post(url, data=data, timeout=15)
-        if res.status_code == 200:
-            return True, f"Replied to comment {comment_id} successfully."
-        
-        err_msg = res.json().get("error", {}).get("message", res.text)
-        print(f"[FACEBOOK COMMENT WARNING] Public reply failed ({err_msg}). Attempting Private Messenger reply...", flush=True)
-        
-        # 2. Fallback: Private Reply via Messenger (uses pages_messaging)
-        priv_url = f"https://graph.facebook.com/v19.0/{comment_id}/private_replies"
-        priv_data = {
-            "message": message_text,
-            "access_token": page_token
-        }
-        res_priv = requests.post(priv_url, data=priv_data, timeout=15)
-        if res_priv.status_code == 200:
-            return True, f"Sent Private Messenger Reply for comment {comment_id} successfully."
-        else:
-            err_priv = res_priv.json().get("error", {}).get("message", res_priv.text)
-            return False, f"Comment Reply API Error: {err_msg} | Private Reply Error: {err_priv}"
-    except Exception as e:
-        return False, f"Comment request failed: {e}"
+    clean_id = comment_id.split("_")[-1] if "_" in comment_id else comment_id
+    
+    # 1. Try public comment reply (with raw comment_id and clean_id)
+    for cid in set([comment_id, clean_id]):
+        url = f"https://graph.facebook.com/v19.0/{cid}/comments"
+        data = {"message": message_text, "access_token": page_token}
+        try:
+            res = requests.post(url, data=data, timeout=15)
+            if res.status_code == 200:
+                return True, f"Replied to comment {cid} successfully."
+        except Exception:
+            pass
+            
+    # 2. Fallback: Private Reply via Messenger (uses pages_messaging)
+    for cid in set([comment_id, clean_id]):
+        priv_url = f"https://graph.facebook.com/v19.0/{cid}/private_replies"
+        priv_data = {"message": message_text, "access_token": page_token}
+        try:
+            res_priv = requests.post(priv_url, data=priv_data, timeout=15)
+            if res_priv.status_code == 200:
+                return True, f"Sent Private Messenger Reply for comment {cid} successfully."
+        except Exception:
+            pass
+
+    return False, f"Could not dispatch comment reply for {comment_id}."
 
 
 def publish_to_facebook_page(image_path: str, caption: str) -> tuple[bool, str]:
