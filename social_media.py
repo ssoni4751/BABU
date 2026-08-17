@@ -1346,7 +1346,8 @@ def process_facebook_webhook_event(payload: dict):
                 comment_id = value.get("comment_id") or value.get("id")
                 comment_text = value.get("message")
                 sender_id = value.get("from", {}).get("id")
-                sender_name = value.get("from", {}).get("name", "Customer")
+                raw_name = value.get("from", {}).get("name", "Customer")
+                sender_name = str(raw_name).encode("ascii", "replace").decode("ascii")
                 
                 # Filter out self-comments from Page itself
                 if sender_id and str(sender_id) == str(page_id):
@@ -1354,7 +1355,7 @@ def process_facebook_webhook_event(payload: dict):
                     continue
 
                 if (field == "feed" or item in ("comment", "post")) and verb in ("add", "created") and comment_id and comment_text:
-                    print(f"[FACEBOOK WEBHOOK] Incoming Comment from {sender_name} ({sender_id}) on comment {comment_id}: '{comment_text}'", flush=True)
+                    print(f"[FACEBOOK WEBHOOK] Incoming Comment from {sender_name} ({sender_id}) on comment {comment_id}: '{str(comment_text).encode('ascii', 'replace').decode('ascii')}'", flush=True)
                     sys_prompt = (
                         "You are JARVIS, replying publicly to a comment on an Anshu Computer & Tax Consultancy Facebook post. "
                         "Draft a polite, short 1-2 sentence response thanking them and offering quick expert assistance for ITR, GST, or PF consultancy. Plain text only."
