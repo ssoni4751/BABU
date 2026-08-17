@@ -812,15 +812,12 @@ def generate_catalog_poster() -> str:
 
 
 def generate_flux_graphic(prompt: str) -> str:
-    """Generate or retrieve a high-quality campaign poster background.
+    """Generate a high-quality campaign poster background.
     
-    Tries:
-    1. NVIDIA NIM API (FLUX.1-schnell) if NVIDIA_API_KEY is configured. (Free, custom AI generation)
-    2. Google Gemini API (Imagen 4) if GEMINI_API_KEY is configured. (Free, custom AI generation)
-    3. Hugging Face Inference API if HF_TOKEN or HUGGINGFACE_API_KEY is configured. (Free, custom AI generation)
-    4. DuckDuckGo Images search as a keyless high-quality stock illustration fallback (optimized keywords).
-    5. Pollinations.ai (Flux) as a keyless AI fallback.
-    6. Hercai v3 as a secondary keyless AI fallback.
+    Order of operations:
+    1. Pollinations.ai (Flux) - Primary keyless fast 1024x1024 AI image generation.
+    2. DuckDuckGo Images search - Secondary keyless high-quality stock illustration fallback.
+    3. Hercai v3 - Keyless AI fallback.
     """
     import uuid
     import time
@@ -835,191 +832,69 @@ def generate_flux_graphic(prompt: str) -> str:
     unique_id = uuid.uuid4().hex[:8]
     image_path = os.path.join(temp_dir, f"flux_backdrop_{unique_id}.jpg")
     
-    # Attempt 1: NVIDIA NIM API (FLUX.1-schnell)
-    nvidia_key = os.environ.get("NVIDIA_API_KEY")
-    if nvidia_key:
-        print("[IMAGE ENGINE] Attempting image generation via NVIDIA FLUX.1-schnell...", flush=True)
-        try:
-            url = "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell"
-            headers = {
-                "Authorization": f"Bearer {nvidia_key}",
-                "Content-Type": "application/json",
-                "Accept": "application/json"
-            }
-            payload = {
-                "prompt": prompt,
-                "steps": 4,
-                "seed": 0,
-                "width": 1024,
-                "height": 1024
-            }
-            # Set a timeout of 15 seconds so we don't hang the thread if the key has no access/times out
-            resp = requests.post(url, headers=headers, json=payload, timeout=15)
-            if resp.status_code == 200:
-                res_json = resp.json()
-                if "artifacts" in res_json and res_json["artifacts"]:
-                    item = res_json["artifacts"][0]
-                    if "base64" in item:
-                        img_bytes = base64.b64decode(item["base64"])
-                        with open(image_path, "wb") as f:
-                            f.write(img_bytes)
-                        print(f"[IMAGE ENGINE SUCCESS] Generated image via NVIDIA FLUX.1-schnell saved to {image_path}", flush=True)
-                        return image_path
-                elif "data" in res_json and res_json["data"]:
-                    item = res_json["data"][0]
-                    if "b64_json" in item:
-                        img_bytes = base64.b64decode(item["b64_json"])
-                        with open(image_path, "wb") as f:
-                            f.write(img_bytes)
-                        print(f"[IMAGE ENGINE SUCCESS] Generated image via NVIDIA FLUX.1-schnell saved to {image_path}", flush=True)
-                        return image_path
-            else:
-                print(f"[IMAGE ENGINE WARNING] NVIDIA API returned status code {resp.status_code}: {resp.text[:200]}", flush=True)
-        except Exception as e:
-            print(f"[IMAGE ENGINE WARNING] NVIDIA image generation failed: {e}", flush=True)
-
-    gemini_key = os.environ.get("GEMINI_API_KEY")
-    if not gemini_key:
-        gemini_key = os.environ.get("GOOGLE_API_KEY")
-        
-    # Attempt 2: Google Gemini API (Imagen 4)
-    if gemini_key:
-        print("[IMAGE ENGINE] Attempting image generation via Google Imagen 4...", flush=True)
-        try:
-            from google import genai
-            from google.genai import types
-            
-            client = genai.Client(api_key=gemini_key)
-            response = client.models.generate_images(
-                model='imagen-4.0-generate-001',
-                prompt=prompt,
-                config=types.GenerateImagesConfig(
-                    number_of_images=1,
-                    output_mime_type='image/jpeg',
-                    aspect_ratio='1:1'
-                )
-            )
-            if response.generated_images:
-                img_bytes = response.generated_images[0].image.image_bytes
-                with open(image_path, "wb") as f:
-                    f.write(img_bytes)
-                print(f"[IMAGE ENGINE SUCCESS] Generated image via Gemini Imagen 4 saved to {image_path}", flush=True)
-                return image_path
-            else:
-                print("[IMAGE ENGINE WARNING] Gemini response returned no images.", flush=True)
-        except Exception as e:
-            print(f"[IMAGE ENGINE WARNING] Gemini Imagen 4 generation failed: {e}", flush=True)
-            
-    # Attempt 3: Hugging Face Inference API (Flux Schnell)
-    hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_API_KEY")
-    if hf_token:
-        print("[IMAGE ENGINE] Attempting image generation via Hugging Face Inference API...", flush=True)
-        model_id = "black-forest-labs/FLUX.1-schnell"
-        api_url = f"https://api-inference.huggingface.co/models/{model_id}"
-        headers = {"Authorization": f"Bearer {hf_token}"}
-        try:
-            resp = requests.post(api_url, headers=headers, json={"inputs": prompt}, timeout=40)
-            if resp.status_code == 200:
-                with open(image_path, "wb") as f:
-                    f.write(resp.content)
-                print(f"[IMAGE ENGINE SUCCESS] Generated image via Hugging Face {model_id} saved to {image_path}", flush=True)
-                return image_path
-            else:
-                print(f"[IMAGE ENGINE WARNING] Hugging Face returned status code {resp.status_code}: {resp.text}", flush=True)
-        except Exception as e:
-            print(f"[IMAGE ENGINE WARNING] Hugging Face generation failed: {e}", flush=True)
-
-    # Attempt 4: Pollinations.ai (Flux) keyless AI fallback
-    print("[IMAGE ENGINE] Attempting keyless generation via Pollinations.ai...", flush=True)
+    # 1. Primary Engine: Pollinations.ai (Flux Keyless AI - Fast & High Quality)
+    print(f"[IMAGE ENGINE] Generating 3D background graphic via Pollinations.ai...", flush=True)
     encoded_prompt = urllib.parse.quote_plus(prompt)
     url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&nologo=true&private=true"
-    for attempt in range(1, 4):
+    for attempt in range(1, 3):
         try:
             resp = requests.get(
                 url, 
-                timeout=25, 
+                timeout=12, 
                 headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
             )
-            resp.raise_for_status()
-            with open(image_path, "wb") as f:
-                f.write(resp.content)
-            print(f"[IMAGE ENGINE SUCCESS] Generated image via Pollinations saved to {image_path}", flush=True)
-            return image_path
+            if resp.status_code == 200 and len(resp.content) > 5000:
+                with open(image_path, "wb") as f:
+                    f.write(resp.content)
+                print(f"[IMAGE ENGINE SUCCESS] Generated 3D backdrop saved to {image_path}", flush=True)
+                return image_path
         except Exception as e:
             print(f"[IMAGE ENGINE WARNING] Pollinations attempt {attempt} failed: {e}", flush=True)
-            time.sleep(2)
-            
-    # Attempt 5: Hercai v3 keyless AI fallback
-    print("[IMAGE ENGINE] Attempting keyless generation via Hercai API...", flush=True)
-    try:
-        encoded_prompt = urllib.parse.quote_plus(prompt)
-        hercai_url = f"https://hercai.onrender.com/v3/text2image?prompt={encoded_prompt}"
-        resp = requests.get(hercai_url, timeout=25)
-        if resp.status_code == 200:
-            data = resp.json()
-            img_url = data.get("url")
-            if img_url:
-                print(f"[IMAGE ENGINE] Downloading image from Hercai URL: {img_url}", flush=True)
-                img_resp = requests.get(
-                    img_url, 
-                    timeout=20,
-                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
-                )
-                img_resp.raise_for_status()
-                with open(image_path, "wb") as f:
-                    f.write(img_resp.content)
-                print(f"[IMAGE ENGINE SUCCESS] Generated image via Hercai saved to {image_path}", flush=True)
-                return image_path
-            else:
-                print("[IMAGE ENGINE WARNING] Hercai API did not return an image URL.", flush=True)
-        else:
-            print(f"[IMAGE ENGINE WARNING] Hercai API returned status: {resp.status_code}", flush=True)
-    except Exception as e:
-        print(f"[IMAGE ENGINE WARNING] Hercai fallback failed: {e}", flush=True)
+            time.sleep(1)
 
-    # Attempt 6: DuckDuckGo Images stock photo fallback (Zero-key, reliable and fast!)
-    print("[IMAGE ENGINE] Attempting to retrieve stock background illustration via DuckDuckGo Images...", flush=True)
+    # 2. Secondary Engine: DuckDuckGo Images Stock Vector Search (Keyless, fast stock graphics)
+    print("[IMAGE ENGINE] Searching stock background illustration via DuckDuckGo...", flush=True)
     try:
         from ddgs import DDGS
-        
-        # Clean prompt and extract core keywords to make a concise search term
         words = [w for w in re.split(r'[\s,.:;!?()"\']', prompt) if w.strip()]
         stop_words = {"a", "an", "the", "and", "or", "but", "with", "featuring", "representing", "minimalist", "minimalism", "3d", "illustration", "premium", "style", "features", "sleek", "abstract", "elements", "vibrant", "corporate", "colors", "clean"}
         keywords = [w for w in words if w.lower() not in stop_words]
+        query = " ".join(keywords[:4]) + " corporate illustration backdrop" if keywords else "corporate vector illustration backdrop"
         
-        # Build search query (max 4 keywords)
-        search_term = "minimalist 3d " + " ".join(keywords[:4])
-        search_term = search_term[:100]
-        
-        print(f"[IMAGE ENGINE] Searching DuckDuckGo for: '{search_term}'", flush=True)
         with DDGS() as ddgs:
-            results = list(ddgs.images(search_term, max_results=3))
-            
-        if results:
-            for idx, result in enumerate(results):
-                img_url = result.get("image")
-                if not img_url:
-                    continue
-                try:
-                    print(f"[IMAGE ENGINE] Downloading stock photo (option {idx+1}): {img_url}", flush=True)
-                    resp = requests.get(
-                        img_url, 
-                        timeout=15, 
-                        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
-                    )
-                    resp.raise_for_status()
+            results = list(ddgs.images(query, max_results=3))
+            for res in results:
+                img_url = res.get("image")
+                if img_url and img_url.startswith("http"):
+                    try:
+                        r = requests.get(img_url, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
+                        if r.status_code == 200 and len(r.content) > 5000:
+                            with open(image_path, "wb") as f:
+                                f.write(r.content)
+                            print(f"[IMAGE ENGINE SUCCESS] Stock backdrop saved to {image_path}", flush=True)
+                            return image_path
+                    except Exception:
+                        continue
+    except Exception as ddg_err:
+        print(f"[IMAGE ENGINE WARNING] DuckDuckGo image search skipped: {ddg_err}", flush=True)
+
+    # 3. Third Engine: Hercai v3 Fallback
+    try:
+        print("[IMAGE ENGINE] Attempting keyless generation via Hercai API...", flush=True)
+        hercai_url = f"https://hercai.onrender.com/v3/text2image?prompt={encoded_prompt}"
+        resp = requests.get(hercai_url, timeout=10)
+        if resp.status_code == 200:
+            img_url = resp.json().get("url")
+            if img_url:
+                img_resp = requests.get(img_url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+                if img_resp.status_code == 200 and len(img_resp.content) > 5000:
                     with open(image_path, "wb") as f:
-                        f.write(resp.content)
-                    print(f"[IMAGE ENGINE SUCCESS] Retrieved stock background saved to {image_path}", flush=True)
+                        f.write(img_resp.content)
+                    print(f"[IMAGE ENGINE SUCCESS] Generated image via Hercai saved to {image_path}", flush=True)
                     return image_path
-                except Exception as ex:
-                    print(f"[IMAGE ENGINE WARNING] Failed to download from {img_url}: {ex}", flush=True)
-            print("[IMAGE ENGINE WARNING] All retrieved DuckDuckGo Image options failed to download.", flush=True)
-        else:
-            print("[IMAGE ENGINE WARNING] DuckDuckGo Images returned no results.", flush=True)
     except Exception as e:
-        print(f"[IMAGE ENGINE WARNING] DuckDuckGo Images fallback failed: {e}", flush=True)
-        
+        print(f"[IMAGE ENGINE WARNING] Hercai fallback failed: {e}", flush=True)
+
     raise RuntimeError("All background image generation/retrieval engines failed.")
 
 
