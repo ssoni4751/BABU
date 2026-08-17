@@ -1259,10 +1259,10 @@ def send_facebook_messenger_reply(sender_id: str, message_text: str) -> tuple[bo
 
 
 def auto_refresh_facebook_token() -> str:
-    """Attempts to exchange short-lived tokens for long-lived page token if APP_SECRET is configured."""
+    """Attempts to exchange short-lived tokens for long-lived page token if APP_SECRET is configured in environment."""
     cur_token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN", "")
     app_id = os.environ.get("FACEBOOK_APP_ID", "947606281427456")
-    app_secret = os.environ.get("FACEBOOK_APP_SECRET", "59b8082bf24af6f65ce4bcf6159a7e65")
+    app_secret = os.environ.get("FACEBOOK_APP_SECRET", "")
     page_id = os.environ.get("FACEBOOK_PAGE_ID", "901875296346087")
     
     if cur_token and app_id and app_secret:
