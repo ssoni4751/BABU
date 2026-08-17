@@ -1007,6 +1007,31 @@ def generate_flux_graphic(prompt: str) -> str:
     raise RuntimeError("All background image generation/retrieval engines failed.")
 
 
+def auto_refresh_facebook_token() -> str:
+    """Attempts to exchange short-lived tokens for long-lived page token if APP_SECRET is configured."""
+    cur_token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN", "")
+    app_id = os.environ.get("FACEBOOK_APP_ID", "947606281427456")
+    app_secret = os.environ.get("FACEBOOK_APP_SECRET", "59b8082bf24af6f65ce4bcf6159a7e65")
+    page_id = os.environ.get("FACEBOOK_PAGE_ID", "901875296346087")
+    
+    if cur_token and app_id and app_secret:
+        try:
+            ex_url = f"https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id={app_id}&client_secret={app_secret}&fb_exchange_token={cur_token}"
+            r1 = requests.get(ex_url, timeout=10).json()
+            long_user = r1.get("access_token")
+            if long_user:
+                p_url = f"https://graph.facebook.com/v19.0/{page_id}?fields=access_token&access_token={long_user}"
+                r2 = requests.get(p_url, timeout=10).json()
+                never_exp_token = r2.get("access_token")
+                if never_exp_token:
+                    os.environ["FACEBOOK_PAGE_ACCESS_TOKEN"] = never_exp_token
+                    print(f"[FACEBOOK TOKEN AUTO-REFRESH] Exchanged token into Never-Expiring Page Token successfully!", flush=True)
+                    return never_exp_token
+        except Exception as e:
+            print(f"[FACEBOOK TOKEN AUTO-REFRESH ERROR] {e}", flush=True)
+    return cur_token
+
+
 def send_facebook_comment_reply(comment_id: str, message_text: str) -> tuple[bool, str]:
     """Post a comment reply to a Facebook post comment, with automatic fallback to Private Messenger Reply."""
     page_token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN")
