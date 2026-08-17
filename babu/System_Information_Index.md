@@ -214,6 +214,13 @@ ADR-057 → ADR-078
 Domains:
 Repository, Database, LangGraph, Scaling
 
+## BABU_ADR_Book_v5.md
+Coverage:
+ADR-079 → ADR-085
+
+Domains:
+Decoupled Architecture, 2-Way Webhook Engine, Automated Token Self-Healing, Unicode Safety, Meta Developer Live Publication
+
 ## BABU_BABU_Architecture_Diagrams.md
 Domains:
 Architecture, Execution Flow, Roadmap
