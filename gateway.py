@@ -114,8 +114,8 @@ def get_dynamic_self_identity() -> str:
         try:
             from bot import CURRENT_PA_MODEL, CURRENT_DEPT_MODEL
         except ImportError:
-            CURRENT_PA_MODEL = "llama-3.1-8b-instant"
-            CURRENT_DEPT_MODEL = "llama-3.3-70b-versatile"
+            CURRENT_PA_MODEL = "groq/compound-mini"
+            CURRENT_DEPT_MODEL = "groq/compound"
             
     try:
         enabled_services = []
@@ -381,8 +381,8 @@ def get_system_health_dashboard() -> str:
         try:
             from bot import CURRENT_PA_MODEL, CURRENT_DEPT_MODEL
         except ImportError:
-            CURRENT_PA_MODEL = "llama-3.1-8b-instant"
-            CURRENT_DEPT_MODEL = "llama-3.3-70b-versatile"
+            CURRENT_PA_MODEL = "groq/compound-mini"
+            CURRENT_DEPT_MODEL = "groq/compound"
             
     def parse_db_timestamp(ts_str):
         if not ts_str:

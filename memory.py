@@ -415,7 +415,7 @@ def log_execution_failure(
                     SystemMessage(content="You are BABU's self-correcting Epistemic Immune System. Distill system errors into highly actionable execution constraints."),
                     HumanMessage(content=analysis_prompt)
                 ],
-                model_name="llama-3.3-70b-versatile",
+                model_name="groq/compound",
                 temp=0.2,
             )
             
@@ -633,7 +633,7 @@ def compress_context_payload(raw_text: str, context_topic: str = "general data")
                 SystemMessage(content="You are BABU's high-speed context compressor. Distill bulk raw data into high-density operational briefs. Be extremely concise."),
                 HumanMessage(content=compression_prompt)
             ],
-            model_name="llama-3.1-8b-instant",
+            model_name="groq/compound-mini",
             temp=0.1,
         )
         

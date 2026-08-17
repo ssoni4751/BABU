@@ -87,9 +87,9 @@ def generate_daily_post(custom_topic: str = None) -> tuple[str, str, str, list, 
     
     res = None
     models_to_try = [
-        ("groq", "groq/compound"),
         ("groq", "groq/compound-mini"),
         ("groq", "openai/gpt-oss-120b"),
+        ("groq", "groq/compound"),
         ("nvidia", "meta/llama-3.3-70b-instruct"),
         ("gemini", "gemini-2.5-flash")
     ]
@@ -124,7 +124,7 @@ def generate_daily_post(custom_topic: str = None) -> tuple[str, str, str, list, 
                     break
         except Exception as err:
             print(f"[SOCIAL LLM FAILOVER] {provider}:{model_name} failed ({err}). Trying next model...", flush=True)
-            raise groq_err
+            continue
     
     text = res.content.strip()
     match = re.search(r'\{.*\}', text, re.DOTALL)

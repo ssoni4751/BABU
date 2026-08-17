@@ -265,7 +265,7 @@ INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
     "CRITICAL: Output ONLY valid raw JSON. No explanation, no markdown fences."
 )
 
-def classify_intent(query: str, history_text: str = "", model_name: str = "llama-3.1-8b-instant") -> IntentPacket:
+def classify_intent(query: str, history_text: str = "", model_name: str = "groq/compound-mini") -> IntentPacket:
     """Classify user query intent into a structured IntentPacket."""
     t = query.lower().strip()
     
@@ -881,7 +881,7 @@ def plan_goal(
     gear: Optional[str] = None,
     history_text: str = "",
     profile_text: str = "",
-    model_name: str = "llama-3.1-8b-instant",
+    model_name: str = "groq/compound",
     goal_id: Optional[str] = None,
     is_correction: bool = False,
     last_goal_text: Optional[str] = None,
