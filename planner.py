@@ -956,6 +956,20 @@ def plan_goal(
     goal_type = "CORRECTION" if is_correction else "NEW"
     p_tokens = None
 
+    # DECOUPLED ORCHESTRATION BYPASS:
+    # If the intent classifier determined that planning is not required (LOOKUP, CHITCHAT, or single ACTION),
+    # bypass the heavy multi-agent LLM planner completely for sub-millisecond execution.
+    if intent_packet and not getattr(intent_packet, "planning_required", False) and not is_correction:
+        topo_mode = getattr(intent_packet, "topology_mode", "LOOKUP")
+        actions = getattr(intent_packet, "allowed_actions", [])
+        if topo_mode in ("CHITCHAT", "LOOKUP") and not actions:
+            print(f"[PLANNER NODE] Decoupled Orchestration Bypass: Routing '{topo_mode}' query via build_walk_graph (0s LLM planning)", flush=True)
+            return build_walk_graph(query, goal_id=goal_id)
+        elif actions and len(actions) == 1:
+            act_name = actions[0]
+            print(f"[PLANNER NODE] Decoupled Orchestration Bypass: Routing single action '{act_name}' via build_action_graph (0s LLM planning)", flush=True)
+            return build_action_graph(query, {"action": act_name, "params": {}}, goal_id=goal_id)
+
     # Build the user prompt ------------------------------------------------
     from datetime import timedelta
     now_utc_dt = datetime.now(timezone.utc)

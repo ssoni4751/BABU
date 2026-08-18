@@ -93,6 +93,9 @@ class PreExecutionGatekeeper:
             "search_image",
             "search_gmail",
             "post_to_facebook",
+            "read_facebook_comments",
+            "read_facebook_posts",
+            "reply_facebook_comment",
             "generate_image",
             "upload_to_drive",
             # Class C Destructive actions
