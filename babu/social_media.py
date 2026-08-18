@@ -1237,6 +1237,82 @@ def send_facebook_comment_reply(comment_id: str, message_text: str) -> tuple[boo
     return False, f"Could not dispatch comment reply for {comment_id}. Details: {' | '.join(errors)}"
 
 
+def fetch_facebook_recent_comments(limit: int = 5) -> tuple[bool, str]:
+    """Fetch recent comments across Facebook Page posts using Meta Graph API."""
+    page_id = os.environ.get("FACEBOOK_PAGE_ID")
+    page_token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN")
+    if not page_id or not page_token:
+        return False, "Facebook credentials (FACEBOOK_PAGE_ID / FACEBOOK_PAGE_ACCESS_TOKEN) are not configured."
+    
+    url = f"https://graph.facebook.com/v19.0/{page_id}/feed"
+    params = {
+        "fields": "id,message,created_time,comments{id,message,from,created_time}",
+        "limit": limit,
+        "access_token": page_token
+    }
+    try:
+        resp = requests.get(url, params=params, timeout=12)
+        if resp.status_code == 200:
+            data = resp.json()
+            posts = data.get("data", [])
+            summary_lines = []
+            total_comments = 0
+            for post in posts:
+                post_id = post.get("id")
+                post_msg = post.get("message", "Post")[:50]
+                comments_data = post.get("comments", {}).get("data", [])
+                if comments_data:
+                    summary_lines.append(f"📌 **Post** `{post_id}` ('{post_msg}...'):")
+                    for c in comments_data:
+                        total_comments += 1
+                        c_id = c.get("id")
+                        commenter = c.get("from", {}).get("name", "Customer")
+                        msg = c.get("message", "")
+                        created = c.get("created_time", "")[:10]
+                        summary_lines.append(f"  • **{commenter}** on {created} (ID: `{c_id}`): \"{msg}\"")
+            if total_comments == 0:
+                return True, "Checked Facebook Page feed: No comments found on recent posts."
+            return True, f"Found {total_comments} recent comments on Facebook Page:\n\n" + "\n".join(summary_lines)
+        else:
+            if "#10" in resp.text or "pages_read_engagement" in resp.text:
+                return False, "Meta Graph API requires `pages_read_engagement` permission in Meta Developer Dashboard for feed reading. Note: Incoming customer post comments are automatically received in real-time via live 2-way Webhooks!"
+            return False, f"Meta Graph API error ({resp.status_code}): {resp.text[:200]}"
+    except Exception as e:
+        return False, f"Failed to fetch Facebook comments: {e}"
+
+
+def fetch_facebook_recent_posts(limit: int = 5) -> tuple[bool, str]:
+    """Fetch recent published posts from Facebook Page timeline."""
+    page_id = os.environ.get("FACEBOOK_PAGE_ID")
+    page_token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN")
+    if not page_id or not page_token:
+        return False, "Facebook credentials are not configured."
+    
+    url = f"https://graph.facebook.com/v19.0/{page_id}/feed"
+    params = {
+        "fields": "id,message,created_time,full_picture,shares",
+        "limit": limit,
+        "access_token": page_token
+    }
+    try:
+        resp = requests.get(url, params=params, timeout=12)
+        if resp.status_code == 200:
+            posts = resp.json().get("data", [])
+            if not posts:
+                return True, "No recent posts found on Facebook Page timeline."
+            summary_lines = []
+            for idx, p in enumerate(posts, 1):
+                p_id = p.get("id")
+                msg = p.get("message", "Image/Graphic Post")[:80]
+                created = p.get("created_time", "")[:10]
+                summary_lines.append(f"{idx}. **Post ID** `{p_id}` ({created}): \"{msg}...\"")
+            return True, f"Recent Published Posts on Facebook Page:\n\n" + "\n".join(summary_lines)
+        else:
+            return False, f"Meta Graph API error ({resp.status_code}): {resp.text[:200]}"
+    except Exception as e:
+        return False, f"Failed to fetch Facebook posts: {e}"
+
+
 def process_facebook_webhook_event(payload: dict):
     """Process incoming Meta Webhook events (Messenger DMs & Post Comments) and auto-reply."""
     try:

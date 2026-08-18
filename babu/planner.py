@@ -326,18 +326,23 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
     # unavailable.  High-confidence execution classes are therefore identified
     # before the optional semantic classifier runs.
     detected_action = None
-    if "send" in t and ("email" in t or "mail" in t):
+    if ("facebook" in t or "fb" in t) and ("comment" in t or "comments" in t or "feed" in t or "activity" in t):
+        detected_action = "read_facebook_comments"
+    elif ("facebook" in t or "fb" in t) and ("post" in t or "posts" in t) and any(kw in t for kw in ("check", "read", "fetch", "get", "recent", "list", "latest", "show")):
+        detected_action = "read_facebook_posts"
+    elif "send" in t and ("email" in t or "mail" in t):
         detected_action = "send_email"
     elif "create" in t and "event" in t:
         detected_action = "create_event"
     elif "create" in t and ("document" in t or "doc" in t):
         detected_action = "create_doc"
-    elif "facebook" in t and "post" in t:
+    elif "facebook" in t and ("post" in t or "publish" in t):
         detected_action = "post_to_facebook"
     elif ("save" in t or "upload" in t) and ("drive" in t or "google drive" in t or "report" in t):
         detected_action = "upload_to_drive"
 
     if detected_action:
+        is_read_action = detected_action in ("read_facebook_comments", "read_facebook_posts", "search_sheet", "search_gmail")
         scheduled = any(marker in t for marker in ("scheduled", "daily", "automatically", "background"))
         try:
             from babu.bot import is_system_aware_query
@@ -348,14 +353,20 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
         packet = IntentPacket(
             allowed_departments=["information", "writing", "execution", "pa"],
             allowed_actions=[detected_action],
-            execution_mode="AUTO_EXECUTE" if scheduled else "APPROVAL_REQUIRED",
+            execution_mode="READ_ONLY" if is_read_action else ("AUTO_EXECUTE" if scheduled else "APPROVAL_REQUIRED"),
             confidence=0.95,
             tokens={"prompt": 0, "completion": 0, "total": 0},
             model="rules_engine",
             query_category="SYSTEM_INFORMATION" if is_sys else ("PERSONAL_INFORMATION" if _force_lookup else "PUBLIC_INFORMATION"),
-            system_query=is_sys
+            system_query=is_sys,
+            topology_source="EXTERNAL",
+            topology_mode="LOOKUP" if is_read_action else "ACTION",
+            mutation_type="NONE" if is_read_action else "EXTERNAL",
+            domain="META" if "facebook" in detected_action else "GOOGLE",
+            surface="PAGE" if "facebook" in detected_action else "SYSTEM",
+            planning_required=False
         )
-        if is_sys:
+        if is_sys and not is_read_action:
             packet.execution_mode = "APPROVAL_REQUIRED"
         return packet
 

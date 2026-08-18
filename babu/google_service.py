@@ -1129,5 +1129,39 @@ def execute_google_action(action: str, params: dict) -> tuple[bool, str]:
         except Exception as e:
             return False, f"Failed to post to Facebook: {e}"
 
+    elif action in ("read_facebook_comments", "get_facebook_comments", "search_facebook_comments"):
+        try:
+            try:
+                from .social_media import fetch_facebook_recent_comments
+            except ImportError:
+                from social_media import fetch_facebook_recent_comments
+            return fetch_facebook_recent_comments(limit=5)
+        except Exception as e:
+            return False, f"Failed to fetch Facebook comments: {e}"
+
+    elif action in ("read_facebook_posts", "get_facebook_posts", "search_facebook_posts"):
+        try:
+            try:
+                from .social_media import fetch_facebook_recent_posts
+            except ImportError:
+                from social_media import fetch_facebook_recent_posts
+            return fetch_facebook_recent_posts(limit=5)
+        except Exception as e:
+            return False, f"Failed to fetch Facebook posts: {e}"
+
+    elif action in ("reply_facebook_comment", "send_facebook_comment_reply"):
+        comment_id = params.get("comment_id", "")
+        reply_text = params.get("message", params.get("reply", params.get("text", "")))
+        if not comment_id or not reply_text:
+            return False, "Missing 'comment_id' or 'message' parameter to send Facebook comment reply."
+        try:
+            try:
+                from .social_media import send_facebook_comment_reply
+            except ImportError:
+                from social_media import send_facebook_comment_reply
+            return send_facebook_comment_reply(comment_id, reply_text)
+        except Exception as e:
+            return False, f"Failed to reply to Facebook comment: {e}"
+
     else:
         return False, f"Action `{action}` is not natively supported in direct Google Workspace integration."
