@@ -6270,7 +6270,8 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             await update.message.reply_text(reply)
                             return
                     
-                    params = resolve_action_params(pending.get("params", {}), research_text="")
+                    draft_txt = pending.get("draft_text", pending.get("research_text", ""))
+                    params = resolve_action_params(pending.get("params", {}), research_text=draft_txt)
                     log_execution_ledger_event(
                         session_id=session_id,
                         goal_id=pending.get("goal_id", "default"),
@@ -6674,7 +6675,8 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await query.edit_message_text("Failed to update cached goal graph approval.")
                         return
 
-                params = resolve_action_params(pending.get("params", {}), research_text="")
+                draft_txt = pending.get("draft_text", pending.get("research_text", ""))
+                params = resolve_action_params(pending.get("params", {}), research_text=draft_txt)
                 
                 log_execution_ledger_event(
                     session_id=session_id,

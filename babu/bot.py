@@ -804,15 +804,13 @@ llm_dept = build_llm(CURRENT_DEPT_MODEL, 0.7)
 # ---------------------------------------------------------------------------
 
 _FALLBACK_CHAIN = {
-    "groq/compound": ["llama-3.3-70b-versatile", "nvidia/meta/llama-3.3-70b-instruct", "gemini-2.5-flash"],
-    "groq/compound-mini": ["llama-3.1-8b-instant", "nvidia/meta/llama-3.1-8b-instruct", "gemini-2.5-flash"],
-    "llama-3.3-70b-versatile": ["groq/compound", "nvidia/meta/llama-3.3-70b-instruct", "gemini-2.5-flash"],
-    "llama-3.1-8b-instant": ["groq/compound-mini", "nvidia/meta/llama-3.1-8b-instruct", "gemini-2.5-flash"],
+    "groq/compound": ["openai/gpt-oss-120b", "nvidia/meta/llama-3.3-70b-instruct", "gemini-2.5-flash"],
+    "groq/compound-mini": ["openai/gpt-oss-20b", "nvidia/meta/llama-3.1-8b-instruct", "gemini-2.5-flash"],
     "openai/gpt-oss-120b": ["groq/compound", "nvidia/meta/llama-3.3-70b-instruct", "gemini-2.5-flash"],
     "openai/gpt-oss-20b": ["groq/compound-mini", "nvidia/meta/llama-3.1-8b-instruct", "gemini-2.5-flash"],
-    "nvidia/meta/llama-3.3-70b-instruct": ["groq/compound", "llama-3.3-70b-versatile", "gemini-2.5-flash"],
-    "nvidia/meta/llama-3.1-8b-instruct": ["groq/compound-mini", "llama-3.1-8b-instant", "gemini-2.5-flash"],
-    "gemini-2.5-flash": ["groq/compound", "nvidia/meta/llama-3.3-70b-instruct"],
+    "nvidia/meta/llama-3.3-70b-instruct": ["groq/compound", "openai/gpt-oss-120b", "gemini-2.5-flash"],
+    "nvidia/meta/llama-3.1-8b-instruct": ["groq/compound-mini", "openai/gpt-oss-20b", "gemini-2.5-flash"],
+    "gemini-2.5-flash": ["groq/compound-mini", "groq/compound"],
 }
 _RATE_LIMIT_SIGNALS = ("429", "rate limit", "rate_limit_exceeded", "too many requests", "tpd", "tpm")
 
@@ -6272,7 +6270,8 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             await update.message.reply_text(reply)
                             return
                     
-                    params = resolve_action_params(pending.get("params", {}), research_text="")
+                    draft_txt = pending.get("draft_text", pending.get("research_text", ""))
+                    params = resolve_action_params(pending.get("params", {}), research_text=draft_txt)
                     log_execution_ledger_event(
                         session_id=session_id,
                         goal_id=pending.get("goal_id", "default"),
@@ -6676,7 +6675,8 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await query.edit_message_text("Failed to update cached goal graph approval.")
                         return
 
-                params = resolve_action_params(pending.get("params", {}), research_text="")
+                draft_txt = pending.get("draft_text", pending.get("research_text", ""))
+                params = resolve_action_params(pending.get("params", {}), research_text=draft_txt)
                 
                 log_execution_ledger_event(
                     session_id=session_id,

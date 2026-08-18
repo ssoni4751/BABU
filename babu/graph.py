@@ -1027,11 +1027,20 @@ def task_executor_node(state: BabuState):
     if pending_approval_task:
         task = pending_approval_task
         dept_head = get_department_head(task.department)
-        action = task.context.get("action", "")
-        params = task.context.get("params", {})
-        
-        # Resolve placeholders using user profile
-        resolved_params = dept_head._resolve_params(params, "")
+        # Collect upstream results (writing/research drafts) to resolve research context
+        upstream_list = task.context.get("upstream_results", [])
+        upstream_texts = []
+        for ur in upstream_list:
+            if ur.get("result"):
+                upstream_texts.append(ur["result"])
+        if not upstream_texts:
+            for entry in execution_log:
+                if entry.get("result"):
+                    upstream_texts.append(entry["result"])
+        upstream_text = "\n\n".join(upstream_texts) if upstream_texts else ""
+
+        # Resolve placeholders using user profile and upstream research text
+        resolved_params = dept_head._resolve_params(params, upstream_text)
         
         # Save pending action for bot.py callback
         pending_action_data = {
@@ -1042,7 +1051,9 @@ def task_executor_node(state: BabuState):
             "stage": "approval",
             "graph_hash": graph_hash,
             "user_query": state.get("user_query"),
-            "routing_metadata": state.get("routing_metadata")
+            "routing_metadata": state.get("routing_metadata"),
+            "draft_text": upstream_text,
+            "research_text": upstream_text
         }
         with _pending_actions_lock:
             _pending_actions[session_id] = pending_action_data
