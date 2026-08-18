@@ -228,6 +228,13 @@ ADR-086 → ADR-090
 Domains:
 Governed Control Plane Architecture, Meta Bidirectional Loop, Multi-Provider Failover, Truthful Degradation, Deterministic Fast-Track
 
+## BABU_ADR_Book_v7.md
+Coverage:
+ADR-091 → ADR-095
+
+Domains:
+Topology-Aware Query Classification, Capability Demand Packet, Orchestration Bypass, Conversational State Inheritance, Telemetry Observability
+
 ## BABU_Manifesto_2026.md
 Coverage:
 25-Point System Architecture Manifesto (Living Architecture Standard)
