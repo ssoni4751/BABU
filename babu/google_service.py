@@ -1029,10 +1029,10 @@ def execute_google_action(action: str, params: dict) -> tuple[bool, str]:
         return search_google_sheet(sheet_name, query)
 
     elif action == "search_gmail":
-        query = params.get("query", "")
+        query = params.get("query", params.get("search", "label:INBOX"))
+        if not query or not query.strip():
+            query = "label:INBOX"
         max_results = int(params.get("max_results", 5))
-        if not query:
-            return False, "Missing Gmail 'query' search parameter."
         return search_gmail_messages(query, max_results)
 
     elif action == "search_image":
