@@ -1,1 +1,20 @@
-[]
+[
+  {
+    "timestamp": "2026-08-18T10:02:15.515583+00:00",
+    "last_used": "2026-08-18T10:02:15.515583+00:00",
+    "session_id": "default",
+    "gear": "DYNAMIC",
+    "sequence": [
+      "router",
+      "planner",
+      "executor",
+      "pa"
+    ],
+    "total_tokens": 3979,
+    "latency_seconds": 37.28,
+    "success": true,
+    "note": "send an email to Mr. Rajat Mail ID: verajrajput222@gmail.com Regarding lift maintinece from 26 august 2026 from 9 to 12 PM (in Hindi Language)",
+    "ttl_days": 10,
+    "confidence": 1.0
+  }
+]

@@ -1027,6 +1027,9 @@ def task_executor_node(state: BabuState):
     if pending_approval_task:
         task = pending_approval_task
         dept_head = get_department_head(task.department)
+        action = task.context.get("action", "")
+        params = task.context.get("params", {})
+        
         # Collect upstream results (writing/research drafts) to resolve research context
         upstream_list = task.context.get("upstream_results", [])
         upstream_texts = []
