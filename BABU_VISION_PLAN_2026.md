@@ -1,335 +1,81 @@
 # BABU VISION PLAN 2026
 
-From Agent System to Institutional Intelligence
+**From Autonomous Automation to Governed Agentic Control Platform**
+
+> Reference: [BABU Manifesto 2026](file:///d:/Aria/BABU_Manifesto_2026.md) & [ADR Book Volume 6](file:///d:/Aria/BABU_ADR_Book_v6.md)
 
 ---
 
-## Core Principle
+## 🎯 Core Operating Principle
 
-BABU is not a chatbot.
-BABU is not a collection of agents.
-BABU is an operational institution.
+**BABU is not a chatbot.**  
+**BABU is not a single automation.**  
+**BABU is not an LLM wrapper.**  
+**BABU is a governed control plane between a human operator and the digital world.**
 
-The objective is:
-Understand → Plan → Execute
+The fundamental pipeline:
+$$\text{Understand} \longrightarrow \text{Classify} \longrightarrow \text{Govern} \longrightarrow \text{Plan} \longrightarrow \text{Execute} \longrightarrow \text{Verify} \longrightarrow \text{Respond}$$
 
 Not:
-Prompt → Guess → Execute
+$$\text{Prompt} \longrightarrow \text{Guess} \longrightarrow \text{Execute}$$
 
 ---
 
-## Long-Term Vision
+## 🏛️ The 7-Layer System Architecture
 
-Create a system that:
-- Knows what it is.
-- Knows what it can do.
-- Knows what it cannot do.
-- Understands its current operational state.
-- Plans using awareness rather than assumptions.
-- Executes through governed workflows.
-- Learns from operational history.
+```mermaid
+graph TD
+    L0[Layer 0: Human Operator / External Event] --> L1[Layer 1: Query Classification]
+    L1 --> L2[Layer 2: Intent Classification]
+    L2 --> L3[Layer 3: Independent Governance]
+    L3 -->|Deterministic Fast-Track| L5[Layer 5: Specialized Execution]
+    L3 -->|Complex Multi-Step| L4[Layer 4: Dynamic Planner & DAG]
+    L4 --> L5
+    L5 --> L6[Layer 6: Verification & Truthful Response]
+```
 
-The goal is not autonomy.
-The goal is informed execution.
+### 1. Layer 0 — User & Event Ingestion
+* **Inputs:** Human natural language commands via JARVIS console (Telegram/HTTP) or inbound Webhook events (Meta Facebook/Instagram).
 
----
+### 2. Layer 1 — Query Classification
+* **Function:** Extracts platform, object, operation, target, scope, constraints, and missing information before any reasoning occurs.
 
-## Constitutional Model
+### 3. Layer 2 — Intent Classification
+* **Function:** Determines operational objective: `fetch`, `check`, `publish`, `reply`, `analyze`, `create`, `send`, `search`, `verify`, `execute`, or `escalate`.
 
-The Constitution is the highest non-human authority.
-Everything operates beneath it.
+### 4. Layer 3 — Independent Governance
+* **Function:** Evaluates authority, policy limits, permissions, and safety rules.
+* **Core Rule:** $\text{Understanding} \neq \text{Authorization} \neq \text{Execution}$.
 
-Hierarchy:
-Human
-│
-└── Constitution
-    │
-    ├── Governance
-    ├── Brain
-    ├── Planner
-    ├── Memory
-    └── Departments
+### 5. Layer 4 — Dynamic Planning (Or Orchestration Bypass)
+* **Deterministic Fast-Track:** Routine/single-capability requests bypass heavy dynamic LLM planning directly to capability tools.
+* **Dynamic Orchestration:** Complex goals are decomposed into multi-agent DAG execution steps.
 
----
+### 6. Layer 5 — Specialized Execution
+* **Function:** Invokes narrow-scope worker nodes against real APIs (Google Workspace, Meta Facebook, PostgreSQL, DuckDuckGo, Pollinations.ai).
 
-## Layer 0 — Constitution
-
-Purpose:
-Define system identity before runtime begins.
-The Constitution is not technical documentation.
-The Constitution never executes.
-The Constitution never plans.
-
-The Constitution defines the fundamental truths of the institution across 6 Articles:
-- **Article 1 — Identity:** BABU is an operational assistant institution, not an autonomous authority.
-- **Article 2 — Mission:** Help humans convert intentions into reliable, governed execution.
-- **Article 3 — Authority:** Human authority is supreme.
-- **Article 4 — Boundaries:** Workers execute. Planner plans. Governance governs.
-- **Article 5 — Knowledge:** Memory stores facts. Awareness creates understanding. Brain provides context.
-- **Article 6 — Evolution:** Constitutional principles remain stable unless explicitly modified by human authority.
-
-*Key Directives:*
-> BABU is an institution, not an authority.
-> Human authority is supreme.
-> Governance derives authority from the Constitution, not from the Planner.
+### 7. Layer 6 — Verification & Truthful Response
+* **Function:** Audits output against anti-pattern rules. Reports success, failure, or degraded state honestly without simulating success.
 
 ---
 
-## Layer 1 — Governance
+## 🚀 Key Strategic Priorities for 2026
 
-Purpose:
-Maintain institutional discipline.
-Governance is independent.
-Governance is not owned by Planner.
-Governance derives authority from Constitution.
+### 1. Bidirectional Meta Ecosystem Integration
+Expand BABU from outbound posting into a unified, event-driven control plane for Meta Facebook Page, Messenger DMs, Instagram, and WhatsApp.
 
-Responsibilities:
-- Policy validation
-- Approval verification
-- Execution limits
-- Escalation handling
-- Compliance checks
+### 2. Multi-Provider Intelligence Resilience
+Maintain zero single-provider dependency:
+* 🥇 **Primary**: Groq Cloud API (`groq/compound-mini`, `groq/compound`, `openai/gpt-oss-120b`)
+* 🥈 **Secondary**: NVIDIA NIM API (`nvidia/meta/llama-3.3-70b-instruct`)
+* 🥉 **Third**: Google Gemini Native (`gemini-2.5-flash`)
 
-Files:
-brain/
-└── governance/
-    ├── policies.md
-    ├── approval_rules.md
-    ├── execution_limits.md
-    └── auditor_contract.md
+### 3. Authoritative Business Knowledge Grounding
+Store structured business facts in `business_profile.json` so BABU retrieves verified pricing, services, and FAQs rather than improvising.
+
+### 4. Truthful Degradation & Non-Simulation
+If an infrastructure endpoint is rate-limited or unavailable, state the limitation honestly rather than generating fake success.
 
 ---
 
-## Layer 2 — Brain
-
-Purpose:
-Provide institutional understanding.
-Brain is not memory.
-Brain is not planner.
-Brain is not auditor.
-Brain provides context.
-
-Responsibilities:
-- System identity
-- Organizational understanding
-- Capability awareness
-- Department awareness
-- Service awareness
-- Institutional doctrine
-
-Files:
-brain/
-├── services/
-├── agents/
-├── governance/
-├── constitution/
-├── memory/
-├── operations/
-└── lessons/
-
----
-
-## Root Index
-**ROOT_INDEX.md**
-
-Purpose:
-Serve as the master institutional map.
-
-Contents:
-1. Constitution
-2. Governance
-3. Services
-4. Agents
-5. Memory
-6. Operations
-7. Templates
-8. Lessons Learned
-
-All retrieval begins from this index.
-
----
-
-## Layer 3 — Awareness
-
-Purpose:
-Maintain a live operational understanding.
-
-Inputs:
-- Execution Ledger
-- Telemetry
-- Templates
-- Service Health
-- Historical Outcomes
-- Memory
-
-Outputs:
-- Situation Reports
-- Feasibility Reports
-- Risk Assessments
-- Recommended Strategies
-
-Awareness never executes.
-Awareness never authorizes.
-Awareness only informs.
-
-### Situation Report Standard
-Every planning cycle may generate:
-
-SITUATION REPORT
-Objective: ...
-Available Services: ...
-Unavailable Services: ...
-Relevant History: ...
-Known Risks: ...
-Constraints: ...
-Recommended Strategy: ...
-Fallback Strategy: ...
-Confidence: ...
-
----
-
-## Layer 4 — Planner
-
-Purpose:
-Convert awareness into executable plans.
-
-Inputs:
-- User Intent
-- Constitution
-- Awareness Report
-- Available Services
-
-Outputs:
-- Mission Plan
-- Task Graph
-- Execution Path
-
-Planner should never guess system state.
-Planner receives system state.
-
----
-
-## Layer 5 — Departments
-
-Departments perform work.
-Departments do not govern.
-Departments do not self-authorize.
-Departments execute assigned tasks.
-
-Initial Departments:
-- Research
-- Writing
-- Information
-- Publishing
-- Execution
-
-Future departments may be added.
-
----
-
-## Layer 6 — Services
-
-Services are infrastructure capabilities.
-
-Examples:
-- Telegram
-- Facebook
-- Email
-- Google Workspace
-- Scheduler
-- Web API
-
-Every service must define:
-- Capabilities
-- Dependencies
-- Failure Modes
-- Fallbacks
-
----
-
-## Layer 7 — Memory
-
-Purpose:
-Store facts and history.
-Memory is not awareness.
-Memory is not governance.
-Memory is not identity.
-
-Components:
-- User Profiles
-- Timeline
-- Execution Ledger
-- Templates
-- Telemetry
-- Operational History
-
----
-
-## Layer 8 — Execution
-
-Execution occurs only after:
-Intent → Awareness → Planning → Governance → Execution
-
-No bypasses.
-
----
-
-## Brain Bootstrap Sequence
-
-Phase 0: Load Constitution
-Phase 1: Load ROOT_INDEX
-Phase 2: Load Governance
-Phase 3: Load Configuration
-Phase 4: Verify Infrastructure
-Phase 5: Load Brain
-Phase 6: Initialize Awareness
-Phase 7: Compile Planner
-Phase 8: Open Transports
-
-Only after Phase 8 may Telegram, HTTP, or other transports begin accepting requests.
-
----
-
-## Brain v1 Objectives
-
-Create:
-- Institutional Identity
-- Root Index
-- Authority Structure
-- Service Registry
-- Department Registry
-
-Do Not Create Yet:
-- Self-modification
-- Autonomous governance
-- Autonomous planning
-- Self-generated policies
-- Agent self-promotion
-
----
-
-## Brain v2 Objectives
-
-Future Possibilities:
-- Pattern Detection
-- Failure Prediction
-- Workflow Optimization
-- Resource Recommendations
-- Template Promotion Guidance
-
-Brain remains advisory.
-Planner remains operational.
-Governance remains independent.
-Human remains sovereign.
-
----
-
-## Final Design Principle
-
-Execution creates activity.
-Memory creates history.
-Awareness creates understanding.
-Governance creates discipline.
-Constitution creates identity.
-
-Together they create BABU.
+*BABU Vision Plan 2026 — Governed Control Platform Standard*

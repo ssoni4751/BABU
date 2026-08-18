@@ -221,6 +221,20 @@ ADR-079 → ADR-085
 Domains:
 Decoupled Architecture, 2-Way Webhook Engine, Automated Token Self-Healing, Unicode Safety, Meta Developer Live Publication
 
+## BABU_ADR_Book_v6.md
+Coverage:
+ADR-086 → ADR-090
+
+Domains:
+Governed Control Plane Architecture, Meta Bidirectional Loop, Multi-Provider Failover, Truthful Degradation, Deterministic Fast-Track
+
+## BABU_Manifesto_2026.md
+Coverage:
+25-Point System Architecture Manifesto (Living Architecture Standard)
+
+Domains:
+North Star Principles, 7-Layer Pipeline, Governed Control Plane, External World Connectivity, Resilience
+
 ## BABU_BABU_Architecture_Diagrams.md
 Domains:
 Architecture, Execution Flow, Roadmap
