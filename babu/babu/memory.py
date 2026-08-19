@@ -72,8 +72,9 @@ def append_to_profile_ledger(category: str, entry_data: dict) -> bool:
             if "timestamp" not in entry_data:
                 entry_data["timestamp"] = datetime.now(timezone.utc).isoformat()
 
-            # 4. Append entry to the list
+            # 4. Append entry to the list & keep strictly bounded (last 10 items max)
             profile["dynamic_memory_ledger"][category].append(entry_data)
+            profile["dynamic_memory_ledger"][category] = profile["dynamic_memory_ledger"][category][-10:]
 
             # 5. Atomic Writeback to prevent data corruption
             temp_path = PROFILE_PATH + ".tmp"
