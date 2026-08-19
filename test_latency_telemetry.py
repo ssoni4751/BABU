@@ -6,11 +6,15 @@ from datetime import datetime, timezone
 
 # Add babu to python path so we can import from it
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(CURRENT_DIR)
-sys.path.append(os.path.join(CURRENT_DIR, "babu"))
+sys.path.insert(0, CURRENT_DIR)
+sys.path.insert(0, os.path.join(CURRENT_DIR, "babu"))
 
-from babu.services import get_db_connection, log_execution_ledger_event
-from babu.bot import get_telemetry_data
+try:
+    from services import get_db_connection, log_execution_ledger_event
+    from bot import get_telemetry_data
+except ImportError:
+    from babu.services import get_db_connection, log_execution_ledger_event
+    from babu.bot import get_telemetry_data
 
 def test_latency_telemetry_calculation():
     print("="*60)

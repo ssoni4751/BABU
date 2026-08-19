@@ -199,21 +199,35 @@ KNOWLEDGE_BASE = {
 
 USER_PROFILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "user_profile.json")
 _profile_lock = threading.Lock()
+_PG_FAILED = False
+_PG_LAST_RETRY = 0
+_PG_RETRY_INTERVAL = 300  # Try reconnecting to PostgreSQL at most once every 5 minutes if it failed
 
 def get_db_connection():
+    global _PG_FAILED, _PG_LAST_RETRY
     db_url = os.environ.get("DATABASE_URL")
     if db_url:
         if db_url.startswith("postgres://") or db_url.startswith("postgresql://"):
-            import psycopg2
-            url = db_url
-            if url.startswith("postgres://"):
-                url = url.replace("postgres://", "postgresql://", 1)
-            try:
-                return psycopg2.connect(url, connect_timeout=3), True
-            except Exception as e:
-                print(f"[DB WARNING] PostgreSQL unavailable; falling back to SQLite at {DB_PATH}: {e}", flush=True)
+            now = time.time()
+            if not _PG_FAILED or (now - _PG_LAST_RETRY > _PG_RETRY_INTERVAL):
+                import psycopg2
+                url = db_url
+                if url.startswith("postgres://"):
+                    url = url.replace("postgres://", "postgresql://", 1)
+                try:
+                    conn = psycopg2.connect(url, connect_timeout=2)
+                    _PG_FAILED = False
+                    return conn, True
+                except Exception as e:
+                    if not _PG_FAILED:
+                        print(f"[DB WARNING] PostgreSQL unavailable; falling back to SQLite at {DB_PATH}: {e}", flush=True)
+                    _PG_FAILED = True
+                    _PG_LAST_RETRY = now
         elif db_url.startswith("sqlite:///"):
             path = db_url.replace("sqlite:///", "", 1)
+            dir_name = os.path.dirname(path)
+            if dir_name:
+                os.makedirs(dir_name, exist_ok=True)
             conn = sqlite3.connect(path)
             _ensure_sqlite_schema(conn)
             return conn, False
