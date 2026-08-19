@@ -387,11 +387,15 @@ def get_system_health_dashboard() -> str:
             CURRENT_PA_MODEL = "groq/compound-mini"
             CURRENT_DEPT_MODEL = "groq/compound"
             
-    def parse_db_timestamp(ts_str):
-        if not ts_str:
+    def parse_db_timestamp(ts_val):
+        if not ts_val:
             return None
+        if isinstance(ts_val, datetime):
+            if ts_val.tzinfo is None:
+                return ts_val.replace(tzinfo=timezone.utc)
+            return ts_val
         try:
-            cleaned = ts_str.strip()
+            cleaned = str(ts_val).strip().replace(" ", "T")
             if "." in cleaned:
                 parts = cleaned.split(".")
                 sec_part = parts[1]
@@ -402,12 +406,24 @@ def get_system_health_dashboard() -> str:
                 elif "+" in sec_part:
                     sec_part, suffix = sec_part.split("+", 1)
                     suffix = "+" + suffix
+                elif "-" in sec_part:
+                    sec_part, suffix = sec_part.split("-", 1)
+                    suffix = "-" + suffix
                 sec_part = sec_part[:6]
                 cleaned = parts[0] + "." + sec_part + suffix
             if cleaned.endswith("Z"):
                 cleaned = cleaned[:-1] + "+00:00"
-            return datetime.fromisoformat(cleaned)
+            dt = datetime.fromisoformat(cleaned)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
         except Exception:
+            for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+                try:
+                    dt = datetime.strptime(str(ts_val).strip()[:19], fmt)
+                    return dt.replace(tzinfo=timezone.utc)
+                except Exception:
+                    pass
             return None
 
     def format_last_success(last_time):
