@@ -70,8 +70,12 @@ aria/chat_id.txt
 aria/last_post_date.txt
 temp/
 
-# Compiled Output Artifacts
+# Compiled Output Artifacts & Media
 *.pdf
+*.jpg
+*.jpeg
+*.JPG
+*.JPEG
 
 # Test Memory Isolation
 *failures_test.json
