@@ -85,11 +85,11 @@ def generate_daily_post(custom_topic: str = None) -> tuple[str, str, str, list, 
             f"IMPORTANT: Please draft a daily tax or compliance advice/marketing post that naturally addresses or draws inspiration from the real-time Indian tax/compliance news above. Ensure it connects seamlessly to the professional tax, compliance, and e-governance services offered by 'Anshu Computer & Tax Consultancy'!"
         )
     
-    res = None
     models_to_try = [
-        ("groq", "groq/compound-mini"),
+        ("groq", "openai/gpt-oss-20b"),
         ("groq", "openai/gpt-oss-120b"),
-        ("groq", "groq/compound"),
+        ("groq", "qwen/qwen3.6-27b"),
+        ("nvidia", "meta/llama-3.1-8b-instruct"),
         ("nvidia", "meta/llama-3.3-70b-instruct"),
         ("gemini", "gemini-2.5-flash")
     ]
@@ -1346,7 +1346,7 @@ def process_facebook_webhook_event(payload: dict):
                     )
                     
                     reply = None
-                    dm_models = [("groq", "groq/compound-mini"), ("groq", "openai/gpt-oss-20b"), ("nvidia", "meta/llama-3.1-8b-instruct"), ("gemini", "gemini-2.5-flash")]
+                    dm_models = [("groq", "openai/gpt-oss-20b"), ("groq", "openai/gpt-oss-120b"), ("nvidia", "meta/llama-3.1-8b-instruct"), ("gemini", "gemini-2.5-flash")]
                     for prov, mod in dm_models:
                         try:
                             if prov == "groq" and os.environ.get("GROQ_API_KEY"):
@@ -1400,7 +1400,7 @@ def process_facebook_webhook_event(payload: dict):
                         "Draft a polite, short 1-2 sentence response thanking them and offering quick expert assistance for ITR, GST, or PF consultancy. Plain text only."
                     )
                     reply = None
-                    c_models = [("groq", "groq/compound-mini"), ("groq", "openai/gpt-oss-20b"), ("nvidia", "meta/llama-3.1-8b-instruct"), ("gemini", "gemini-2.5-flash")]
+                    c_models = [("groq", "openai/gpt-oss-20b"), ("groq", "openai/gpt-oss-120b"), ("nvidia", "meta/llama-3.1-8b-instruct"), ("gemini", "gemini-2.5-flash")]
                     for prov, mod in c_models:
                         try:
                             if prov == "groq" and os.environ.get("GROQ_API_KEY"):
