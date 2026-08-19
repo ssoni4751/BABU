@@ -55,6 +55,8 @@ def is_deterministic_faq_query(query: str) -> bool:
     faq_keywords = (
         "current time", "time in ist", "time here in ist", "what is the time", "what time is it",
         "how old are you", "how old you are", "your age", "what is your age", "date of birth", "dob of babu",
+        "what did you do yesterday", "what did you do today", "what you did yesterday", "what you did today",
+        "kal kya kiya", "kal kya kaam hua", "kal kya kaam kiya", "aaj kya kiya", "aaj kya kaam kiya", "yesterday tasks", "yesterdays tasks", "yesterday's tasks",
         "who are you", "tell me about yourself", "about yourself", "know about yourself", "about you", "tell me about you", "know about you",
         "describe yourself", "introduce yourself", "your identity", "what is your name",
         "your architecture", "tell me about your architecture", "how are you built", "how do you work",
@@ -114,8 +116,8 @@ def get_dynamic_self_identity() -> str:
         try:
             from bot import CURRENT_PA_MODEL, CURRENT_DEPT_MODEL
         except ImportError:
-            CURRENT_PA_MODEL = "llama-3.1-8b-instant"
-            CURRENT_DEPT_MODEL = "llama-3.3-70b-versatile"
+            CURRENT_PA_MODEL = "groq/compound-mini"
+            CURRENT_DEPT_MODEL = "groq/compound"
             
     try:
         enabled_services = []
@@ -240,9 +242,11 @@ def has_multiple_tasks_or_requests(query: str, intent_packet_dict: Optional[dict
         allowed_depts = intent_packet_dict.get("allowed_departments", [])
         allowed_actions = intent_packet_dict.get("allowed_actions", [])
         
-        # Determine mutating actions based on policy classes (B or C)
-        from .policy_loader import get_action_class
-        mutating_actions = {act for act in allowed_actions if get_action_class(act) in {"B", "C"}}
+        mutating_actions = {
+            "send_email", "create_event", "log_to_sheet", "create_doc", 
+            "copy_photos_to_drive", "copy_contacts_to_drive", 
+            "send_slack", "create_task", "post_to_facebook", "generate_image"
+        }
         has_mutating = any(act in allowed_actions for act in mutating_actions)
         core_depts = [d for d in allowed_depts if d != "pa" and (d != "execution" or has_mutating)]
         if len(core_depts) > 1:
@@ -268,8 +272,9 @@ def has_multiple_tasks_or_requests(query: str, intent_packet_dict: Optional[dict
             "what you does", "what can you do", "what you can do",
             "tell me about yourself", "about yourself", "about you", "tell me about you",
             "describe yourself", "introduce yourself", "your identity", "what is your name",
-            "how old are you", "your age", "date of birth",
-            "what is the time", "current time", "time in ist",
+            "how old are you", "your age", "date of birth", "dob", "age",
+            "what is the time", "current time", "time in ist", "time",
+            "what did you do yesterday", "what did you do today", "yesterday", "today",
             "your architecture", "how do you work", "how are you built",
             "your capabilities", "what you does best", "what you do best",
             "what do you do best", "your strength", "your strengths", "best at",
@@ -379,8 +384,8 @@ def get_system_health_dashboard() -> str:
         try:
             from bot import CURRENT_PA_MODEL, CURRENT_DEPT_MODEL
         except ImportError:
-            CURRENT_PA_MODEL = "llama-3.1-8b-instant"
-            CURRENT_DEPT_MODEL = "llama-3.3-70b-versatile"
+            CURRENT_PA_MODEL = "groq/compound-mini"
+            CURRENT_DEPT_MODEL = "groq/compound"
             
     def parse_db_timestamp(ts_str):
         if not ts_str:

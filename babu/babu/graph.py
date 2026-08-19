@@ -30,7 +30,8 @@ try:
         log_execution_ledger_event,
         db_save_pending_action,
         db_delete_pending_action,
-        get_current_profile
+        get_current_profile,
+        get_daily_activity_summary
     )
     from .gateway import (
         is_pure_greeting,
@@ -65,7 +66,8 @@ except ImportError:
         log_execution_ledger_event,
         db_save_pending_action,
         db_delete_pending_action,
-        get_current_profile
+        get_current_profile,
+        get_daily_activity_summary
     )
     from gateway import (
         is_pure_greeting,
@@ -1030,8 +1032,20 @@ def task_executor_node(state: BabuState):
         action = task.context.get("action", "")
         params = task.context.get("params", {})
         
-        # Resolve placeholders using user profile
-        resolved_params = dept_head._resolve_params(params, "")
+        # Collect upstream results (writing/research drafts) to resolve research context
+        upstream_list = task.context.get("upstream_results", [])
+        upstream_texts = []
+        for ur in upstream_list:
+            if ur.get("result"):
+                upstream_texts.append(ur["result"])
+        if not upstream_texts:
+            for entry in execution_log:
+                if entry.get("result"):
+                    upstream_texts.append(entry["result"])
+        upstream_text = "\n\n".join(upstream_texts) if upstream_texts else ""
+
+        # Resolve placeholders using user profile and upstream research text
+        resolved_params = dept_head._resolve_params(params, upstream_text)
         
         # Save pending action for bot.py callback
         pending_action_data = {
@@ -1042,7 +1056,9 @@ def task_executor_node(state: BabuState):
             "stage": "approval",
             "graph_hash": graph_hash,
             "user_query": state.get("user_query"),
-            "routing_metadata": state.get("routing_metadata")
+            "routing_metadata": state.get("routing_metadata"),
+            "draft_text": upstream_text,
+            "research_text": upstream_text
         }
         with _pending_actions_lock:
             _pending_actions[session_id] = pending_action_data
@@ -1542,11 +1558,26 @@ def pa_node(state: BabuState):
         print(f"[PA NODE] Deterministic short-circuit for time query: '{user_query}'", flush=True)
         return {"messages": state["messages"] + [AIMessage(content=time_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
 
-    if not is_multi_request and any(k in lowered_query for k in ("how old are you", "how old you are", "your age", "what is your age", "date of birth of babu", "babu birth", "babu creation", "dob of babu")):
+    if not is_multi_request and any(k in lowered_query for k in ("how old are you", "how old you are", "your age", "what is your age", "date of birth", "dob", "birth date", "babu birth", "babu creation", "dob of babu")):
         age_str = get_babu_age_string()
         age_response = f"I am **Project BABU** (Behavioral Autonomous Bureaucratic Utility). My date of birth is **May 27, 2026**. I have been active for **{age_str}**!"
         print(f"[PA NODE] Deterministic short-circuit for age query: '{user_query}'", flush=True)
         return {"messages": state["messages"] + [AIMessage(content=age_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
+
+    temporal_activity_keywords = (
+        "what did you do yesterday", "what did you do today", "what you did yesterday", "what you did today",
+        "what did babu do yesterday", "what did babu do today", "kal kya kiya", "kal kya kaam hua", "kal kya kaam kiya",
+        "aaj kya kiya", "aaj kya kaam kiya", "yesterdays tasks", "yesterday's tasks", "yesterday tasks",
+        "yesterday activity", "yesterday's activity", "todays activity", "today's activity",
+        "what was done yesterday", "what was done today", "activities yesterday", "activities today",
+        "what did you do on", "what was done on"
+    )
+    if not is_multi_request and any(k in lowered_query for k in temporal_activity_keywords):
+        is_yest = any(k in lowered_query for k in ("yesterday", "kal", "beeta kal", "previous day"))
+        rel_days = -1 if is_yest else 0
+        activity_data = get_daily_activity_summary(relative_days=rel_days)
+        print(f"[PA NODE] Deterministic short-circuit for temporal activity query: '{user_query}'", flush=True)
+        return {"messages": state["messages"] + [AIMessage(content=activity_data["executive_text"])], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
 
     if not is_multi_request and any(k in lowered_query for k in ("who are you", "tell me about yourself", "about yourself", "know about yourself", "describe yourself", "introduce yourself", "your identity", "what is your name")):
         identity_response = get_dynamic_self_identity()

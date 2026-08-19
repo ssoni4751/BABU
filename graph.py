@@ -30,7 +30,8 @@ try:
         log_execution_ledger_event,
         db_save_pending_action,
         db_delete_pending_action,
-        get_current_profile
+        get_current_profile,
+        get_daily_activity_summary
     )
     from .gateway import (
         is_pure_greeting,
@@ -65,7 +66,8 @@ except ImportError:
         log_execution_ledger_event,
         db_save_pending_action,
         db_delete_pending_action,
-        get_current_profile
+        get_current_profile,
+        get_daily_activity_summary
     )
     from gateway import (
         is_pure_greeting,
@@ -1556,11 +1558,26 @@ def pa_node(state: BabuState):
         print(f"[PA NODE] Deterministic short-circuit for time query: '{user_query}'", flush=True)
         return {"messages": state["messages"] + [AIMessage(content=time_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
 
-    if not is_multi_request and any(k in lowered_query for k in ("how old are you", "how old you are", "your age", "what is your age", "date of birth of babu", "babu birth", "babu creation", "dob of babu")):
+    if not is_multi_request and any(k in lowered_query for k in ("how old are you", "how old you are", "your age", "what is your age", "date of birth", "dob", "birth date", "babu birth", "babu creation", "dob of babu")):
         age_str = get_babu_age_string()
         age_response = f"I am **Project BABU** (Behavioral Autonomous Bureaucratic Utility). My date of birth is **May 27, 2026**. I have been active for **{age_str}**!"
         print(f"[PA NODE] Deterministic short-circuit for age query: '{user_query}'", flush=True)
         return {"messages": state["messages"] + [AIMessage(content=age_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
+
+    temporal_activity_keywords = (
+        "what did you do yesterday", "what did you do today", "what you did yesterday", "what you did today",
+        "what did babu do yesterday", "what did babu do today", "kal kya kiya", "kal kya kaam hua", "kal kya kaam kiya",
+        "aaj kya kiya", "aaj kya kaam kiya", "yesterdays tasks", "yesterday's tasks", "yesterday tasks",
+        "yesterday activity", "yesterday's activity", "todays activity", "today's activity",
+        "what was done yesterday", "what was done today", "activities yesterday", "activities today",
+        "what did you do on", "what was done on"
+    )
+    if not is_multi_request and any(k in lowered_query for k in temporal_activity_keywords):
+        is_yest = any(k in lowered_query for k in ("yesterday", "kal", "beeta kal", "previous day"))
+        rel_days = -1 if is_yest else 0
+        activity_data = get_daily_activity_summary(relative_days=rel_days)
+        print(f"[PA NODE] Deterministic short-circuit for temporal activity query: '{user_query}'", flush=True)
+        return {"messages": state["messages"] + [AIMessage(content=activity_data["executive_text"])], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
 
     if not is_multi_request and any(k in lowered_query for k in ("who are you", "tell me about yourself", "about yourself", "know about yourself", "describe yourself", "introduce yourself", "your identity", "what is your name")):
         identity_response = get_dynamic_self_identity()

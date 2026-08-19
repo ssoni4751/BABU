@@ -5,6 +5,7 @@ import hashlib
 import threading
 import re
 import time
+from datetime import datetime, timezone, timedelta
 try:
     import requests
 except Exception:
@@ -325,6 +326,168 @@ def get_temporal_events(limit: int = 50) -> list[dict]:
     except Exception as e:
         print(f"[TEMPORAL ERROR] Failed to fetch temporal events: {e}", flush=True)
         return []
+
+def get_daily_activity_summary(date_target: Optional[str] = None, relative_days: Optional[int] = None) -> dict:
+    """
+    Retrieve activity summary from babu_temporal_timeline and execution_ledger for a given date in IST.
+    Supports relative_days (0 for today, -1 for yesterday, etc.) or specific date strings.
+    """
+    now_utc = datetime.now(timezone.utc)
+    now_ist = now_utc + timedelta(hours=5, minutes=30)
+    
+    if relative_days is not None:
+        target_dt = now_ist + timedelta(days=relative_days)
+    elif date_target:
+        dt_clean = date_target.lower().strip()
+        if dt_clean in ("yesterday", "kal", "beeta kal", "previous day"):
+            target_dt = now_ist - timedelta(days=1)
+        elif dt_clean in ("today", "aaj", "current day"):
+            target_dt = now_ist
+        else:
+            # Try parsing YYYY-MM-DD, DD-MM-YYYY, DD/MM/YYYY
+            parsed = False
+            for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%d %B %Y", "%d %b %Y", "%Y/%m/%d"):
+                try:
+                    target_dt = datetime.strptime(date_target.strip(), fmt)
+                    parsed = True
+                    break
+                except Exception:
+                    pass
+            if not parsed:
+                target_dt = now_ist - timedelta(days=1) if "yesterday" in dt_clean or "kal" in dt_clean else now_ist
+    else:
+        target_dt = now_ist
+
+    target_date_str = target_dt.strftime("%Y-%m-%d")
+    display_date = target_dt.strftime("%A, %B %d, %Y")
+    
+    summary = {
+        "target_date": target_date_str,
+        "display_date": display_date,
+        "is_today": (target_date_str == now_ist.strftime("%Y-%m-%d")),
+        "is_yesterday": (target_date_str == (now_ist - timedelta(days=1)).strftime("%Y-%m-%d")),
+        "social_posts": [],
+        "research_tasks": [],
+        "governance_events": [],
+        "general_tasks": [],
+        "total_events": 0,
+        "executive_text": ""
+    }
+    
+    try:
+        conn, is_pg = get_db_connection()
+        cursor = conn.cursor()
+        
+        # 1. Fetch from babu_temporal_timeline
+        if is_pg:
+            cursor.execute("""
+                SELECT event_id, timestamp, event_category, summary, outcome, metadata
+                FROM babu_temporal_timeline
+                WHERE DATE(timestamp) = %s
+                ORDER BY event_id ASC
+            """, (target_date_str,))
+        else:
+            cursor.execute("""
+                SELECT event_id, timestamp, event_category, summary, outcome, metadata
+                FROM babu_temporal_timeline
+                WHERE DATE(timestamp) = ? OR timestamp LIKE ?
+                ORDER BY event_id ASC
+            """, (target_date_str, f"{target_date_str}%"))
+            
+        temporal_rows = cursor.fetchall()
+        
+        # 2. Fetch from execution_ledger
+        if is_pg:
+            cursor.execute("""
+                SELECT event_id, session_id, goal_id, task_id, department, event_type, metadata, timestamp
+                FROM execution_ledger
+                WHERE DATE(timestamp) = %s
+                ORDER BY event_id ASC
+            """, (target_date_str,))
+        else:
+            cursor.execute("""
+                SELECT event_id, session_id, goal_id, task_id, department, event_type, metadata, timestamp
+                FROM execution_ledger
+                WHERE DATE(timestamp) = ? OR timestamp LIKE ?
+                ORDER BY event_id ASC
+            """, (target_date_str, f"{target_date_str}%"))
+            
+        ledger_rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        for r in temporal_rows:
+            ev_id, ts, cat, summ, out, meta_str = r
+            entry = {"id": ev_id, "time": str(ts), "category": cat, "summary": summ, "outcome": out}
+            summary["total_events"] += 1
+            if cat in ("SOCIAL_POST", "MARKETING", "FACEBOOK"):
+                summary["social_posts"].append(entry)
+            elif cat in ("RESEARCH", "SEARCH", "COMPLIANCE"):
+                summary["research_tasks"].append(entry)
+            elif cat in ("GOVERNANCE", "IMMUNE_LESSON", "AUDIT", "FAILURES"):
+                summary["governance_events"].append(entry)
+            else:
+                summary["general_tasks"].append(entry)
+                
+        for r in ledger_rows:
+            ev_id, sess_id, g_id, t_id, dept, ev_type, meta_str, ts = r
+            if ev_type in ("GOAL_COMPLETE", "EXECUTION_SUCCESS", "EXECUTION_COMPLETE"):
+                summary["total_events"] += 1
+                entry = {"id": ev_id, "time": str(ts), "goal_id": g_id, "department": dept, "event_type": ev_type}
+                if dept == "writing" or "social" in (g_id or "").lower():
+                    summary["social_posts"].append(entry)
+                elif dept == "research":
+                    summary["research_tasks"].append(entry)
+                else:
+                    summary["general_tasks"].append(entry)
+
+        # Build structured executive text
+        day_label = "Yesterday" if summary["is_yesterday"] else ("Today" if summary["is_today"] else target_date_str)
+        text_lines = [
+            f"### 📅 Activity Summary for {day_label} ({display_date})\n",
+            f"**Current IST Reference Time:** {now_ist.strftime('%I:%M %p, %d %b %Y')}\n"
+        ]
+        
+        if summary["total_events"] == 0:
+            text_lines.append(f"No autonomous tasks or ledger events were recorded for **{display_date}**.")
+        else:
+            if summary["social_posts"]:
+                text_lines.append(f"**📱 Social Media & Marketing ({len(summary['social_posts'])} action{'s' if len(summary['social_posts']) > 1 else ''})**")
+                for item in summary["social_posts"][:5]:
+                    summ = item.get("summary") or f"Post execution for goal {item.get('goal_id', '')}"
+                    out = item.get("outcome") or "Completed"
+                    text_lines.append(f"- ✅ **{summ}** ({out})")
+                text_lines.append("")
+                
+            if summary["research_tasks"]:
+                text_lines.append(f"**🔍 Research & Compliance ({len(summary['research_tasks'])} task{'s' if len(summary['research_tasks']) > 1 else ''})**")
+                for item in summary["research_tasks"][:5]:
+                    summ = item.get("summary") or f"Research topic under goal {item.get('goal_id', '')}"
+                    text_lines.append(f"- 🔎 {summ}")
+                text_lines.append("")
+                
+            if summary["governance_events"]:
+                text_lines.append(f"**⚙️ Governance, Audits & Immune Health ({len(summary['governance_events'])} event{'s' if len(summary['governance_events']) > 1 else ''})**")
+                for item in summary["governance_events"][:5]:
+                    summ = item.get("summary") or f"Audit event {item.get('id', '')}"
+                    text_lines.append(f"- 🛡️ {summ}")
+                text_lines.append("")
+                
+            if summary["general_tasks"]:
+                text_lines.append(f"**📋 System Operations & Goals ({len(summary['general_tasks'])} event{'s' if len(summary['general_tasks']) > 1 else ''})**")
+                for item in summary["general_tasks"][:5]:
+                    summ = item.get("summary") or f"Completed goal {item.get('goal_id', '')} in {item.get('department', 'general')}"
+                    text_lines.append(f"- ⚡ {summ}")
+                text_lines.append("")
+                
+            text_lines.append(f"**Total Activities Logged:** {summary['total_events']}")
+            
+        summary["executive_text"] = "\n".join(text_lines)
+        return summary
+    except Exception as e:
+        print(f"[TEMPORAL SUMMARY ERROR] Failed to generate activity summary: {e}", flush=True)
+        summary["executive_text"] = f"Unable to fetch historical activity for {display_date} due to a database query issue: {e}"
+        return summary
 
 def _query_hash(query: str) -> str:
     return hashlib.sha256(query.lower().strip().encode("utf-8")).hexdigest()
