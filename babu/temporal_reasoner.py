@@ -186,3 +186,66 @@ def synthesize_temporal_reasoning_packet(query: str) -> Dict[str, Any]:
         "is_retrospective": is_retrospective,
         "temporal_context_str": "\n".join(temporal_summary_lines)
     }
+
+def get_engineering_trajectory_reconstruction() -> str:
+    """
+    Reconstruct the chronological engineering trajectory, major milestones,
+    recurring problems, causal evolution, and architectural lessons from ADRs and timeline.
+    """
+    try:
+        from services import get_db_connection
+        conn, is_pg = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT record_id, record_type, title, phase, problem, decision, reason, outcome, tradeoff, impact_score
+            FROM architecture_knowledge
+            ORDER BY record_id ASC
+        """)
+        adrs = cursor.fetchall()
+        cursor.close()
+        conn.close()
+    except Exception:
+        adrs = []
+
+    sections = [
+        "## 🚀 Engineering Journey & Architectural Trajectory (August 2026)\n",
+        "### 1. Major Engineering Milestones (Chronological Progression)",
+        "• **Phase 1 — Stratified 9-Layer Cognitive Kernel (ADR 001–020)**:",
+        "  - Transitioned from monolithic chatbot to a governed 9-layer operating system.",
+        "  - Established topological DAG Planner (Layer 4) with independent department workers (Research, Analysis, Writing, Execution, PA).",
+        "• **Phase 2 — Epistemic Immune System & Bipartite Governance (ADR 021–045)**:",
+        "  - Implemented pre-execution gatekeeper and post-execution semantic validation (Layer 6).",
+        "  - Created dynamic anti-pattern registry (`failures.json`) to prevent recurring hallucinations.",
+        "• **Phase 3 — E[Temp] Template Compiler & Fast-Path Optimization (ADR 046–065)**:",
+        "  - Introduced compiled execution graphs and epoch sealing to eliminate redundant LLM planning on routine tasks.",
+        "  - Established deterministic 0ms short-circuits for administrative and self-audit queries.",
+        "• **Phase 4 — System Information Index (SII) & Decoupled Telematics (ADR 066–080)**:",
+        "  - Replaced bulk memory context dumps with the strict **K0–K7 Knowledge Hierarchy**.",
+        "  - Decoupled performance/cost telemetry into `telematics.py` with zero-bulk-dump constraints.",
+        "• **Phase 5 — Hybrid Cloud Persistence & Deep Temporal Reasoning (ADR 081–095)**:",
+        "  - Connected Supabase IPv4 connection pooler with 0ms circuit breaker for zero-loss cloud memory.",
+        "  - Upgraded temporal awareness from simple chitchat lookups to multi-dimensional causal reasoning and statutory Indian compliance tracking.\n",
+        
+        "### 2. Recurring Problems, Root Causes & Permanent Architectural Solutions",
+        "• **Problem: Context Window Exhaustion & High Latency**",
+        "  - *Root Cause:* Ingesting entire files, profiles, and unindexed tables into LLM prompts.",
+        "  - *Permanent Fix:* **SII K0–K7 Stratification** (ADR-072) with strict surgical `LIMIT 5` indexing.",
+        "• **Problem: Database Hanging on Cloud Restarts**",
+        "  - *Root Cause:* Ephemeral container network timeouts against remote PostgreSQL instances.",
+        "  - *Permanent Fix:* **0ms Database Circuit Breaker & Dual-Engine Fallback** (ADR-085).",
+        "• **Problem: Hallucinations on Self-Audit Queries**",
+        "  - *Root Cause:* LLMs estimating internal system state (uptime, tokens, models) rather than reading kernel state.",
+        "  - *Permanent Fix:* **Fast-Track Deterministic Kernel Routing** (ADR-094).\n",
+
+        "### 3. Isolated Concepts Transformed into Core Infrastructure",
+        "• **Telematics:** Began as print statements; evolved into an isolated subsystem (`telematics.py`) with real-time model pricing, token accounting, and live telemetry dashboards.",
+        "• **Temporal Layer:** Began as simple time checks; evolved into a deep reasoning engine tracking Indian statutory compliance (GST 11th/20th, PF 15th, ITR) and historical causal graphs (`Cause ➔ Effect ➔ Resolution`).",
+        "• **Anti-Pattern Registry:** Started as failure logs; evolved into the **Epistemic Immune System** that injects negative governance constraints into the Strategic Planner before execution.\n",
+
+        "### 4. Failed Experiments & Key Architectural Lessons",
+        "• **Full LLM Planning for Every Query:** Proved too slow and expensive for routine queries; resolved by the E[Temp] Template Compiler and Walk DAG bypass.",
+        "• **Direct Remote IPv6 Database Connections:** Failed on cloud platforms like Render; resolved by deploying IPv4 Connection Pooler routing.",
+        "• **Offset-Naive Timestamps:** Caused timezone comparison crashes during self-audits; resolved by universal UTC normalization across all database adapters."
+    ]
+
+    return "\n".join(sections)

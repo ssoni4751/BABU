@@ -1607,7 +1607,17 @@ def pa_node(state: BabuState):
         _log_direct_pa_event(dashboard_response)
         return {"messages": state["messages"] + [AIMessage(content=dashboard_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
 
-    if not is_multi_request and any(k in lowered_query for k in ("upgrades received", "recent upgrades", "what upgrades", "upgrades did you receive", "upgrades did you recieve", "upgrades in last", "upgrade received", "recent upgrade", "what upgrade", "upgrade did you receive", "upgrade did you recieve", "upgrade in last", "adr", "architecture decision", "tradeoff", "tradeoffs", "lessons learned", "evolution", "upgrades", "upgrade", "gemini", "dynamic imports", "runtime_index", "postmortem", "lesson", "incident", "impact_score", "highest impact", "largest impact", "biggest impact", "most impact", "supersedes", "solve", "evolve", "hierarchy")):
+    if not is_multi_request and any(k in lowered_query for k in ("trajectory", "engineering journey", "activity history", "engineering milestones", "milestones", "evolution", "reconstruct", "journey")):
+        try:
+            from .temporal_reasoner import get_engineering_trajectory_reconstruction
+        except ImportError:
+            from temporal_reasoner import get_engineering_trajectory_reconstruction
+        traj_resp = get_engineering_trajectory_reconstruction()
+        print(f"[PA NODE] Deterministic short-circuit for engineering trajectory: '{user_query}'", flush=True)
+        _log_direct_pa_event(traj_resp)
+        return {"messages": state["messages"] + [AIMessage(content=traj_resp)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
+
+    if not is_multi_request and any(k in lowered_query for k in ("upgrades received", "recent upgrades", "what upgrades", "upgrades did you receive", "upgrades did you recieve", "upgrades in last", "upgrade received", "recent upgrade", "what upgrade", "upgrade did you receive", "upgrade did you recieve", "upgrade in last", "adr", "architecture decision", "tradeoff", "tradeoffs", "lessons learned", "upgrades", "upgrade", "gemini", "dynamic imports", "runtime_index", "postmortem", "lesson", "incident", "impact_score", "highest impact", "largest impact", "biggest impact", "most impact", "supersedes", "solve", "evolve", "hierarchy")):
         conn, is_pg = get_db_connection()
         cursor = conn.cursor()
         try:
