@@ -254,6 +254,14 @@ Architecture, Execution Flow, Feature Map, Class C Confirmation Gates, Trusted T
 Domains:
 Knowledge Graph, Distributed Cognitive OS Blueprint, Intent Compiler, Immune Confidence Decay, Memory Segmentation
 
+## BABU_Upgrade_and_Telemetry_Report.md
+Domains:
+Telemetry Audit, Memory Optimization Architecture, Conversational Token Metrics, Operational Insights
+
+## BABU_System_Daily_Executive_Summary_17Aug2026.md
+Domains:
+Executive Summary, Meta Facebook 2-Way Automation, Never-Expiring Token, Business Profile Decoupling
+
 ---
 
 # Diagnostic Domains
