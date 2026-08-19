@@ -40,16 +40,29 @@ def sync_supabase_database(db_url: str = None) -> Dict[str, Any]:
         ]
         
         for old_t, new_t in legacy_mappings:
-            cursor.execute("""
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables 
-                    WHERE table_schema = 'public' AND table_name = %s
-                );
-            """, (old_t,))
-            if cursor.fetchone()[0]:
-                cursor.execute(f"ALTER TABLE IF EXISTS {old_t} RENAME TO {new_t};")
-                results["legacy_migrated"].append(f"{old_t} -> {new_t}")
-                conn.commit()
+            try:
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' AND table_name = %s
+                    );
+                """, (old_t,))
+                old_exists = cursor.fetchone()[0]
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' AND table_name = %s
+                    );
+                """, (new_t,))
+                new_exists = cursor.fetchone()[0]
+                
+                if old_exists and not new_exists:
+                    cursor.execute(f"ALTER TABLE {old_t} RENAME TO {new_t};")
+                    results["legacy_migrated"].append(f"{old_t} -> {new_t}")
+                    conn.commit()
+            except Exception as mig_err:
+                conn.rollback()
+                print(f"[MIGRATION TABLE WARNING] {mig_err}", flush=True)
 
         # 2. Canonical K0-K7 Schema Definitions
         cursor.execute("""
