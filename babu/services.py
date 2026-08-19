@@ -25,20 +25,38 @@ DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory", "ba
 DATABASE_URL = os.environ.get("DATABASE_URL")
 REFUSAL_PRIVATE_DATA = "Information unavailable. No authoritative business records were found."
 
-PRICING_TABLE = {
-    "gemini-2.5-pro": (1.25, 5.00),
-    "gemini-2.5-flash": (0.075, 0.30),
-    "gemini-1.5-pro": (1.25, 5.00),
-    "gemini-1.5-flash": (0.075, 0.30),
-    "llama-3.3-70b-versatile": (0.59, 0.79),
-    "llama-3.1-70b-versatile": (0.59, 0.79),
-    "llama-3.1-8b-instant": (0.05, 0.08),
-    "llama3-70b-8192": (0.59, 0.79),
-    "llama3-8b-8208": (0.05, 0.08),
-    "gpt-4o": (2.50, 10.00),
-    "gpt-4o-mini": (0.150, 0.600),
-    "o1-mini": (3.00, 12.00)
-}
+try:
+    from .telematics import (
+        get_token_costs,
+        calculate_inference_cost,
+        extract_tokens,
+        add_tokens,
+        get_telemetry_snapshot,
+        get_uptime_summary,
+        BOT_START_TIME,
+        PRICING_TABLE
+    )
+    from .data_catalog import (
+        RUNTIME_DATA_CATALOG,
+        get_runtime_data_catalog,
+        resolve_knowledge_class_for_query
+    )
+except ImportError:
+    from telematics import (
+        get_token_costs,
+        calculate_inference_cost,
+        extract_tokens,
+        add_tokens,
+        get_telemetry_snapshot,
+        get_uptime_summary,
+        BOT_START_TIME,
+        PRICING_TABLE
+    )
+    from data_catalog import (
+        RUNTIME_DATA_CATALOG,
+        get_runtime_data_catalog,
+        resolve_knowledge_class_for_query
+    )
 
 def _ensure_sqlite_schema(conn):
     """Create required SQLite tables if they do not exist."""
@@ -235,15 +253,6 @@ def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
     _ensure_sqlite_schema(conn)
     return conn, False
-
-def get_token_costs(model_name: str) -> tuple[float, float]:
-    if not model_name:
-        return 0.15 / 1_000_000, 0.60 / 1_000_000
-    m_lower = model_name.lower().strip()
-    for key, rates in PRICING_TABLE.items():
-        if key in m_lower:
-            return rates[0] / 1_000_000, rates[1] / 1_000_000
-    return 0.15 / 1_000_000, 0.60 / 1_000_000
 
 def log_temporal_event(
     event_category: str,
