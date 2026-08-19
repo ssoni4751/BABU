@@ -116,8 +116,8 @@ def get_dynamic_self_identity() -> str:
         try:
             from bot import CURRENT_PA_MODEL, CURRENT_DEPT_MODEL
         except ImportError:
-            CURRENT_PA_MODEL = "groq/compound-mini"
-            CURRENT_DEPT_MODEL = "groq/compound"
+            CURRENT_PA_MODEL = "openai/gpt-oss-120b"
+            CURRENT_DEPT_MODEL = "openai/gpt-oss-20b"
             
     try:
         enabled_services = []
@@ -384,8 +384,8 @@ def get_system_health_dashboard() -> str:
         try:
             from bot import CURRENT_PA_MODEL, CURRENT_DEPT_MODEL
         except ImportError:
-            CURRENT_PA_MODEL = "groq/compound-mini"
-            CURRENT_DEPT_MODEL = "groq/compound"
+            CURRENT_PA_MODEL = "openai/gpt-oss-120b"
+            CURRENT_DEPT_MODEL = "openai/gpt-oss-20b"
             
     def parse_db_timestamp(ts_val):
         if not ts_val:

@@ -718,8 +718,8 @@ GEMINI_KEY      = os.environ.get("GEMINI_API_KEY", "")
 OPENAI_KEY      = os.environ.get("OPENAI_API_KEY", "")
 API_CHAT_TOKEN  = os.environ.get("API_CHAT_TOKEN", "").strip()
 
-CURRENT_PA_MODEL   = "groq/compound-mini"
-CURRENT_DEPT_MODEL = "groq/compound"
+CURRENT_PA_MODEL   = "openai/gpt-oss-120b"
+CURRENT_DEPT_MODEL = "openai/gpt-oss-20b"
 
 def build_llm(model_name: str, temp: float):
     """Dynamically construct ChatGroq, ChatGoogleGenerativeAI, or NVIDIA ChatOpenAI based on model name and available credentials."""
@@ -6539,10 +6539,10 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             "✨ **Available Active Free Models to Switch:**\n"
             "--- *Primary Free Groq Provider Models* ---\n"
-            "1. `groq/compound` (Groq Compound Model - Default Swarm)\n"
-            "2. `groq/compound-mini` (Groq Compound Mini - Default PA)\n"
-            "3. `openai/gpt-oss-120b` (Groq 120B Open Weights - High Quality)\n"
-            "4. `openai/gpt-oss-20b` (Groq 20B Open Weights - Fast)\n"
+            "1. `groq/compound` (Groq Compound Model)\n"
+            "2. `groq/compound-mini` (Groq Compound Mini)\n"
+            "3. `openai/gpt-oss-120b` (Groq 120B Open Weights - Default PA)\n"
+            "4. `openai/gpt-oss-20b` (Groq 20B Open Weights - Default Swarm)\n"
             "5. `qwen/qwen3.6-27b` (Alibaba Qwen 3.6 27B on Groq)\n\n"
 
             "--- *Secondary NVIDIA NIM Provider Models* ---\n"

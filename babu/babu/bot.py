@@ -718,14 +718,13 @@ GEMINI_KEY      = os.environ.get("GEMINI_API_KEY", "")
 OPENAI_KEY      = os.environ.get("OPENAI_API_KEY", "")
 API_CHAT_TOKEN  = os.environ.get("API_CHAT_TOKEN", "").strip()
 
-CURRENT_PA_MODEL   = "nvidia/meta/llama-3.1-8b-instruct"
-CURRENT_DEPT_MODEL = "nvidia/meta/llama-3.3-70b-instruct"
+CURRENT_PA_MODEL   = "openai/gpt-oss-120b"
+CURRENT_DEPT_MODEL = "openai/gpt-oss-20b"
 
 def build_llm(model_name: str, temp: float):
-    """Dynamically construct ChatGroq, ChatGoogleGenerativeAI, ChatOpenAI, or NVIDIA ChatOpenAI based on model name and available credentials."""
+    """Dynamically construct ChatGroq, ChatGoogleGenerativeAI, or NVIDIA ChatOpenAI based on model name and available credentials."""
     groq_key = os.environ.get("GROQ_API_KEY", "")
     gemini_key = os.environ.get("GEMINI_API_KEY", "")
-    openai_key = os.environ.get("OPENAI_API_KEY", "")
     openrouter_key = os.environ.get("OPENROUTER_API_KEY", "")
     nvidia_key = os.environ.get("NVIDIA_API_KEY", "")
 
@@ -754,7 +753,7 @@ def build_llm(model_name: str, temp: float):
                 timeout=25.0
             )
         else:
-            fallback = "llama-3.1-8b-instant" if "8b" in target_model.lower() else "llama-3.3-70b-versatile"
+            fallback = "groq/compound-mini" if "8b" in target_model.lower() else "groq/compound"
             print(f"[LLM REDIRECT] NVIDIA & OpenRouter keys missing. Mapping '{target_model}' to Groq '{fallback}'.", flush=True)
             return ChatGroq(model=fallback, temperature=temp, api_key=groq_key)
 
@@ -775,12 +774,12 @@ def build_llm(model_name: str, temp: float):
                 timeout=25.0
             )
         else:
-            fallback = "llama-3.1-8b-instant"
+            fallback = "groq/compound-mini"
             print(f"[LLM REDIRECT] Both Gemini and OpenRouter keys missing. Mapping '{target_model}' to Groq '{fallback}'.", flush=True)
             return ChatGroq(model=fallback, temperature=temp, api_key=groq_key)
 
-    # 3. OpenRouter Support (Any model containing '/' or starting with 'openrouter/')
-    elif "/" in target_model or target_model.startswith("openrouter/"):
+    # 3. OpenRouter Support (Any model containing '/' except nvidia or starting with 'openrouter/')
+    elif target_model.startswith("openrouter/"):
         clean_model = target_model.replace("openrouter/", "")
         if not openrouter_key:
             raise ValueError("OPENROUTER_API_KEY is not configured in environment variables.")
@@ -793,19 +792,7 @@ def build_llm(model_name: str, temp: float):
             timeout=25.0
         )
 
-    # 4. OpenAI Native Support
-    elif target_model.startswith("gpt-"):
-        if not openai_key:
-            raise ValueError("OPENAI_API_KEY is not configured in environment variables.")
-        from langchain_openai import ChatOpenAI
-        return ChatOpenAI(
-            model=target_model,
-            temperature=temp,
-            api_key=openai_key,
-            timeout=25.0
-        )
-
-    # 5. Default: Groq Support
+    # 4. Default: Primary Groq Support
     else:
         return ChatGroq(model=target_model, temperature=temp, api_key=groq_key)
 
@@ -813,15 +800,17 @@ llm_pa   = build_llm(CURRENT_PA_MODEL,   0.2)
 llm_dept = build_llm(CURRENT_DEPT_MODEL, 0.7)
 
 # ---------------------------------------------------------------------------
-# Provider-level auto-failover for rate limits
+# Provider-level auto-failover for rate limits (Groq -> NVIDIA -> Gemini)
 # ---------------------------------------------------------------------------
 
-# Map models to their OpenRouter equivalents and alternate models
 _FALLBACK_CHAIN = {
-    "nvidia/meta/llama-3.1-8b-instruct": ["nvidia/meta/llama-3.3-70b-instruct", "nvidia/deepseek-ai/deepseek-v4-pro", "gemini-2.5-flash", "llama-3.3-70b-versatile"],
-    "nvidia/meta/llama-3.3-70b-instruct": ["nvidia/deepseek-ai/deepseek-v4-pro", "gemini-2.5-flash", "llama-3.3-70b-versatile"],
-    "llama-3.1-8b-instant":    ["llama-3.3-70b-versatile", "nvidia/meta/llama-3.3-70b-instruct", "google/gemini-2.5-flash"],
-    "llama-3.3-70b-versatile": ["nvidia/meta/llama-3.3-70b-instruct", "google/gemini-2.5-flash"],
+    "groq/compound": ["openai/gpt-oss-120b", "nvidia/meta/llama-3.3-70b-instruct", "gemini-2.5-flash"],
+    "groq/compound-mini": ["openai/gpt-oss-20b", "nvidia/meta/llama-3.1-8b-instruct", "gemini-2.5-flash"],
+    "openai/gpt-oss-120b": ["groq/compound", "nvidia/meta/llama-3.3-70b-instruct", "gemini-2.5-flash"],
+    "openai/gpt-oss-20b": ["groq/compound-mini", "nvidia/meta/llama-3.1-8b-instruct", "gemini-2.5-flash"],
+    "nvidia/meta/llama-3.3-70b-instruct": ["groq/compound", "openai/gpt-oss-120b", "gemini-2.5-flash"],
+    "nvidia/meta/llama-3.1-8b-instruct": ["groq/compound-mini", "openai/gpt-oss-20b", "gemini-2.5-flash"],
+    "gemini-2.5-flash": ["groq/compound-mini", "groq/compound"],
 }
 _RATE_LIMIT_SIGNALS = ("429", "rate limit", "rate_limit_exceeded", "too many requests", "tpd", "tpm")
 
@@ -4888,6 +4877,24 @@ class HealthHandler(BaseHTTPRequestHandler):
                 self._cors()
                 self.end_headers()
                 self.wfile.write(body)
+            elif path in ("/webhook/facebook", "/webhook/facebook/"):
+                query_params = parse_qs(parsed_path.query)
+                mode = query_params.get("hub.mode", [""])[0]
+                token = query_params.get("hub.verify_token", [""])[0]
+                challenge = query_params.get("hub.challenge", [""])[0]
+                expected_token = os.environ.get("FACEBOOK_VERIFY_TOKEN", "anshu_tax_webhook_secret_2026")
+                
+                if mode == "subscribe" and token == expected_token:
+                    print(f"[FACEBOOK WEBHOOK VERIFICATION SUCCESS] Verified challenge for token '{token}'", flush=True)
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/plain")
+                    self._cors()
+                    self.end_headers()
+                    self.wfile.write(challenge.encode("utf-8"))
+                else:
+                    print(f"[FACEBOOK WEBHOOK VERIFICATION FAILED] Invalid token '{token}' (expected '{expected_token}') or mode '{mode}'", flush=True)
+                    self.send_response(403)
+                    self.end_headers()
             elif path == "/api/image":
                 query_params = parse_qs(parsed_path.query)
                 img_path = query_params.get("path", [""])[0]
@@ -4914,7 +4921,33 @@ class HealthHandler(BaseHTTPRequestHandler):
             print(f"[HTTP SERVER WARNING] Client disconnected during GET {self.path}: {e}", flush=True)
 
     def do_POST(self):
-        if self.path == "/api/models/switch":
+        if self.path in ("/webhook/facebook", "/webhook/facebook/"):
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                raw_body = self.rfile.read(length)
+                payload = json.loads(raw_body.decode("utf-8"))
+                
+                # Respond 200 OK instantly to Meta within 3s
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self._cors()
+                self.end_headers()
+                self.wfile.write(json.dumps({"status": "EVENT_RECEIVED"}).encode("utf-8"))
+                
+                # Process webhook payload asynchronously in background thread
+                try:
+                    from .social_media import process_facebook_webhook_event
+                except ImportError:
+                    from social_media import process_facebook_webhook_event
+                    
+                threading.Thread(target=process_facebook_webhook_event, args=(payload,), daemon=True).start()
+            except Exception as e:
+                print(f"[FACEBOOK WEBHOOK POST ERROR] {e}", flush=True)
+                self.send_response(200)
+                self.end_headers()
+            return
+
+        elif self.path == "/api/models/switch":
             try:
                 if API_CHAT_TOKEN:
                     auth_header = str(self.headers.get("Authorization", "")).strip()
@@ -6237,7 +6270,8 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             await update.message.reply_text(reply)
                             return
                     
-                    params = resolve_action_params(pending.get("params", {}), research_text="")
+                    draft_txt = pending.get("draft_text", pending.get("research_text", ""))
+                    params = resolve_action_params(pending.get("params", {}), research_text=draft_txt)
                     log_execution_ledger_event(
                         session_id=session_id,
                         goal_id=pending.get("goal_id", "default"),
@@ -6489,7 +6523,6 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Real-time environment check
     groq_active = "🟢 ACTIVE" if os.environ.get("GROQ_API_KEY") else "🔴 NOT CONFIGURED"
     gemini_active = "🟢 ACTIVE" if os.environ.get("GEMINI_API_KEY") else "🔴 NOT CONFIGURED"
-    openai_active = "🟢 ACTIVE" if os.environ.get("OPENAI_API_KEY") else "🔴 NOT CONFIGURED"
     nvidia_active = "🟢 ACTIVE" if os.environ.get("NVIDIA_API_KEY") else "🔴 NOT CONFIGURED"
 
     args = context.args
@@ -6499,42 +6532,32 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"👤 **Current Assistant (PA) Model**: `{CURRENT_PA_MODEL}`\n"
             f"👥 **Current Swarm (Research) Model**: `{CURRENT_DEPT_MODEL}`\n\n"
             
-            "⚙️ **Active Providers Configuration:**\n"
-            f"- **NVIDIA NIM API**: {nvidia_active}\n"
-            f"- **Groq API**: {groq_active}\n"
-            f"- **Gemini API (Native)**: {gemini_active}\n"
-            f"- **OpenAI API (Native)**: {openai_active}\n\n"
+            "⚙️ **Active Providers Hierarchy (Free Tier Chain):**\n"
+            f"1. 🥇 **Groq Cloud API (Primary)**: {groq_active}\n"
+            f"2. 🥈 **NVIDIA NIM API (Secondary Fallback)**: {nvidia_active}\n"
+            f"3. 🥉 **Gemini API Native (Third Fallback)**: {gemini_active}\n\n"
             
-            "✨ **Available Models to Switch:**\n"
-            "--- *NVIDIA NIM Provider Models (PA, Swarm & Specialized Defaults)* ---\n"
-            "7. `nvidia/meta/llama-3.1-8b-instruct` (Llama 3.1 8B via NVIDIA - Default PA)\n"
-            "8. `nvidia/meta/llama-3.3-70b-instruct` (Llama 3.3 70B via NVIDIA - Default Swarm)\n"
-            "9. `nvidia/deepseek-ai/deepseek-v4-flash` (DeepSeek V4 Flash via NVIDIA - Default Research & Code Gen)\n"
-            "10. `nvidia/deepseek-ai/deepseek-v4-pro` (DeepSeek V4 Pro via NVIDIA - Default Analysis & Self-Inspection)\n"
-            "11. `nvidia/moonshotai/kimi-k2.6` (Moonshot Kimi K2.6 via NVIDIA)\n"
-            "12. `nvidia/qwen/qwen3-next-80b-a3b-instruct` (Alibaba Qwen 3 Next 80B via NVIDIA)\n"
-            "13. `nvidia/01-ai/yi-large` (01.AI Yi Large via NVIDIA)\n"
-            "14. `nvidia/mistralai/mistral-large-2-instruct` (Mistral Large 2 via NVIDIA)\n"
-            "15. `nvidia/microsoft/phi-4-mini-instruct` (Microsoft Phi-4 Mini via NVIDIA)\n\n"
+            "✨ **Available Active Free Models to Switch:**\n"
+            "--- *Primary Free Groq Provider Models* ---\n"
+            "1. `groq/compound` (Groq Compound Model)\n"
+            "2. `groq/compound-mini` (Groq Compound Mini)\n"
+            "3. `openai/gpt-oss-120b` (Groq 120B Open Weights - Default PA)\n"
+            "4. `openai/gpt-oss-20b` (Groq 20B Open Weights - Default Swarm)\n"
+            "5. `qwen/qwen3.6-27b` (Alibaba Qwen 3.6 27B on Groq)\n\n"
 
-            "--- *Groq Provider Models* ---\n"
-            "1. `llama-3.3-70b-versatile` (Llama 3.3 - Best Quality)\n"
-            "2. `llama-3.1-8b-instant` (Llama 3.1 8B - Fastest / Best Limits)\n"
-            "3. `mixtral-8x7b-32768` (Mixtral 8x7B - Great Balance)\n"
-            "4. `gemma2-9b-it` (Gemma 2 9B - Fast & Smart)\n"
-            "5. `deepseek-r1-distill-llama-70b` (DeepSeek R1 - Deep Reasoning)\n\n"
+            "--- *Secondary NVIDIA NIM Provider Models* ---\n"
+            "6. `nvidia/meta/llama-3.1-8b-instruct` (Llama 3.1 8B via NVIDIA)\n"
+            "7. `nvidia/meta/llama-3.3-70b-instruct` (Llama 3.3 70B via NVIDIA)\n"
+            "8. `nvidia/deepseek-ai/deepseek-v4-pro` (DeepSeek V4 Pro via NVIDIA)\n"
+            "9. `nvidia/moonshotai/kimi-k2.6` (Moonshot Kimi K2.6 via NVIDIA)\n"
+            "10. `nvidia/qwen/qwen3-next-80b-a3b-instruct` (Alibaba Qwen 3 Next 80B via NVIDIA)\n\n"
             
-            "--- *Gemini Native Models* ---\n"
-            "6. `gemini-2.5-flash` (Gemini 2.5 Flash)\n\n"
-            
-            "--- *OpenAI Native Models* ---\n"
-            "16. `gpt-4o-mini` (GPT-4o Mini)\n"
-            "17. `gpt-4o` (GPT-4o flagship)\n\n"
+            "--- *Third Gemini Native Models* ---\n"
+            "11. `gemini-2.5-flash` (Gemini 2.5 Flash Native)\n\n"
             
             "🚀 **How to Switch:**\n"
-            "- `/model <1-17>` - Change the main Personal Assistant model\n"
-            "- `/model swarm <1-17>` - Change the underlying swarm/research model\n\n"
-            "Tip: You can also specify any custom model string directly, e.g. `/model deepseek/deepseek-reasoner` or `/model swarm nvidia/deepseek-ai/deepseek-r1`"
+            "- `/model <1-11>` - Change the main Personal Assistant model\n"
+            "- `/model swarm <1-11>` - Change the underlying swarm/research model\n"
         )
         await update.message.reply_text(menu, parse_mode="Markdown")
         return
@@ -6546,28 +6569,22 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
         choice = args[1]
 
     model_map = {
-        "1": "llama-3.3-70b-versatile",
-        "2": "llama-3.1-8b-instant",
-        "3": "mixtral-8x7b-32768",
-        "4": "gemma2-9b-it",
-        "5": "deepseek-r1-distill-llama-70b",
-        "6": "gemini-2.5-flash",
-        "7": "nvidia/meta/llama-3.1-8b-instruct",
-        "8": "nvidia/meta/llama-3.3-70b-instruct",
-        "9": "nvidia/deepseek-ai/deepseek-v4-flash",
-        "10": "nvidia/deepseek-ai/deepseek-v4-pro",
-        "11": "nvidia/moonshotai/kimi-k2.6",
-        "12": "nvidia/qwen/qwen3-next-80b-a3b-instruct",
-        "13": "nvidia/01-ai/yi-large",
-        "14": "nvidia/mistralai/mistral-large-2-instruct",
-        "15": "nvidia/microsoft/phi-4-mini-instruct",
-        "16": "gpt-4o-mini",
-        "17": "gpt-4o"
+        "1": "groq/compound",
+        "2": "groq/compound-mini",
+        "3": "openai/gpt-oss-120b",
+        "4": "openai/gpt-oss-20b",
+        "5": "qwen/qwen3.6-27b",
+        "6": "nvidia/meta/llama-3.1-8b-instruct",
+        "7": "nvidia/meta/llama-3.3-70b-instruct",
+        "8": "nvidia/deepseek-ai/deepseek-v4-pro",
+        "9": "nvidia/moonshotai/kimi-k2.6",
+        "10": "nvidia/qwen/qwen3-next-80b-a3b-instruct",
+        "11": "gemini-2.5-flash"
     }
 
     selected_model = model_map.get(choice)
     if not selected_model:
-        if choice in model_map.values() or "/" in choice or choice.startswith("gemini-") or choice.startswith("gpt-") or choice.startswith("nvidia/"):
+        if choice in model_map.values() or "/" in choice or choice.startswith("gemini-") or choice.startswith("nvidia/"):
             selected_model = choice
         else:
             await update.message.reply_text("Invalid choice. Use `/model` to see valid options or pass a valid model string.")
@@ -6658,7 +6675,8 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await query.edit_message_text("Failed to update cached goal graph approval.")
                         return
 
-                params = resolve_action_params(pending.get("params", {}), research_text="")
+                draft_txt = pending.get("draft_text", pending.get("research_text", ""))
+                params = resolve_action_params(pending.get("params", {}), research_text=draft_txt)
                 
                 log_execution_ledger_event(
                     session_id=session_id,
