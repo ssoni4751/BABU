@@ -1550,18 +1550,33 @@ def pa_node(state: BabuState):
     intent_packet_dict = state.get("routing_metadata", {}).get("intent_packet")
     is_multi_request = has_multiple_tasks_or_requests(user_query, intent_packet_dict)
     
+    def _log_direct_pa_event(resp_str: str):
+        try:
+            log_execution_ledger_event(
+                session_id=session_id or "direct_pa",
+                goal_id="G-DIRECT",
+                task_id="T-DIRECT",
+                department="pa",
+                event_type="PA_DIRECT_RESPONSE",
+                metadata={"query": user_query[:100], "response_len": len(resp_str), "latency_ms": 5.0}
+            )
+        except Exception:
+            pass
+
     # Deterministic FAQ short-circuits:
     if not is_multi_request and any(k in lowered_query for k in ("current time", "time in ist", "time here in ist", "what is the time", "what time is it")):
         now_utc = datetime.now(timezone.utc)
         now_ist = now_utc + timedelta(hours=5, minutes=30)
         time_response = f"The current time in Indian Standard Time (IST) is **{now_ist.strftime('%I:%M %p (%A, %B %d, %Y)')}**."
         print(f"[PA NODE] Deterministic short-circuit for time query: '{user_query}'", flush=True)
+        _log_direct_pa_event(time_response)
         return {"messages": state["messages"] + [AIMessage(content=time_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
 
     if not is_multi_request and any(k in lowered_query for k in ("how old are you", "how old you are", "your age", "what is your age", "date of birth", "dob", "birth date", "babu birth", "babu creation", "dob of babu")):
         age_str = get_babu_age_string()
         age_response = f"I am **Project BABU** (Behavioral Autonomous Bureaucratic Utility). My date of birth is **May 27, 2026**. I have been active for **{age_str}**!"
         print(f"[PA NODE] Deterministic short-circuit for age query: '{user_query}'", flush=True)
+        _log_direct_pa_event(age_response)
         return {"messages": state["messages"] + [AIMessage(content=age_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
 
     temporal_activity_keywords = (
@@ -1577,16 +1592,19 @@ def pa_node(state: BabuState):
         rel_days = -1 if is_yest else 0
         activity_data = get_daily_activity_summary(relative_days=rel_days)
         print(f"[PA NODE] Deterministic short-circuit for temporal activity query: '{user_query}'", flush=True)
+        _log_direct_pa_event(activity_data["executive_text"])
         return {"messages": state["messages"] + [AIMessage(content=activity_data["executive_text"])], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
 
     if not is_multi_request and any(k in lowered_query for k in ("who are you", "tell me about yourself", "about yourself", "know about yourself", "describe yourself", "introduce yourself", "your identity", "what is your name")):
         identity_response = get_dynamic_self_identity()
         print(f"[PA NODE] Deterministic short-circuit for identity query: '{user_query}'", flush=True)
+        _log_direct_pa_event(identity_response)
         return {"messages": state["messages"] + [AIMessage(content=identity_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
         
     if not is_multi_request and any(k in lowered_query for k in ("system health", "status dashboard", "how are you doing", "what is your status", "health dashboard", "current state", "your current state", "what is your current state", "system status", "system status dashboard")):
         dashboard_response = get_system_health_dashboard()
         print(f"[PA NODE] Deterministic short-circuit for health dashboard query: '{user_query}'", flush=True)
+        _log_direct_pa_event(dashboard_response)
         return {"messages": state["messages"] + [AIMessage(content=dashboard_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
 
     if not is_multi_request and any(k in lowered_query for k in ("upgrades received", "recent upgrades", "what upgrades", "upgrades did you receive", "upgrades did you recieve", "upgrades in last", "upgrade received", "recent upgrade", "what upgrade", "upgrade did you receive", "upgrade did you recieve", "upgrade in last", "adr", "architecture decision", "tradeoff", "tradeoffs", "lessons learned", "evolution", "upgrades", "upgrade", "gemini", "dynamic imports", "runtime_index", "postmortem", "lesson", "incident", "impact_score", "highest impact", "largest impact", "biggest impact", "most impact", "supersedes", "solve", "evolve", "hierarchy")):
