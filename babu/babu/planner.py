@@ -64,6 +64,12 @@ class IntentPacket:
         model: Optional[str] = None,
         system_query: bool = False,
         query_category: str = "PUBLIC_INFORMATION",
+        topology_source: str = "INTERNAL",
+        topology_mode: str = "LOOKUP",
+        mutation_type: str = "NONE",
+        domain: str = "BABU_SYSTEM",
+        surface: str = "SYSTEM",
+        planning_required: bool = False,
         # Legacy keyword args for compatibility
         lookup: Optional[bool] = None,
         research: Optional[bool] = None,
@@ -71,6 +77,7 @@ class IntentPacket:
         execute: Optional[bool] = None,
         websearch: Optional[bool] = None,
         writer: Optional[bool] = None,
+        **kwargs
     ):
         self.execution_mode = execution_mode
         self.confidence = confidence
@@ -78,6 +85,12 @@ class IntentPacket:
         self.model = model
         self.system_query = system_query
         self.query_category = query_category
+        self.topology_source = topology_source
+        self.topology_mode = topology_mode
+        self.mutation_type = mutation_type
+        self.domain = domain
+        self.surface = surface
+        self.planning_required = planning_required
 
         if allowed_departments is not None:
             self.allowed_departments = allowed_departments
@@ -170,11 +183,20 @@ class IntentPacket:
             "model": self.model,
             "system_query": self.system_query,
             "query_category": self.query_category,
+            "topology_source": self.topology_source,
+            "topology_mode": self.topology_mode,
+            "mutation_type": self.mutation_type,
+            "domain": self.domain,
+            "surface": self.surface,
+            "planning_required": self.planning_required,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "IntentPacket":
+        """Construct IntentPacket from dictionary JSON payload safely."""
         allowed_depts = data.get("allowed_departments")
+        allowed_actions = data.get("allowed_actions")
+
         if allowed_depts is None:
             allowed_depts = ["pa"]
             if data.get("lookup") or data.get("websearch"):
@@ -187,15 +209,13 @@ class IntentPacket:
                 allowed_depts.extend(["execution"])
             allowed_depts = list(dict.fromkeys(allowed_depts))
 
-        allowed_actions = data.get("allowed_actions")
         if allowed_actions is None:
-            allowed_actions = []
             if data.get("execute"):
                 allowed_actions = [
                     "send_email", "create_event", "log_to_sheet", "create_doc", 
                     "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
                     "send_slack", "create_task", "search_image", "search_gmail",
-                    "post_to_facebook", "upload_to_drive"
+                    "post_to_facebook", "generate_image"
                 ]
             else:
                 allowed_actions = ["search_sheet", "search_gmail"]
@@ -208,52 +228,54 @@ class IntentPacket:
             tokens=data.get("tokens"),
             model=data.get("model"),
             system_query=data.get("system_query", False),
-            query_category=data.get("query_category", "PUBLIC_INFORMATION")
+            query_category=data.get("query_category", "PUBLIC_INFORMATION"),
+            topology_source=data.get("topology_source", "INTERNAL" if data.get("system_query") else "EXTERNAL"),
+            topology_mode=data.get("topology_mode", "HYBRID" if data.get("execute") and data.get("lookup") else ("ACTION" if data.get("execute") else "LOOKUP")),
+            mutation_type=data.get("mutation_type", "EXTERNAL" if data.get("execute") else "NONE"),
+            domain=data.get("domain", "META" if "facebook" in str(allowed_actions) else ("GOOGLE" if any(act in str(allowed_actions) for act in ("gmail", "sheet", "drive", "event")) else "GENERAL")),
+            surface=data.get("surface", "SYSTEM"),
+            planning_required=data.get("planning_required", True if data.get("execute") and data.get("lookup") else False)
         )
 
 INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
-    "You are BABU's Intent Classifier. Your ONLY job is to classify the user's "
-    "conversational intent into a structured IntentPacket JSON containing capability routing templates.\n"
+    "You are BABU's Topology-Aware Query Classifier. Your job is to classify the user's "
+    "query into a structured IntentPacket JSON containing capability routing templates and execution topology demand.\n"
+    "\n"
+    "TOPOLOGY EXECUTION CLASSES:\n"
+    "- topology_source: INTERNAL (BABU codebase, ADRs, knowledge base, system stats) | EXTERNAL (Meta Facebook, Google Workspace, DuckDuckGo) | BOTH\n"
+    "- topology_mode: CHITCHAT (Greeting/help) | LOOKUP (Read-only retrieval) | ACTION (Direct mutation) | HYBRID (Read -> Reason -> Act composed workflow)\n"
+    "- mutation_type: NONE (Read-only) | INTERNAL (Save config/template) | EXTERNAL (Post FB, Send Email, Create Task) | BOTH\n"
+    "- domain: BABU_SYSTEM | META | GOOGLE | TAX_COMPLIANCE | GENERAL\n"
+    "- surface: PAGE | INSTAGRAM | MESSENGER | GMAIL | CALENDAR | DOCS | SHEETS | TASKS | CODEBASE | DATABASE | SYSTEM\n"
+    "- planning_required: true if HYBRID or multi-step workflow composition is needed; false for direct fast-track/lookup/single-action.\n"
     "\n"
     "QUERY CATEGORY DEFINITIONS:\n"
-    "- BUSINESS_INFORMATION: Set if the query relates to the user's business context, services, client records, customers, invoices, revenue, business operations, or specific client claims (like PF claims, GST registration details for clients). Any query asking for customer/client names or counts is strictly BUSINESS_INFORMATION. Do NOT classify job-related personal requests (e.g. personal leaves, emails to boss, personal calendar events, or personal drafts) as BUSINESS_INFORMATION; these are strictly PERSONAL_INFORMATION.\n"
-    "- PERSONAL_INFORMATION: Set if the query relates to the user's personal details, family graph, residential address, personal email/phone, or personal background.\n"
-    "- SYSTEM_INFORMATION: Set if the query relates to the system itself (BABU), its architecture, age, upgrades, logs, ADRs.\n"
-    "- PUBLIC_INFORMATION: Set if the query is a general knowledge question, public search, tax/compliance general laws, Wikipedia lookups, general facts (e.g., 'what is GST?', 'how to settle PF online?').\n"
+    "- BUSINESS_INFORMATION: Set if query relates to user's business context, services, client records, customer claims (PF/GST). Any query asking for client names or counts is strictly BUSINESS_INFORMATION.\n"
+    "- PERSONAL_INFORMATION: Set if query relates to personal details, family, address, personal email/phone.\n"
+    "- SYSTEM_INFORMATION: Set if query relates to system itself (BABU), architecture, logs, ADRs.\n"
+    "- PUBLIC_INFORMATION: Set if query is general knowledge, public web search, tax laws, general facts.\n"
     "\n"
     "DEPARTMENT DEFINITIONS:\n"
-    "- information: Set if query requires general web search, information retrieval, quick facts lookup, chitchat response, or searching local profile/memory "
-    "(such as user name, business info, contacts, or personal details like 'my official mail').\n"
-    "- research: Set if query requires deep academic or comprehensive multi-source web research requiring verifications and source listing.\n"
-    "- analysis: Set if query requires data analysis, reasoning, or comparing data.\n"
-    "- writing: Set if query requires report drafting, email generation, text summarization, formatting, or any synthesis/summarization of retrieved search results (always include 'writing' when 'research' or 'information' queries require compiling a summary/draft response).\n"
-    "- execution: Set if query requires a physical action (sending email, creating docs/events, logging to sheets, publishing to facebook) or read-only Workspace retrieval (search_sheet, search_gmail).\n"
-    "- pa: Direct user response synthesis (always include 'pa' in allowed_departments).\n"
-    "\n"
-    "EXECUTION ACTION DEFINITIONS (Only include in allowed_actions if execution department is active):\n"
-    "- Google/Facebook Actions: send_email, create_event, log_to_sheet, create_doc, copy_photos_to_drive, copy_contacts_to_drive, post_to_facebook, generate_image\n"
-    "- Read-only Retrieval Actions: search_sheet, search_gmail\n"
-    "- Other Actions: send_slack, create_task, search_image, generate_image\n"
+    "- information: General web search, information retrieval, quick facts, local profile/memory search.\n"
+    "- research: Explicit deep research requiring multi-source verification and citations.\n"
+    "- analysis: Data analysis, reasoning, or comparing data.\n"
+    "- writing: Summarization, report drafting, email text, response formatting.\n"
+    "- execution: Physical actions (email, calendar, docs, sheets, facebook) or Workspace search.\n"
+    "- pa: Direct user response synthesis (always include 'pa').\n"
     "\n"
     "EXECUTION MODE DEFINITION:\n"
-    "- READ_ONLY: The query is informational or research-based. No changes, drafts, or execution actions allowed.\n"
-    "- APPROVAL_REQUIRED: User requested a mutation action (e.g. email, document creation, sheet logging, publishing to facebook) that requires user audit and approval before dispatch.\n"
-    "- AUTO_EXECUTE: User requested a highly structured, scheduled, or automated background task (like daily marketing posts) that does not need explicit user approval.\n"
-    "\n"
-    "SYSTEM QUERY FLAG DEFINITION:\n"
-    "- Set system_query to true if the query is asking about the system itself, its name, identity, age, creation date, date of birth, architecture, departments, governance system, failures log, templates, system policies, architectural decisions (ADRs), tradeoffs, or recent upgrades/updates/evolution to your codebase (e.g., Gemini migration, dynamic imports, etc.). Set it to false for all general queries.\n"
-    "\n"
-    "- CRITICAL CLASSIFICATION RULES:\n"
-    "- HISTORY OVERLOAD: The 'Recent History' is provided ONLY for context resolution. You MUST base your intent classification primarily on the 'User Query'. If the 'User Query' is a new, distinct question (e.g. asking for status), DO NOT carry over the actions (e.g. 'post_to_facebook') from the 'Recent History'.\n"
-    "- Do not research unless explicitly told to do so. ONLY include 'research' in allowed_departments if the user explicitly uses the word 'research' in their query (e.g. 'research X'). For all standard web searches, lookups, and fact checks (e.g. 'search the web for X', 'look up Y', 'who is Z', 'upcoming matches'), you MUST use 'information' instead of 'research'.\n"
-    "- Any research or information query that expects a compiled summary, report, or draft response naturally requires the 'writing' department. You MUST include 'writing' in 'allowed_departments' for all search, lookup, or research queries that require text synthesis/summarization.\n"
-    "- ONLY include 'execution' in allowed_departments and list execution actions (such as 'send_email', 'create_event', 'log_to_sheet', 'post_to_facebook', 'create_doc') in allowed_actions if the user explicitly requests that physical action/mutation in their query. Do NOT default to allowed_actions = ['send_email'] or execution_mode = 'APPROVAL_REQUIRED' for simple web search/informational queries; for these, the execution_mode MUST be 'READ_ONLY' and allowed_actions must not contain mutation actions.\n"
-    "\n"
-    "CONFIDENCE RATING:\n"
-    "Provide a rating between 0.0 and 1.0 representing how clear and unambiguous the user query is. If the query is vague, nonsensical, or lacks required context (e.g., 'Take care of this thing', 'do it', or 'test'), rate the confidence below 0.65.\n"
+    "- READ_ONLY: Informational/research query. No mutations.\n"
+    "- APPROVAL_REQUIRED: Mutation requested requiring user audit/approval.\n"
+    "- AUTO_EXECUTE: Scheduled or background tasks.\n"
     "\n"
     "JSON SCHEMA:\n"
     "{\n"
+    '  "topology_source": "INTERNAL | EXTERNAL | BOTH",\n'
+    '  "topology_mode": "CHITCHAT | LOOKUP | ACTION | HYBRID",\n'
+    '  "mutation_type": "NONE | INTERNAL | EXTERNAL | BOTH",\n'
+    '  "domain": "BABU_SYSTEM | META | GOOGLE | TAX_COMPLIANCE | GENERAL",\n'
+    '  "surface": "PAGE | INSTAGRAM | MESSENGER | GMAIL | CALENDAR | DOCS | SHEETS | TASKS | CODEBASE | DATABASE | SYSTEM",\n'
+    '  "planning_required": true | false,\n'
     '  "allowed_departments": ["list", "of", "required", "departments"],\n'
     '  "allowed_actions": ["list", "of", "permitted", "actions"],\n'
     '  "execution_mode": "READ_ONLY | APPROVAL_REQUIRED | AUTO_EXECUTE",\n'
@@ -265,7 +287,7 @@ INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
     "CRITICAL: Output ONLY valid raw JSON. No explanation, no markdown fences."
 )
 
-def classify_intent(query: str, history_text: str = "", model_name: str = "llama-3.1-8b-instant") -> IntentPacket:
+def classify_intent(query: str, history_text: str = "", model_name: str = "groq/compound-mini") -> IntentPacket:
     """Classify user query intent into a structured IntentPacket."""
     t = query.lower().strip()
     
@@ -279,7 +301,13 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
             execution_mode="READ_ONLY",
             confidence=1.0,
             tokens={"prompt": 0, "completion": 0, "total": 0},
-            model="rules_engine"
+            model="rules_engine",
+            topology_source="INTERNAL",
+            topology_mode="CHITCHAT",
+            mutation_type="NONE",
+            domain="GENERAL",
+            surface="SYSTEM",
+            planning_required=False
         )
 
     # 1b. Rule-based programmatic override: force lookup when query contains personal data references
@@ -298,18 +326,23 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
     # unavailable.  High-confidence execution classes are therefore identified
     # before the optional semantic classifier runs.
     detected_action = None
-    if "send" in t and ("email" in t or "mail" in t):
+    if ("facebook" in t or "fb" in t) and ("comment" in t or "comments" in t or "feed" in t or "activity" in t):
+        detected_action = "read_facebook_comments"
+    elif ("facebook" in t or "fb" in t) and ("post" in t or "posts" in t) and any(kw in t for kw in ("check", "read", "fetch", "get", "recent", "list", "latest", "show")):
+        detected_action = "read_facebook_posts"
+    elif "send" in t and ("email" in t or "mail" in t):
         detected_action = "send_email"
     elif "create" in t and "event" in t:
         detected_action = "create_event"
     elif "create" in t and ("document" in t or "doc" in t):
         detected_action = "create_doc"
-    elif "facebook" in t and "post" in t:
+    elif "facebook" in t and ("post" in t or "publish" in t):
         detected_action = "post_to_facebook"
     elif ("save" in t or "upload" in t) and ("drive" in t or "google drive" in t or "report" in t):
         detected_action = "upload_to_drive"
 
     if detected_action:
+        is_read_action = detected_action in ("read_facebook_comments", "read_facebook_posts", "search_sheet", "search_gmail")
         scheduled = any(marker in t for marker in ("scheduled", "daily", "automatically", "background"))
         try:
             from babu.bot import is_system_aware_query
@@ -320,14 +353,20 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "llama
         packet = IntentPacket(
             allowed_departments=["information", "writing", "execution", "pa"],
             allowed_actions=[detected_action],
-            execution_mode="AUTO_EXECUTE" if scheduled else "APPROVAL_REQUIRED",
+            execution_mode="READ_ONLY" if is_read_action else ("AUTO_EXECUTE" if scheduled else "APPROVAL_REQUIRED"),
             confidence=0.95,
             tokens={"prompt": 0, "completion": 0, "total": 0},
             model="rules_engine",
             query_category="SYSTEM_INFORMATION" if is_sys else ("PERSONAL_INFORMATION" if _force_lookup else "PUBLIC_INFORMATION"),
-            system_query=is_sys
+            system_query=is_sys,
+            topology_source="EXTERNAL",
+            topology_mode="LOOKUP" if is_read_action else "ACTION",
+            mutation_type="NONE" if is_read_action else "EXTERNAL",
+            domain="META" if "facebook" in detected_action else "GOOGLE",
+            surface="PAGE" if "facebook" in detected_action else "SYSTEM",
+            planning_required=False
         )
-        if is_sys:
+        if is_sys and not is_read_action:
             packet.execution_mode = "APPROVAL_REQUIRED"
         return packet
 
@@ -881,7 +920,7 @@ def plan_goal(
     gear: Optional[str] = None,
     history_text: str = "",
     profile_text: str = "",
-    model_name: str = "llama-3.1-8b-instant",
+    model_name: str = "groq/compound",
     goal_id: Optional[str] = None,
     is_correction: bool = False,
     last_goal_text: Optional[str] = None,
@@ -916,6 +955,32 @@ def plan_goal(
     start = time.time()
     goal_type = "CORRECTION" if is_correction else "NEW"
     p_tokens = None
+
+    # DECOUPLED ORCHESTRATION BYPASS:
+    # Bypass the heavy multi-agent LLM planner ONLY for non-mutating lookups and chitchat.
+    # Mutating actions (send_email, post_to_facebook, etc.) requiring drafting, governance, and user permission
+    # MUST pass through the dynamic LLM planner DAG.
+    read_only_actions = {"read_facebook_comments", "read_facebook_posts", "search_sheet", "search_gmail", "search_image"}
+    is_mutating = False
+    if intent_packet:
+        mut_type = getattr(intent_packet, "mutation_type", "NONE")
+        exec_mode = getattr(intent_packet, "execution_mode", "READ_ONLY")
+        actions_list = getattr(intent_packet, "allowed_actions", [])
+        if mut_type not in ("NONE", "") or exec_mode in ("APPROVAL_REQUIRED", "AUTO_EXECUTE"):
+            is_mutating = True
+        elif any(act not in read_only_actions for act in actions_list):
+            is_mutating = True
+
+    if intent_packet and not is_mutating and not getattr(intent_packet, "planning_required", False) and not is_correction:
+        topo_mode = getattr(intent_packet, "topology_mode", "LOOKUP")
+        actions = getattr(intent_packet, "allowed_actions", [])
+        if topo_mode in ("CHITCHAT", "LOOKUP") and not actions:
+            print(f"[PLANNER NODE] Decoupled Orchestration Bypass: Routing '{topo_mode}' query via build_walk_graph (0s LLM planning)", flush=True)
+            return build_walk_graph(query, goal_id=goal_id)
+        elif actions and len(actions) == 1 and actions[0] in read_only_actions:
+            act_name = actions[0]
+            print(f"[PLANNER NODE] Decoupled Orchestration Bypass: Routing read-only action '{act_name}' via build_action_graph (0s LLM planning)", flush=True)
+            return build_action_graph(query, {"action": act_name, "params": {}}, goal_id=goal_id)
 
     # Build the user prompt ------------------------------------------------
     from datetime import timedelta
@@ -965,6 +1030,17 @@ def plan_goal(
             "Situation Report (advisory, non-authoritative):\n"
             + json.dumps(awareness_report, ensure_ascii=False, sort_keys=True)
         )
+
+    try:
+        try:
+            from .temporal_reasoner import synthesize_temporal_reasoning_packet
+        except ImportError:
+            from temporal_reasoner import synthesize_temporal_reasoning_packet
+        temp_packet = synthesize_temporal_reasoning_packet(query)
+        if temp_packet and temp_packet.get("temporal_context_str"):
+            user_content_parts.append(f"\n[TEMPORAL REASONING & COMPLIANCE CONTEXT]\n{temp_packet['temporal_context_str']}")
+    except Exception as e:
+        print(f"[PLANNER TEMPORAL WARNING] Failed to inject temporal context: {e}", flush=True)
 
     user_content = "\n".join(user_content_parts)
 

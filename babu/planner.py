@@ -1031,6 +1031,17 @@ def plan_goal(
             + json.dumps(awareness_report, ensure_ascii=False, sort_keys=True)
         )
 
+    try:
+        try:
+            from .temporal_reasoner import synthesize_temporal_reasoning_packet
+        except ImportError:
+            from temporal_reasoner import synthesize_temporal_reasoning_packet
+        temp_packet = synthesize_temporal_reasoning_packet(query)
+        if temp_packet and temp_packet.get("temporal_context_str"):
+            user_content_parts.append(f"\n[TEMPORAL REASONING & COMPLIANCE CONTEXT]\n{temp_packet['temporal_context_str']}")
+    except Exception as e:
+        print(f"[PLANNER TEMPORAL WARNING] Failed to inject temporal context: {e}", flush=True)
+
     user_content = "\n".join(user_content_parts)
 
     target_model = model_name
