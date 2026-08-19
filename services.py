@@ -154,6 +154,22 @@ def _ensure_sqlite_schema(conn):
         );
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_k0_session_id ON babu_k0_working_memory (session_id);")
+    # babu_knowledge (RAG storage fallback)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS babu_knowledge (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            collection TEXT NOT NULL,
+            source TEXT NOT NULL,
+            title TEXT NOT NULL,
+            chunk_text TEXT NOT NULL,
+            embedding TEXT NOT NULL,
+            metadata TEXT DEFAULT '{}',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_babu_knowledge_collection ON babu_knowledge (collection);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_babu_knowledge_source ON babu_knowledge (source);")
+
     conn.commit()
     cursor.close()
 

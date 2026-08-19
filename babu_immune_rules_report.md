@@ -29,7 +29,7 @@ These rules act as **cognitive seatbelts**. Before any task is executed, the pre
 
 * **Key Failure Modes**: Expired Page Access Tokens, malformed OAuth credentials, and attempts to post using unverified Page IDs.
 * **Core Active Rules Generated**:
-  1. **Token Pre-Flight Invbabunt**:
+  1. **Token Pre-Flight Invariant**:
      > `ALWAYS perform a pre-flight validation check on Facebook access tokens to ensure they are non-empty and structurally resemble a valid Facebook token string before initiating any API requests.`
      *Impact*: Prevents BABU from attempting HTTP connections if the configuration ledger contains empty placeholders.
   2. **Page Token Separation Gating**:
@@ -56,7 +56,7 @@ These rules act as **cognitive seatbelts**. Before any task is executed, the pre
 
 * **Key Failure Modes**: Discrepancies between mock test behaviors and actual network execution.
 * **Core Active Rules Generated**:
-  1. **Mock Validation Invbabunt**:
+  1. **Mock Validation Invariant**:
      > `NEVER utilize mock objects without thoroughly validating their expected behavior and output against the actual implementation, to prevent discrepancies and ensure reliable test results.`
 
 ---

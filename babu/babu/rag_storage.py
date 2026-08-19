@@ -112,9 +112,12 @@ def get_embedding(text: str) -> list[float]:
 _RAG_DB_INITIALIZED = False
 
 
-def init_rag_db():
+def init_rag_db(force: bool = False):
     """Register pgvector or SQLite schemas based on DATABASE_URL availability."""
     global _RAG_DB_INITIALIZED
+    if _RAG_DB_INITIALIZED and not force:
+        return
+
     # Always attempt to ensure the schema exists; reset flag if DATABASE_URL changed
     _RAG_DB_INITIALIZED = False
     

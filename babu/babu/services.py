@@ -83,10 +83,14 @@ def get_db_connection():
         elif DATABASE_URL.startswith("sqlite://"):
             # Expected format: sqlite:///absolute/path.db
             path = DATABASE_URL.replace("sqlite:///", "", 1)
-            os.makedirs(os.path.dirname(path), exist_ok=True)
+            dir_name = os.path.dirname(path)
+            if dir_name:
+                os.makedirs(dir_name, exist_ok=True)
             return sqlite3.connect(path), False
     # Default fallback to bundled checkpoint DB
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    dir_name = os.path.dirname(DB_PATH)
+    if dir_name:
+        os.makedirs(dir_name, exist_ok=True)
     return sqlite3.connect(DB_PATH), False
 
     for key, rates in PRICING_TABLE.items():

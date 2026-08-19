@@ -53,7 +53,7 @@ ADR-017
 ADR-018
 
 Book:
-ADR_Book_v1.md
+BABU_ADR_Book_v1.md
 
 ## L1 Brain
 References:
@@ -61,7 +61,7 @@ ADR-002
 ADR-003
 
 Book:
-ADR_Book_v1.md
+BABU_ADR_Book_v1.md
 
 ## L2 Memory
 References:
@@ -73,10 +73,10 @@ ADR-064
 ADR-065
 
 Books:
-ADR_Book_v1.md
-ADR_Book_v2.md
-ADR_Book_v3.md
-ADR_Book_v4.md
+BABU_ADR_Book_v1.md
+BABU_ADR_Book_v2.md
+BABU_ADR_Book_v3.md
+BABU_ADR_Book_v4.md
 
 ## L3 System Information Index
 Reference:
@@ -186,28 +186,28 @@ ADR-072
 
 # Document Registry
 
-## ADR_Book_v1.md
+## BABU_ADR_Book_v1.md
 Coverage:
 ADR-001 → ADR-018
 
 Domains:
 Constitution, Brain, Memory, Planner, Approval
 
-## ADR_Book_v2.md
+## BABU_ADR_Book_v2.md
 Coverage:
 ADR-019 → ADR-036
 
 Domains:
 Deployment, Telemetry, Security, Templates
 
-## ADR_Book_v3.md
+## BABU_ADR_Book_v3.md
 Coverage:
 ADR-037 → ADR-056
 
 Domains:
 Schemas, Contracts, APIs, Dashboard
 
-## ADR_Book_v4.md
+## BABU_ADR_Book_v4.md
 Coverage:
 ADR-057 → ADR-078
 
@@ -235,6 +235,10 @@ ADR-091 → ADR-095
 Domains:
 Topology-Aware Query Classification, Capability Demand Packet, Orchestration Bypass, Conversational State Inheritance, Telemetry Observability
 
+## BABU_VISION_PLAN_2026.md
+Domains:
+Governed Agentic Control Platform, 7-Layer Architecture, Meta Bidirectional Loop, Multi-Provider Intelligence, Business Profile Grounding
+
 ## BABU_Manifesto_2026.md
 Coverage:
 25-Point System Architecture Manifesto (Living Architecture Standard)
@@ -242,13 +246,13 @@ Coverage:
 Domains:
 North Star Principles, 7-Layer Pipeline, Governed Control Plane, External World Connectivity, Resilience
 
-## BABU_BABU_Architecture_Diagrams.md
+## babu_execution_flow.md
 Domains:
-Architecture, Execution Flow, Roadmap
+Architecture, Execution Flow, Feature Map, Class C Confirmation Gates, Trusted Templates
 
-## BABU_Master_Architecture_Index.md
+## babu_cognitive_os_architectural_blueprint.md
 Domains:
-Knowledge Graph, Registries, Architecture Index
+Knowledge Graph, Distributed Cognitive OS Blueprint, Intent Compiler, Immune Confidence Decay, Memory Segmentation
 
 ---
 

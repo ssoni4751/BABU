@@ -22,7 +22,7 @@ graph TD
         E -->|GoalGraph DTO| F[Isolated Worker Epoch]
         
         subgraph "GOVERNOR & STATE GATES"
-            G[Auditor Governor] -.->|Enforce Invbabunts & State Checks| E
+            G[Auditor Governor] -.->|Enforce Invariants & State Checks| E
             H[State Schema Manager] -.->|Typed Execution State Only| E
         end
     end
@@ -81,7 +81,7 @@ class IntentContract:
 During planning, the Strategic Planner accepts the compiled `IntentContract` alongside the raw query. If `IntentContract.requires_action` is `False`, the planner **refuses** to generate any execution department tasks:
 
 ```python
-def enforce_planning_invbabunts(intent: IntentContract, graph: GoalGraph) -> None:
+def enforce_planning_invariants(intent: IntentContract, graph: GoalGraph) -> None:
     """Enforce strict compile-time boundaries on the planner's DAG generation."""
     for task in graph.tasks:
         if task.department == "execution" and not intent.requires_action:
@@ -160,7 +160,7 @@ def register_successful_execution(domain: str) -> None:
 
 ## 4. Priority 2 & 3: Structured State Schemas & Memory Segmentation
 
-To maximize stability, we establish a strict taxonomy separating system state vbabubles from raw conversational text.
+To maximize stability, we establish a strict taxonomy separating system state variables from raw conversational text.
 
 ### Strictly Segmented Memory Architecture
 
@@ -178,11 +178,11 @@ To maximize stability, we establish a strict taxonomy separating system state vb
      ├─► [Identity Context Memory] ──► user_profile.json
      │                                 Core identities & static facts.
      │
-     └─► [System Policy Invbabunts] ─► Static, non-modifiable validation schemas.
+     └─► [System Policy Invariants] ─► Static, non-modifiable validation schemas.
 ```
 
 ### Structured State Schema
-We restrict raw textual logs, replacing them with typed DTO pointers and tracked state vbabubles in the main LangGraph State dictionary (`BabuState`):
+We restrict raw textual logs, replacing them with typed DTO pointers and tracked state variables in the main LangGraph State dictionary (`BabuState`):
 
 ```python
 class BabuState(TypedDict):
@@ -207,6 +207,7 @@ class BabuState(TypedDict):
     source_records: Optional[List[str]]
     conversation_reference: Optional[bool]
     is_deterministic_response: Optional[bool]
+    awareness_report: Optional[dict]
 ```
 
 ---

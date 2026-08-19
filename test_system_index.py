@@ -25,16 +25,28 @@ sys.path.insert(0, os.path.join(CURRENT_DIR, "babu"))
 os.environ.setdefault("DATABASE_URL", "sqlite:///test_sii.db")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "MOCK_TOKEN")
 
-from babu.system_index import (
-    parse_sii,
-    route_query,
-    route_query_to_books,
-    derive_query_mode,
-    get_system_index_registries,
-    invalidate_cache,
-)
-from babu.rag_storage import init_rag_db, retrieve_knowledge, MockEmbeddings
-from babu.services import get_db_connection
+try:
+    from system_index import (
+        parse_sii,
+        route_query,
+        route_query_to_books,
+        derive_query_mode,
+        get_system_index_registries,
+        invalidate_cache,
+    )
+    from rag_storage import init_rag_db, retrieve_knowledge, MockEmbeddings
+    from services import get_db_connection
+except ImportError:
+    from babu.system_index import (
+        parse_sii,
+        route_query,
+        route_query_to_books,
+        derive_query_mode,
+        get_system_index_registries,
+        invalidate_cache,
+    )
+    from babu.rag_storage import init_rag_db, retrieve_knowledge, MockEmbeddings
+    from babu.services import get_db_connection
 
 
 # ---------------------------------------------------------------------------
@@ -349,7 +361,7 @@ class TestRetrieveKnowledgeSourcesFilter(unittest.TestCase):
 
     def setUp(self):
         os.environ["DATABASE_URL"] = "sqlite:///test_sii_rag.db"
-        init_rag_db()
+        init_rag_db(force=True)
         conn, _ = get_db_connection()
         cursor = conn.cursor()
         try:
