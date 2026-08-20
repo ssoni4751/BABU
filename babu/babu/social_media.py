@@ -1520,6 +1520,24 @@ def record_social_interaction(channel: str, sender_name: str, sender_id: str, us
         cursor.close()
         conn.close()
         print(f"[SOCIAL MEMORY SUCCESS] Recorded {interaction_type} interaction with {sender_name} into K0, Ledger & Timeline.", flush=True)
+
+        # 4. Ingest into Independent Business CRM Plane
+        try:
+            try:
+                from .crm_service import ingest_lead
+            except ImportError:
+                from crm_service import ingest_lead
+            ingest_lead(
+                name=sender_name,
+                channel=channel,
+                user_message=user_text,
+                assistant_reply=reply_text,
+                source_ref=str(sender_id),
+                notes=f"Source: {channel} (Ref: {post_id})"
+            )
+        except Exception as crm_err:
+            print(f"[CRM INGEST ERROR] {crm_err}", flush=True)
+
     except Exception as err:
         print(f"[SOCIAL MEMORY ERROR] Failed to record interaction: {err}", flush=True)
 

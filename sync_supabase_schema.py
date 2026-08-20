@@ -182,6 +182,46 @@ def sync_supabase_database(db_url: str = None) -> Dict[str, Any]:
                 metadata TEXT DEFAULT '{}',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+
+            -- 3. Business CRM Independent Plane
+            CREATE TABLE IF NOT EXISTS babu_leads (
+                lead_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                channel TEXT NOT NULL,
+                contact_info TEXT,
+                service_category TEXT NOT NULL DEFAULT 'General',
+                status TEXT NOT NULL DEFAULT 'NEW',
+                urgency_score REAL DEFAULT 0.5,
+                estimated_value REAL DEFAULT 0.0,
+                notes TEXT,
+                source_ref TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS babu_interactions (
+                interaction_id SERIAL PRIMARY KEY,
+                lead_id TEXT NOT NULL,
+                channel TEXT NOT NULL,
+                sender_id TEXT,
+                sender_name TEXT,
+                user_message TEXT NOT NULL,
+                assistant_reply TEXT NOT NULL,
+                intent TEXT,
+                metadata TEXT DEFAULT '{}',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS babu_followups (
+                followup_id SERIAL PRIMARY KEY,
+                lead_id TEXT NOT NULL,
+                scheduled_date TEXT NOT NULL,
+                proposed_action TEXT NOT NULL,
+                draft_message TEXT,
+                status TEXT NOT NULL DEFAULT 'PENDING',
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
         """)
         conn.commit()
 
@@ -207,6 +247,10 @@ def sync_supabase_database(db_url: str = None) -> Dict[str, Any]:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_pg_cache_session_hash ON planned_graphs_cache (session_id, query_hash);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_babu_knowledge_collection ON babu_knowledge (collection);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_babu_knowledge_source ON babu_knowledge (source);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_leads_status ON babu_leads (status);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_leads_category ON babu_leads (service_category);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_interactions_lead ON babu_interactions (lead_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_followups_lead_status ON babu_followups (lead_id, status);")
         conn.commit()
 
         # 4. Sync 95 ADRs from local SQLite or memory into Supabase

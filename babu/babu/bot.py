@@ -4755,6 +4755,225 @@ def get_telemetry_data(limit=100) -> dict:
 
 
 
+CRM_HTML = \"\"\"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anshu Computer & Tax Consultancy — CRM Desk</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-secondary: #111827;
+            --bg-card: rgba(17, 24, 39, 0.85);
+            --border: rgba(255, 255, 255, 0.08);
+            --border-hover: rgba(255, 255, 255, 0.15);
+            --text-primary: #f9fafb;
+            --text-secondary: #9ca3af;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-amber: #f59e0b;
+            --accent-purple: #8b5cf6;
+            --accent-red: #ef4444;
+            --radius-md: 12px;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg-primary); color: var(--text-primary); padding: 24px; min-height: 100vh; }
+        .container { max-width: 1300px; margin: 0 auto; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+        .title-box h1 { font-size: 24px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 10px; }
+        .title-box p { color: var(--text-secondary); font-size: 14px; margin-top: 4px; }
+        .badge-live { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 20px; background: rgba(16, 185, 129, 0.15); color: #10b981; font-size: 12px; font-weight: 600; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .badge-live::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #10b981; box-shadow: 0 0 8px #10b981; }
+        
+        .grid-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .stat-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 20px; backdrop-filter: blur(10px); }
+        .stat-label { font-size: 13px; color: var(--text-secondary); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; }
+        .stat-value { font-size: 32px; font-weight: 700; margin-top: 8px; font-family: 'JetBrains Mono', monospace; }
+        
+        .section-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 20px; margin-bottom: 24px; backdrop-filter: blur(10px); }
+        .section-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
+        
+        .services-pills { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+        .service-pill { background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border); padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 500; }
+        
+        table { width: 100%; border-collapse: collapse; font-size: 14px; text-align: left; }
+        th { padding: 12px 14px; background: rgba(255, 255, 255, 0.03); color: var(--text-secondary); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
+        td { padding: 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+        tr:hover td { background: rgba(255, 255, 255, 0.02); }
+        
+        .badge { padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+        .badge-new { background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); }
+        .badge-appt { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
+        .badge-conv { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
+        .badge-contact { background: rgba(139, 92, 246, 0.2); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.4); }
+        
+        .channel-tag { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-secondary); }
+        select.status-select { background: #1f2937; color: #fff; border: 1px solid var(--border); padding: 4px 8px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+        select.status-select:focus { outline: none; border-color: var(--accent-blue); }
+        
+        .btn-refresh { background: var(--accent-blue); color: #fff; border: none; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .btn-refresh:hover { background: #2563eb; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="title-box">
+                <h1>🏢 Anshu Computer & Tax Consultancy</h1>
+                <p>Client CRM & Business Operations Operating Desk</p>
+            </div>
+            <div style="display: flex; gap: 12px; align-items: center;">
+                <span class="badge-live">CRM Active</span>
+                <button class="btn-refresh" onclick="fetchCRMData()">Refresh Data</button>
+            </div>
+        </div>
+
+        <div class="grid-stats">
+            <div class="stat-card">
+                <div class="stat-label">Total Inquiries</div>
+                <div class="stat-value" id="stat-total" style="color: #60a5fa;">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">New Prospects</div>
+                <div class="stat-value" id="stat-new" style="color: #fbbf24;">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Appointments</div>
+                <div class="stat-value" id="stat-appt" style="color: #a78bfa;">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Converted Clients</div>
+                <div class="stat-value" id="stat-conv" style="color: #34d399;">0</div>
+            </div>
+        </div>
+
+        <div class="section-card">
+            <div class="section-title">
+                <span>📂 Service Breakdown</span>
+            </div>
+            <div class="services-pills" id="services-container">
+                <div class="service-pill">Loading services...</div>
+            </div>
+        </div>
+
+        <div class="section-card">
+            <div class="section-title">
+                <span>📋 Active Client Inquiries & Leads Roster</span>
+            </div>
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Lead ID</th>
+                            <th>Customer Name</th>
+                            <th>Channel</th>
+                            <th>Contact</th>
+                            <th>Service</th>
+                            <th>Urgency</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leads-tbody">
+                        <tr><td colspan="8" style="text-align: center; color: var(--text-secondary);">Loading client leads...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function fetchCRMData() {
+            try {
+                const res = await fetch('/api/crm');
+                const data = await res.json();
+                
+                // Update stats
+                const s = data.summary || {};
+                document.getElementById('stat-total').textContent = s.total_leads || 0;
+                document.getElementById('stat-new').textContent = s.new || 0;
+                document.getElementById('stat-appt').textContent = s.appointments || 0;
+                document.getElementById('stat-conv').textContent = s.converted || 0;
+
+                // Update services
+                const svcContainer = document.getElementById('services-container');
+                svcContainer.innerHTML = '';
+                const svcs = data.by_service || {};
+                if (Object.keys(svcs).length === 0) {
+                    svcContainer.innerHTML = '<div class="service-pill">No categorized leads yet</div>';
+                } else {
+                    for (const [k, v] of Object.entries(svcs)) {
+                        const pill = document.createElement('div');
+                        pill.className = 'service-pill';
+                        pill.innerHTML = `<strong>${k}</strong>: ${v} inquiries`;
+                        svcContainer.appendChild(pill);
+                    }
+                }
+
+                // Update table
+                const tbody = document.getElementById('leads-tbody');
+                tbody.innerHTML = '';
+                const leads = data.leads || [];
+                if (leads.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color: var(--text-secondary);">No client inquiries recorded yet.</td></tr>';
+                    return;
+                }
+
+                leads.forEach(l => {
+                    const tr = document.createElement('tr');
+                    const badgeClass = l.status === 'APPOINTMENT_SCHEDULED' ? 'badge-appt' : (l.status === 'CONVERTED' ? 'badge-conv' : (l.status === 'CONTACTED' ? 'badge-contact' : 'badge-new'));
+                    tr.innerHTML = `
+                        <td style="font-family: monospace; font-size: 12px; color: var(--text-secondary);">${l.lead_id}</td>
+                        <td><strong>${l.name}</strong></td>
+                        <td><span class="channel-tag">${l.channel}</span></td>
+                        <td>${l.contact_info}</td>
+                        <td><span style="font-weight:600;">${l.service_category}</span></td>
+                        <td>${(l.urgency_score * 100).toFixed(0)}%</td>
+                        <td><span class="badge ${badgeClass}">${l.status}</span></td>
+                        <td>
+                            <select class="status-select" onchange="updateStatus('${l.lead_id}', this.value)">
+                                <option value="NEW" ${l.status === 'NEW' ? 'selected' : ''}>NEW</option>
+                                <option value="CONTACTED" ${l.status === 'CONTACTED' ? 'selected' : ''}>CONTACTED</option>
+                                <option value="APPOINTMENT_SCHEDULED" ${l.status === 'APPOINTMENT_SCHEDULED' ? 'selected' : ''}>APPOINTMENT</option>
+                                <option value="CONVERTED" ${l.status === 'CONVERTED' ? 'selected' : ''}>CONVERTED</option>
+                                <option value="LOST" ${l.status === 'LOST' ? 'selected' : ''}>LOST</option>
+                            </select>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                console.error("Failed to load CRM data:", err);
+            }
+        }
+
+        async function updateStatus(leadId, newStatus) {
+            try {
+                const res = await fetch('/api/crm/lead/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ lead_id: leadId, status: newStatus })
+                });
+                if (res.ok) {
+                    fetchCRMData();
+                } else {
+                    alert("Failed to update status.");
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        fetchCRMData();
+        setInterval(fetchCRMData, 10000);
+    </script>
+</body>
+</html>
+\"\"\"
+
+
 class HealthHandler(BaseHTTPRequestHandler):
 
     def _cors(self):
@@ -4814,6 +5033,31 @@ class HealthHandler(BaseHTTPRequestHandler):
                     self._cors()
                     self.end_headers()
                     self.wfile.write(err)
+            elif path in ("/api/crm", "/api/crm/"):
+                try:
+                    try:
+                        from .crm_service import get_crm_pipeline_data
+                    except ImportError:
+                        from crm_service import get_crm_pipeline_data
+                    crm_data = get_crm_pipeline_data(limit=100)
+                    body = json.dumps(crm_data).encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self._cors()
+                    self.end_headers()
+                    self.wfile.write(body)
+                except Exception as e:
+                    err = json.dumps({"status": "error", "message": str(e)}).encode("utf-8")
+                    self.send_response(500)
+                    self.send_header("Content-Type", "application/json")
+                    self._cors()
+                    self.end_headers()
+                    self.wfile.write(err)
+            elif path in ("/crm", "/crm/"):
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(CRM_HTML.encode())
             elif path in ("/", ""):
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -4945,6 +5189,35 @@ class HealthHandler(BaseHTTPRequestHandler):
                 print(f"[FACEBOOK WEBHOOK POST ERROR] {e}", flush=True)
                 self.send_response(200)
                 self.end_headers()
+            return
+
+        elif self.path == "/api/crm/lead/update":
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                body   = json.loads(self.rfile.read(length))
+                lead_id = body.get("lead_id")
+                new_status = body.get("status")
+                notes = body.get("notes")
+                try:
+                    from .crm_service import update_lead_stage
+                except ImportError:
+                    from crm_service import update_lead_stage
+                success = update_lead_stage(lead_id, new_status, notes)
+                resp = json.dumps({"status": "success" if success else "error"}).encode()
+                self.send_response(200 if success else 400)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(resp)))
+                self._cors()
+                self.end_headers()
+                self.wfile.write(resp)
+            except Exception as e:
+                err = json.dumps({"error": str(e)}).encode()
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(err)))
+                self._cors()
+                self.end_headers()
+                self.wfile.write(err)
             return
 
         elif self.path == "/api/models/switch":
@@ -6484,12 +6757,17 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Unified Agent Swarm:\n"
         "- Just send a message naturally! BABU automatically decomposes your query, performs deep web research, writes drafts, and executes secure audited actions.\n"
         "- /launch <question> - Shortcut command to explicitly trigger the planner.\n\n"
+        "Business CRM Desk (Anshu Consultancy):\n"
+        "- /crm - View active CRM sales & inquiry pipeline digest\n"
+        "- /leads - View recent client inquiries and appointments\n"
+        "- /add_lead <name> <phone> [service] - Register a new client lead\n\n"
         "Marketing Department:\n"
         "- /postnow - Instantly generate and post custom daily tech graphic & copy to Facebook Page\n\n"
         "Extras:\n"
         "- /goals - Show and manage active pending goals and actions\n"
         "- /clear - Reset conversation memory\n"
         "- /stats - Show runtime diagnostics\n"
+        "- /model - Switch active PA and Swarm models\n"
         f"- /help - Show this menu{google_line}\n\n"
         "I remember your conversation and personalize drafts based on your user profile.",
     )
@@ -6601,6 +6879,68 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"Main Personal Assistant model switched to: `{CURRENT_PA_MODEL}`")
     except Exception as e:
         await update.message.reply_text(f"Failed to switch model: {e}")
+
+
+async def cmd_crm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Deliver an executive CRM sales & inquiry pipeline summary."""
+    try:
+        try:
+            from .crm_service import format_telegram_crm_digest
+        except ImportError:
+            from crm_service import format_telegram_crm_digest
+        text = format_telegram_crm_digest()
+        await update.message.reply_text(text, parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"CRM digest unavailable: {e}")
+
+
+async def cmd_leads(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """View recent client leads, inquiries, and scheduled appointments."""
+    try:
+        try:
+            from .crm_service import get_crm_pipeline_data
+        except ImportError:
+            from crm_service import get_crm_pipeline_data
+        data = get_crm_pipeline_data(limit=15)
+        leads = data.get("leads", [])
+        if not leads:
+            await update.message.reply_text("📋 No client leads recorded in CRM yet. Use `/add_lead` to register a client.")
+            return
+        
+        lines = ["📋 **ANSHU CONSULTANCY — RECENT CLIENT LEADS**\n"]
+        for idx, l in enumerate(leads, 1):
+            badge = "📅" if l["status"] == "APPOINTMENT_SCHEDULED" else ("🆕" if l["status"] == "NEW" else ("🤝" if l["status"] == "CONVERTED" else "⚡"))
+            lines.append(f"{idx}. {badge} **{l['name']}** [{l['service_category']}] — Status: `{l['status']}`")
+            lines.append(f"   Channel: `{l['channel']}` | Contact: `{l['contact_info']}`")
+            if l.get("notes"):
+                lines.append(f"   Notes: _{l['notes']}_")
+        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"Leads list unavailable: {e}")
+
+
+async def cmd_add_lead(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Register a new lead manually via Telegram."""
+    args = context.args
+    if not args or len(args) < 2:
+        await update.message.reply_text("Usage: `/add_lead <Name> <Phone/Contact> [Service (ITR/GST/PF/General)] [Notes]`", parse_mode="Markdown")
+        return
+    name = args[0]
+    contact = args[1]
+    service = args[2] if len(args) > 2 else "General"
+    notes = " ".join(args[3:]) if len(args) > 3 else "Manual entry via Telegram"
+    try:
+        try:
+            from .crm_service import ingest_lead
+        except ImportError:
+            from crm_service import ingest_lead
+        res = ingest_lead(name=name, channel="Telegram Walk-in", user_message=f"Manual client registration for {service}", contact_info=contact, notes=notes)
+        if res.get("status") == "SUCCESS":
+            await update.message.reply_text(f"✅ Client lead registered successfully!\n• Lead ID: `{res.get('lead_id')}`\n• Name: **{name}**\n• Service: `{res.get('service_category')}`\n• Contact: `{contact}`", parse_mode="Markdown")
+        else:
+            await update.message.reply_text(f"❌ Failed to register lead: {res.get('error')}")
+    except Exception as e:
+        await update.message.reply_text(f"Error adding lead: {e}")
 
 
 async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):

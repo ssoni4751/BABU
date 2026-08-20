@@ -95,8 +95,20 @@ def open_transports(state: BootstrapState) -> None:
     health_thread.start()
     bot = ApplicationBuilder().token(bot_module.TELEGRAM_TOKEN).build()
     bot_module.tg_application = bot
-    bot_module.start_social_scheduler(bot)
-    for command, handler in (("launch", bot_module.cmd_launch), ("clear", bot_module.cmd_clear), ("goals", bot_module.cmd_goals), ("help", bot_module.cmd_help), ("stats", bot_module.cmd_stats), ("model", bot_module.cmd_model), ("postnow", bot_module.cmd_postnow), ("promote", bot_module.cmd_promote), ("retire", bot_module.cmd_retire)):
+    for command, handler in (
+        ("launch", bot_module.cmd_launch),
+        ("clear", bot_module.cmd_clear),
+        ("goals", bot_module.cmd_goals),
+        ("help", bot_module.cmd_help),
+        ("stats", bot_module.cmd_stats),
+        ("model", bot_module.cmd_model),
+        ("postnow", bot_module.cmd_postnow),
+        ("promote", bot_module.cmd_promote),
+        ("retire", bot_module.cmd_retire),
+        ("crm", bot_module.cmd_crm),
+        ("leads", bot_module.cmd_leads),
+        ("add_lead", bot_module.cmd_add_lead)
+    ):
         bot.add_handler(CommandHandler(command, handler))
     bot.add_handler(MessageHandler((filters.TEXT | filters.VOICE | filters.Document.ALL) & (~filters.COMMAND), bot_module.on_message))
     bot.add_handler(CallbackQueryHandler(bot_module.on_post_callback))
