@@ -1191,7 +1191,7 @@ def send_facebook_comment_reply(comment_id: str, message_text: str) -> tuple[boo
             res = requests.post(url, data=data, timeout=15)
             if res.status_code == 200:
                 print(f"[FACEBOOK COMMENT SUCCESS] Public comment reply posted to {cid}: {res.json()}", flush=True)
-                return True, f"Replied to comment {cid} successfully."
+                break
             else:
                 errors.append(f"Public {cid}: {res.text}")
         except Exception as e:
