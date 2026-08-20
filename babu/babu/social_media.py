@@ -1374,6 +1374,8 @@ def process_facebook_webhook_event(payload: dict):
                     
                     ok, msg = send_facebook_messenger_reply(sender_id, reply)
                     print(f"[FACEBOOK WEBHOOK DM REPLY] {msg}", flush=True)
+                    if ok:
+                        record_social_interaction("Facebook Messenger", f"User {sender_id}", sender_id, user_text, reply, "FB_DM")
 
             # 2. Handle Post Comments
             changes = entry.get("changes", [])
@@ -1428,9 +1430,98 @@ def process_facebook_webhook_event(payload: dict):
                     
                     ok, msg = send_facebook_comment_reply(comment_id, reply)
                     print(f"[FACEBOOK WEBHOOK COMMENT REPLY] {msg}", flush=True)
+                    if ok:
+                        record_social_interaction("Facebook Comment", sender_name, sender_id, comment_text, reply, "FB_COMMENT", post_id=comment_id)
 
     except Exception as e:
         print(f"[FACEBOOK WEBHOOK ERROR] Exception in process_facebook_webhook_event: {e}", flush=True)
+
+def record_social_interaction(channel: str, sender_name: str, sender_id: str, user_text: str, reply_text: str, interaction_type: str = "FB_COMMENT", post_id: str = ""):
+    """
+    Persist incoming social media interaction and AI response to:
+    1. babu_k0_working_memory (Session working memory)
+    2. execution_ledger (Swarm telemetry and activity tracking)
+    3. babu_temporal_timeline (Chronological event timeline)
+    4. Lead classification
+    """
+    import time
+    from datetime import datetime
+    try:
+        from .services import get_db_connection
+    except ImportError:
+        from services import get_db_connection
+
+    conn, is_pg = get_db_connection()
+    if not conn:
+        print("[SOCIAL MEMORY ERROR] Database connection unavailable to record social interaction.", flush=True)
+        return
+
+    try:
+        cursor = conn.cursor()
+        goal_id = f"SOC-{interaction_type}-{int(time.time())}"
+        session_id = f"{channel.lower().replace(' ', '_')}_{sender_id}"
+        clean_user_text = f"[{sender_name} via {channel}]: {user_text}"
+        
+        # 1. babu_k0_working_memory
+        if is_pg:
+            cursor.execute("""
+                INSERT INTO babu_k0_working_memory (session_id, goal_id, user_query, response, status, failures, retrieved_records)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (session_id, goal_id, clean_user_text, reply_text, "SUCCESS", None, "K3 - Business Context, K1 - Social Rules"))
+        else:
+            cursor.execute("""
+                INSERT INTO babu_k0_working_memory (session_id, goal_id, user_query, response, status, failures, retrieved_records)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (session_id, goal_id, clean_user_text, reply_text, "SUCCESS", None, "K3 - Business Context, K1 - Social Rules"))
+
+        # 2. execution_ledger
+        meta_json = json.dumps({
+            "channel": channel,
+            "sender_name": sender_name,
+            "sender_id": sender_id,
+            "user_query": user_text,
+            "reply": reply_text,
+            "post_id": post_id
+        })
+        if is_pg:
+            cursor.execute("""
+                INSERT INTO execution_ledger (session_id, goal_id, task_id, department, event_type, metadata)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (session_id, goal_id, f"T-{interaction_type}", "writing", f"{interaction_type}_REPLY", meta_json))
+        else:
+            cursor.execute("""
+                INSERT INTO execution_ledger (session_id, goal_id, task_id, department, event_type, metadata)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (session_id, goal_id, f"T-{interaction_type}", "writing", f"{interaction_type}_REPLY", meta_json))
+
+        # 3. babu_temporal_timeline
+        summary_text = f"Replied to {sender_name} on {channel}: '{user_text[:60]}...'"
+        cause_text = f"Incoming inquiry on {channel} from {sender_name}"
+        effect_text = f"Dispatched AI guidance for appointment / tax consultancy"
+        resolution_text = "Replied"
+        
+        # Check if prospect lead
+        q_lower = user_text.lower()
+        is_lead = any(k in q_lower for k in ("appointment", "book", "milna", "contact", "number", "call", "fee", "charge", "price", "itr", "gst", "pf", "address", "sir", "kab"))
+        category = "PROSPECT_LEAD" if is_lead else "SOCIAL_ENGAGEMENT"
+        
+        if is_pg:
+            cursor.execute("""
+                INSERT INTO babu_temporal_timeline (event_category, summary, outcome, cause, effect, resolution, impact_score, confidence, metadata)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (category, summary_text, "SUCCESS", cause_text, effect_text, resolution_text, 1.0 if is_lead else 0.8, 0.95, meta_json))
+        else:
+            cursor.execute("""
+                INSERT INTO babu_temporal_timeline (event_category, summary, outcome, cause, effect, resolution, impact_score, confidence, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (category, summary_text, "SUCCESS", cause_text, effect_text, resolution_text, 1.0 if is_lead else 0.8, 0.95, meta_json))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print(f"[SOCIAL MEMORY SUCCESS] Recorded {interaction_type} interaction with {sender_name} into K0, Ledger & Timeline.", flush=True)
+    except Exception as err:
+        print(f"[SOCIAL MEMORY ERROR] Failed to record interaction: {err}", flush=True)
 
 
   
