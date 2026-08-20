@@ -4755,7 +4755,7 @@ def get_telemetry_data(limit=100) -> dict:
 
 
 
-CRM_HTML = \"\"\"<!DOCTYPE html>
+CRM_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -4971,7 +4971,7 @@ CRM_HTML = \"\"\"<!DOCTYPE html>
     </script>
 </body>
 </html>
-\"\"\"
+"""
 
 
 class HealthHandler(BaseHTTPRequestHandler):
