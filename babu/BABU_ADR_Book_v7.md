@@ -56,4 +56,34 @@
 
 ---
 
+## ADR-096: Independent Commercial CRM Subsystem vs Internal System Telematics
+* **Status:** Accepted / Live in Production
+* **Context:** Conflating internal system telemetry (tokens, model latencies, DAG execution, K0–K7 memory) with commercial client customer relationship management (leads, inquiries, appointments, services) pollutes the architecture and confuses operator workflows.
+* **Decision:** Enforced complete decoupling into two independent planes:
+  * **Internal Flight Deck (`telematics.py` & `/api/telemetry` & `/`)**: System introspection, tokens, model benchmark latencies, audit trails.
+  * **Commercial CRM Desk (`crm_service.py` & `/api/crm` & `/crm`)**: Commercial sales funnel, client leads table (`babu_leads`), interactions (`babu_interactions`), follow-ups (`babu_followups`), and Telegram CRM suite (`/crm`, `/leads`, `/add_lead`).
+* **Consequences:** Clean separation of concerns. The CRM operates as an independent business desk while BABU's telemetry remains an unpolluted engineering cockpit.
+
+---
+
+## ADR-097: Bidirectional Facebook Webhook Persistent Memory & Lead Ingestion
+* **Status:** Accepted / Live in Production
+* **Context:** Inbound social media engagements (Facebook Page comments, Messenger DMs) previously generated stateless graph replies without recording memory or capturing commercial prospect details.
+* **Decision:** Integrated inbound webhooks with the dual-plane memory infrastructure:
+  1. **Working Memory & Ledger:** Interaction logged to `babu_k0_working_memory`, `execution_ledger`, and `babu_temporal_timeline`.
+  2. **Commercial Lead Capture:** Queries with commercial/service intent (`ITR`, `GST`, `PF`, `PAN`, `Accounting`) automatically extract contact info and register/update prospects in `babu_leads`.
+* **Consequences:** Inbound social traffic converts directly into structured CRM leads with zero manual operator overhead.
+
+---
+
+## ADR-098: Production Default Swarm Model Matrix Calibration
+* **Status:** Accepted / Live in Production
+* **Context:** Using heavy models for repetitive swarm workers caused rate-limiting (HTTP 429), while using smaller models for the Personal Assistant compromised reasoning depth.
+* **Decision:** Calibrated production model roles:
+  * **Personal Assistant (PA):** Defaulted to `openai/gpt-oss-120b` (120B parameter high-capacity reasoning model).
+  * **Swarm Department Workers & Social Webhook Engine:** Defaulted to `openai/gpt-oss-20b` (20B fast inference model with high throughput).
+* **Consequences:** Eliminated rate-limiting delays while maximizing executive conversational reasoning quality.
+
+---
+
 *BABU ADR Book Volume 7 — Published August 2026*

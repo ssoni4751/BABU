@@ -26,6 +26,9 @@ The Bot dispatches to the appropriate handler:
 | `/stats` | `cmd_stats` | Show system statistics |
 | `/model` | `cmd_model` | Switch LLM model |
 | `/postnow` | `cmd_postnow` | Trigger social media post |
+| `/crm` | `cmd_crm` | View Anshu Consultancy CRM pipeline digest |
+| `/leads` | `cmd_leads` | View recent client inquiries and appointments |
+| `/add_lead <name> <phone>` | `cmd_add_lead` | Register a new client lead |
 | `/help` | `cmd_help` | Show help text |
 | *(text/voice)* | `on_message` | Normal message → Planner |
 
