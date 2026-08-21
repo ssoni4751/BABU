@@ -1,7 +1,0 @@
-{
-  "promotion_min_runs": 5,
-  "promotion_success_rate": 0.95,
-  "promotion_recency_days": 30,
-  "demotion_max_failures": 2,
-  "demotion_min_success_rate": 0.90
-}
