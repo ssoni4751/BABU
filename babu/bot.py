@@ -6759,7 +6759,10 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "- /launch <question> - Shortcut command to explicitly trigger the planner.\n\n"
         "Business CRM Desk (Anshu Consultancy):\n"
         "- /crm - View active CRM sales & inquiry pipeline digest\n"
-        "- /leads - View recent client inquiries and appointments\n"
+        "- /leads - View recent client inquiries and prospects\n"
+        "- /followups - View scheduled appointments & pending follow-ups\n"
+        "- /follow_lead <id> <date> <time> [purpose] - Schedule appointment/follow-up\n"
+        "- /update_lead <id> <status> [notes] - Update lead status (e.g. CONVERTED)\n"
         "- /add_lead <name> <phone> [service] - Register a new client lead\n\n"
         "Marketing Department:\n"
         "- /postnow - Instantly generate and post custom daily tech graphic & copy to Facebook Page\n\n"
@@ -6941,6 +6944,98 @@ async def cmd_add_lead(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"❌ Failed to register lead: {res.get('error')}")
     except Exception as e:
         await update.message.reply_text(f"Error adding lead: {e}")
+
+
+async def cmd_followups(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """View active scheduled appointments and pending follow-ups, or schedule a new one."""
+    args = context.args
+    try:
+        try:
+            from .crm_service import get_crm_pipeline_data, commit_crm_appointment, parse_ist_datetime, check_slot_availability
+        except ImportError:
+            from crm_service import get_crm_pipeline_data, commit_crm_appointment, parse_ist_datetime, check_slot_availability
+
+        # 1. Schedule a follow-up if args provided: /follow_lead <lead_id> <date> <time> [purpose]
+        if args and len(args) >= 3:
+            lead_id = args[0]
+            date_expr = args[1]
+            time_expr = args[2]
+            purpose = " ".join(args[3:]) if len(args) > 3 else "Follow-up Consultation"
+
+            dt_res = parse_ist_datetime(date_expr, time_expr)
+            if not dt_res.get("valid"):
+                await update.message.reply_text(f"❌ Invalid appointment slot: {dt_res.get('message', dt_res.get('reason'))}")
+                return
+
+            avail_ok, alt_slots = check_slot_availability(dt_res["date_str"], dt_res["time_str"])
+            if not avail_ok:
+                alt_str = ", ".join(alt_slots) if alt_slots else "another time between 11 AM - 6 PM"
+                await update.message.reply_text(f"⚠️ Slot on {dt_res['display_date']} at {dt_res['display_time']} is already occupied.\nAvailable options: {alt_str}")
+                return
+
+            commit_res = commit_crm_appointment(lead_id, dt_res["date_str"], dt_res["time_str"], purpose=purpose, notes="Scheduled via Telegram")
+            if commit_res.get("status") == "SUCCESS":
+                await update.message.reply_text(
+                    f"✅ **Appointment / Follow-up Scheduled!**\n"
+                    f"• Lead ID: `{lead_id}`\n"
+                    f"• Date: **{dt_res['display_date']}**\n"
+                    f"• Time: **{dt_res['display_time']}**\n"
+                    f"• Purpose: _{purpose}_",
+                    parse_mode="Markdown"
+                )
+            else:
+                await update.message.reply_text(f"❌ Failed to schedule: {commit_res.get('error')}")
+            return
+
+        # 2. View active followups list
+        data = get_crm_pipeline_data(limit=20)
+        followups = data.get("followups", [])
+        if not followups:
+            await update.message.reply_text("📅 No pending appointments or follow-ups in CRM right now.\nUse `/follow_lead <lead_id> <date> <time> [purpose]` to schedule one.", parse_mode="Markdown")
+            return
+
+        lines = ["📅 **SCHEDULED APPOINTMENTS & PENDING FOLLOW-UPS**\n"]
+        for idx, f in enumerate(followups, 1):
+            lines.append(f"{idx}. 🗓️ **{f.get('name', 'Customer')}** (Lead: `{f.get('lead_id')}`)")
+            lines.append(f"   Slot: **{f.get('scheduled_date')}** | Action: `{f.get('proposed_action')}`")
+            if f.get('draft_message'):
+                lines.append(f"   Details: _{f['draft_message']}_")
+        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"Follow-ups unavailable: {e}")
+
+
+async def cmd_update_lead(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Update lead funnel status (e.g. /update_lead <lead_id> <CONVERTED/CONTACTED/LOST> [notes])."""
+    args = context.args
+    if not args or len(args) < 2:
+        await update.message.reply_text(
+            "Usage: `/update_lead <Lead_ID> <Status> [Notes]`\n\nValid Statuses: `NEW`, `SERVICE_IDENTIFIED`, `CONTACTED`, `APPOINTMENT_SCHEDULED`, `CONVERTED`, `LOST`",
+            parse_mode="Markdown"
+        )
+        return
+
+    lead_id = args[0]
+    new_status = args[1].upper()
+    notes = " ".join(args[2:]) if len(args) > 2 else None
+
+    valid_statuses = ("NEW", "SERVICE_IDENTIFIED", "CONTACTED", "APPOINTMENT_SCHEDULED", "CONVERTED", "LOST", "FOLLOW_UP_REQUIRED")
+    if new_status not in valid_statuses:
+        await update.message.reply_text(f"❌ Invalid status. Must be one of: {', '.join(valid_statuses)}")
+        return
+
+    try:
+        try:
+            from .crm_service import update_lead_funnel_stage
+        except ImportError:
+            from crm_service import update_lead_funnel_stage
+        ok = update_lead_funnel_stage(lead_id, new_status, notes=notes)
+        if ok:
+            await update.message.reply_text(f"✅ Lead `{lead_id}` status updated to **{new_status}**.", parse_mode="Markdown")
+        else:
+            await update.message.reply_text(f"❌ Could not update lead `{lead_id}`. Please check the Lead ID.")
+    except Exception as e:
+        await update.message.reply_text(f"Error updating lead: {e}")
 
 
 async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
