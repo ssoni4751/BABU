@@ -131,6 +131,20 @@ class TestCRMSubsystem(unittest.TestCase):
         self.assertEqual(res2["reason"], "CONCURRENT_SLOT_COLLISION")
         self.assertGreater(len(res2["alternatives"]), 0)
 
+    def test_multiple_appointments_same_day_different_times(self):
+        # Verify that multiple appointments on the EXACT SAME DAY at DIFFERENT TIMES all succeed
+        ing1 = ingest_lead("Client Morning", "Facebook", "PF 11 AM", source_ref="src_m1")
+        ing2 = ingest_lead("Client Afternoon", "Facebook", "ITR 2 PM", source_ref="src_m2")
+        ing3 = ingest_lead("Client Evening", "Facebook", "GST 5 PM", source_ref="src_m3")
+
+        res1 = commit_crm_appointment(ing1["lead_id"], "2026-08-27", "11:00", purpose="PF Claim")
+        res2 = commit_crm_appointment(ing2["lead_id"], "2026-08-27", "14:00", purpose="ITR Filing")
+        res3 = commit_crm_appointment(ing3["lead_id"], "2026-08-27", "17:00", purpose="GST Monthly")
+
+        self.assertEqual(res1["status"], "SUCCESS")
+        self.assertEqual(res2["status"], "SUCCESS")
+        self.assertEqual(res3["status"], "SUCCESS")
+
     def test_selective_knowledge_slice(self):
         # PF Slice contains PF facts and documents but no full dump
         pf_slice = get_selective_knowledge_slice("PF")
