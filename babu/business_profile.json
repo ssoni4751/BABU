@@ -76,10 +76,44 @@
     "WhatsApp Lead Generation",
     "Nationwide Digital Consultancy"
   ],
+  "office_hours": {
+    "days": "Monday to Saturday",
+    "sunday": "Closed",
+    "open_time": "11:00 AM",
+    "close_time": "6:00 PM",
+    "appointment_interval_start": "11:00",
+    "appointment_interval_end": "18:00"
+  },
+  "required_documents_by_service": {
+    "PF": [
+      "Aadhaar Card",
+      "PAN Card",
+      "Bank Passbook or Cancelled Cheque",
+      "UAN Number",
+      "Aadhaar-linked Mobile Number"
+    ],
+    "ITR": [
+      "Form 16 (for salaried individuals)",
+      "Bank Statements for the Financial Year",
+      "PAN Card",
+      "Aadhaar Card",
+      "Investment / Tax-saving Proofs (80C, 80D, etc.)"
+    ],
+    "GST": [
+      "PAN Card & Aadhaar Card of Proprietor/Partners",
+      "Electricity Bill / Rent Agreement for Business Address",
+      "Bank Account Details / Cancelled Cheque",
+      "Passport-size Photograph"
+    ],
+    "PAN/Documentation": [
+      "Aadhaar Card with linked Mobile Number for OTP",
+      "Passport-size Photographs"
+    ]
+  },
   "client_faqs": [
     {
-      "question": "Where is your shop or consultancy located?",
-      "answer": "Anshu Computer & Tax Consultancy is located at Kaushal Market, Rath Road, Orai, Uttar Pradesh, India. Open Monday to Saturday from 9:30 AM to 8:00 PM."
+      "question": "Where is your shop or consultancy located and what are the timings?",
+      "answer": "Anshu Computer & Tax Consultancy is located at Kaushal Market, Rath Road, Orai, Uttar Pradesh, India. Working hours: Monday to Saturday from 11:00 AM to 6:00 PM (Sunday Closed)."
     },
     {
       "question": "What are your service charges?",
@@ -91,11 +125,15 @@
     },
     {
       "question": "What documents are required for PF Withdrawal or Correction?",
-      "answer": "For PF claim settlement or KYC correction, please bring your Aadhaar Card, PAN Card, Bank Passbook or Cancelled Cheque, UAN Number, and registered Mobile Number."
+      "answer": "For PF claim settlement or KYC correction, please bring your Aadhaar Card, PAN Card, Bank Passbook or Cancelled Cheque, UAN Number, and Aadhaar-registered Mobile Number."
     },
     {
       "question": "What documents are required for ITR Filing?",
       "answer": "For Income Tax Return filing, please bring Form 16 (if salaried), Bank Statements for the financial year, Aadhaar Card, PAN Card, and investment proof documents."
+    },
+    {
+      "question": "How can I book an appointment?",
+      "answer": "You can visit our office in Kaushal Market, Rath Road, Orai between 11:00 AM and 6:00 PM (Mon-Sat), or reply with your preferred date and time between 11:00 AM and 6:00 PM to book a confirmed slot."
     }
   ]
 }

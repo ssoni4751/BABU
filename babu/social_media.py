@@ -1349,47 +1349,7 @@ def process_facebook_webhook_event(payload: dict):
                 
                 if sender_id and user_text and not is_echo and sender_id != page_id:
                     print(f"[FACEBOOK WEBHOOK] Incoming DM from {sender_id}: '{user_text}'", flush=True)
-                    # Generate AI answer using BABU PA/Services
-                    try:
-                        from .services import get_business_profile_text
-                    except ImportError:
-                        from services import get_business_profile_text
-                    
-                    profile_info = get_business_profile_text()
-                    sys_prompt = (
-                        "You are JARVIS, the official AI Customer Support Assistant for 'Anshu Computer & Tax Consultancy' "
-                        "(Kaushal Market, Rath Road, Orai, UP, India). "
-                        "Answer using the provided official Business Context and Client FAQs. "
-                        "Keep your reply friendly, helpful, professional, and concise (under 3-4 sentences). "
-                        "Plain text only, no markdown stars."
-                    )
-                    
-                    reply = None
-                    dm_models = [("groq", "openai/gpt-oss-20b"), ("groq", "openai/gpt-oss-120b"), ("nvidia", "meta/llama-3.1-8b-instruct"), ("gemini", "gemini-2.5-flash")]
-                    for prov, mod in dm_models:
-                        try:
-                            if prov == "groq" and os.environ.get("GROQ_API_KEY"):
-                                llm = ChatGroq(model=mod, temperature=0.5)
-                                ai_res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=f"Customer Query: {user_text}\n\nBusiness Context:\n{profile_info}")])
-                                reply = ai_res.content.strip().replace("*", "").replace("_", "")
-                                break
-                            elif prov == "nvidia" and os.environ.get("NVIDIA_API_KEY"):
-                                from langchain_openai import ChatOpenAI
-                                llm = ChatOpenAI(model=mod, temperature=0.5, api_key=os.environ.get("NVIDIA_API_KEY"), base_url="https://integrate.api.nvidia.com/v1")
-                                ai_res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=f"Customer Query: {user_text}\n\nBusiness Context:\n{profile_info}")])
-                                reply = ai_res.content.strip().replace("*", "").replace("_", "")
-                                break
-                            elif prov == "gemini" and os.environ.get("GEMINI_API_KEY"):
-                                from langchain_google_genai import ChatGoogleGenerativeAI
-                                llm = ChatGoogleGenerativeAI(model=mod, temperature=0.5, google_api_key=os.environ.get("GEMINI_API_KEY"))
-                                ai_res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=f"Customer Query: {user_text}\n\nBusiness Context:\n{profile_info}")])
-                                reply = ai_res.content.strip().replace("*", "").replace("_", "")
-                                break
-                        except Exception:
-                            continue
-
-                    if not reply:
-                        reply = "Namaste! Thank you for contacting Anshu Computer & Tax Consultancy, Orai. We specialize in ITR filing, GST compliance, and PF claim solutions. How can we assist you today?"
+                    reply = generate_conversational_dm_response(str(sender_id), user_text)
                     
                     ok, msg = send_facebook_messenger_reply(sender_id, reply)
                     print(f"[FACEBOOK WEBHOOK DM REPLY] {msg}", flush=True)
@@ -1416,36 +1376,7 @@ def process_facebook_webhook_event(payload: dict):
 
                 if (field == "feed" or item in ("comment", "post")) and verb in ("add", "created") and comment_id and comment_text:
                     print(f"[FACEBOOK WEBHOOK] Incoming Comment from {sender_name} ({sender_id}) on comment {comment_id}: '{str(comment_text).encode('ascii', 'replace').decode('ascii')}'", flush=True)
-                    sys_prompt = (
-                        "You are JARVIS, replying publicly to a comment on an Anshu Computer & Tax Consultancy Facebook post. "
-                        "Draft a polite, short 1-2 sentence response thanking them and offering quick expert assistance for ITR, GST, or PF consultancy. Plain text only."
-                    )
-                    reply = None
-                    c_models = [("groq", "openai/gpt-oss-20b"), ("groq", "openai/gpt-oss-120b"), ("nvidia", "meta/llama-3.1-8b-instruct"), ("gemini", "gemini-2.5-flash")]
-                    for prov, mod in c_models:
-                        try:
-                            if prov == "groq" and os.environ.get("GROQ_API_KEY"):
-                                llm = ChatGroq(model=mod, temperature=0.5)
-                                ai_res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=f"User Comment: {comment_text}")])
-                                reply = ai_res.content.strip().replace("*", "").replace("_", "")
-                                break
-                            elif prov == "nvidia" and os.environ.get("NVIDIA_API_KEY"):
-                                from langchain_openai import ChatOpenAI
-                                llm = ChatOpenAI(model=mod, temperature=0.5, api_key=os.environ.get("NVIDIA_API_KEY"), base_url="https://integrate.api.nvidia.com/v1")
-                                ai_res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=f"User Comment: {comment_text}")])
-                                reply = ai_res.content.strip().replace("*", "").replace("_", "")
-                                break
-                            elif prov == "gemini" and os.environ.get("GEMINI_API_KEY"):
-                                from langchain_google_genai import ChatGoogleGenerativeAI
-                                llm = ChatGoogleGenerativeAI(model=mod, temperature=0.5, google_api_key=os.environ.get("GEMINI_API_KEY"))
-                                ai_res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=f"User Comment: {comment_text}")])
-                                reply = ai_res.content.strip().replace("*", "").replace("_", "")
-                                break
-                        except Exception:
-                            continue
-
-                    if not reply:
-                        reply = "Thank you for reaching out! Contact Anshu Computer & Tax Consultancy in Orai for expert ITR, GST, and PF solutions."
+                    reply = generate_comment_reply(comment_text, sender_name)
                     
                     ok, msg = send_facebook_comment_reply(comment_id, reply)
                     print(f"[FACEBOOK WEBHOOK COMMENT REPLY] {msg}", flush=True)
@@ -1454,6 +1385,248 @@ def process_facebook_webhook_event(payload: dict):
 
     except Exception as e:
         print(f"[FACEBOOK WEBHOOK ERROR] Exception in process_facebook_webhook_event: {e}", flush=True)
+
+
+def generate_conversational_dm_response(sender_id: str, user_text: str) -> str:
+    """
+    Stateful CRM-Driven Conversational Funnel:
+    1. Retrieves existing lead state & past interaction turns from CRM.
+    2. Runs LLM intent & entity extraction (service, date_expr, time_expr, intent, phone).
+    3. Runs Deterministic Business Validation (IST datetime, 11 AM - 6 PM, conflict check).
+    4. Commits CRM transaction (APPOINTMENT_SCHEDULED + babu_followups) and sends Telegram alert.
+    5. Retrieves selective K-slice (PF/ITR/GST facts) rather than full JSON dump.
+    6. Generates tailored, truthful customer response in customer's language (Hindi/Hinglish/English).
+    """
+    try:
+        try:
+            from .crm_service import (
+                get_lead_by_source_ref,
+                get_selective_knowledge_slice,
+                parse_ist_datetime,
+                check_slot_availability,
+                commit_crm_appointment,
+                ingest_lead,
+                update_lead_funnel_stage
+            )
+        except ImportError:
+            from crm_service import (
+                get_lead_by_source_ref,
+                get_selective_knowledge_slice,
+                parse_ist_datetime,
+                check_slot_availability,
+                commit_crm_appointment,
+                ingest_lead,
+                update_lead_funnel_stage
+            )
+
+        lead_data = get_lead_by_source_ref(str(sender_id))
+        lead_id = lead_data["lead_id"] if lead_data else None
+        existing_service = lead_data.get("service_category", "General") if lead_data else "General"
+        existing_status = lead_data.get("status", "NEW") if lead_data else "NEW"
+        
+        # 1. First extract candidate entities with fast model
+        extraction_sys = (
+            "You are an intent and entity extractor for a tax and PF consultancy business CRM in Orai, India.\n"
+            "Extract JSON with fields:\n"
+            "- 'service': 'PF', 'ITR', 'GST', 'PAN', or 'General'\n"
+            "- 'date_expr': requested appointment date (e.g. 'kal', 'tomorrow', 'somwar', '22/08', or null)\n"
+            "- 'time_expr': requested time slot (e.g. '2 baje', '2 pm', '14:00', '11:30 am', 'shaam 4 baje', or null)\n"
+            "- 'intent': 'DISCOVERY', 'INFO_REQUEST', 'APPOINTMENT_REQUEST', 'CONFIRM_APPOINTMENT', 'DECLINE', or 'GENERAL'\n"
+            "- 'phone': 10-digit mobile number if mentioned, else null\n"
+            "Return valid JSON only."
+        )
+        
+        entities = {}
+        extract_models = [("groq", "openai/gpt-oss-20b"), ("groq", "openai/gpt-oss-120b"), ("gemini", "gemini-2.5-flash")]
+        for prov, mod in extract_models:
+            try:
+                if prov == "groq" and os.environ.get("GROQ_API_KEY"):
+                    llm = ChatGroq(model=mod, temperature=0.0)
+                    raw = llm.invoke([SystemMessage(content=extraction_sys), HumanMessage(content=f"Customer message: {user_text}\nPrevious Service: {existing_service}")]).content
+                    m = re.search(r'\{.*\}', raw, re.DOTALL)
+                    if m:
+                        entities = json.loads(m.group(0))
+                        break
+                elif prov == "gemini" and os.environ.get("GEMINI_API_KEY"):
+                    from langchain_google_genai import ChatGoogleGenerativeAI
+                    llm = ChatGoogleGenerativeAI(model=mod, temperature=0.0, google_api_key=os.environ.get("GEMINI_API_KEY"))
+                    raw = llm.invoke([SystemMessage(content=extraction_sys), HumanMessage(content=f"Customer message: {user_text}\nPrevious Service: {existing_service}")]).content
+                    m = re.search(r'\{.*\}', raw, re.DOTALL)
+                    if m:
+                        entities = json.loads(m.group(0))
+                        break
+            except Exception:
+                continue
+
+        service = entities.get("service") or existing_service
+        if service == "General" and existing_service != "General":
+            service = existing_service
+        date_expr = entities.get("date_expr")
+        time_expr = entities.get("time_expr")
+        phone = entities.get("phone")
+
+        # Ingest/update lead with extracted info
+        if not lead_id:
+            ingest_res = ingest_lead(
+                name=f"User {sender_id}",
+                channel="Facebook Messenger",
+                user_message=user_text,
+                contact_info=phone,
+                source_ref=str(sender_id)
+            )
+            lead_id = ingest_res.get("lead_id")
+        elif phone:
+            try:
+                from .services import get_db_connection
+            except ImportError:
+                from services import get_db_connection
+            conn, is_pg = get_db_connection()
+            if conn:
+                cur = conn.cursor()
+                if is_pg:
+                    cur.execute("UPDATE babu_leads SET contact_info = %s, updated_at = CURRENT_TIMESTAMP WHERE lead_id = %s", (phone, lead_id))
+                else:
+                    cur.execute("UPDATE babu_leads SET contact_info = ?, updated_at = CURRENT_TIMESTAMP WHERE lead_id = ?", (phone, lead_id))
+                conn.commit()
+                cur.close()
+                conn.close()
+
+        # 2. Deterministic Appointment Handling
+        booking_status_instruction = ""
+        
+        if date_expr or time_expr or entities.get("intent") in ("APPOINTMENT_REQUEST", "CONFIRM_APPOINTMENT"):
+            dt_res = parse_ist_datetime(date_expr, time_expr)
+            
+            if not dt_res.get("valid"):
+                if dt_res.get("reason") == "SUNDAY_CLOSED":
+                    booking_status_instruction = "IMPORTANT: Inform the customer that our consultancy is CLOSED on Sundays. Politely invite them to choose any time between Monday and Saturday from 11:00 AM to 6:00 PM."
+                    update_lead_funnel_stage(lead_id, "APPOINTMENT_PROPOSED", "Customer requested Sunday; offered Mon-Sat 11 AM - 6 PM")
+                elif dt_res.get("reason") == "OUTSIDE_WORKING_HOURS":
+                    booking_status_instruction = f"IMPORTANT: Inform the customer that {dt_res.get('time_str')} is outside office hours. Office timings are strictly 11:00 AM to 6:00 PM (Mon-Sat). Propose an appointment slot within 11 AM - 6 PM."
+                    update_lead_funnel_stage(lead_id, "APPOINTMENT_PROPOSED", f"Customer requested {dt_res.get('time_str')}; offered 11 AM - 6 PM")
+                else:
+                    booking_status_instruction = "Politely ask the customer what date and time between 11:00 AM and 6:00 PM (Monday to Saturday) they would prefer to visit our Kaushal Market, Orai office."
+            else:
+                # Check slot conflict
+                avail_ok, alt_slots = check_slot_availability(dt_res["date_str"], dt_res["time_str"])
+                if not avail_ok:
+                    alt_str = " or ".join(alt_slots) if alt_slots else "another time between 11 AM and 6 PM"
+                    booking_status_instruction = f"IMPORTANT: The slot on {dt_res['display_date']} at {dt_res['display_time']} is already reserved. Truthfully inform them and propose alternate open slots: {alt_str}."
+                    update_lead_funnel_stage(lead_id, "APPOINTMENT_PROPOSED", f"Slot {dt_res['time_str']} occupied; offered {alt_str}")
+                else:
+                    # Commit appointment deterministically
+                    commit_res = commit_crm_appointment(
+                        lead_id=lead_id,
+                        date_str=dt_res["date_str"],
+                        time_str=dt_res["time_str"],
+                        purpose=f"{service} Consultation",
+                        notes=f"Booked via Messenger DM"
+                    )
+                    if commit_res.get("status") == "SUCCESS":
+                        booking_status_instruction = (
+                            f"CRITICAL: Appointment has been successfully BOOKED and CONFIRMED in the system for {dt_res['display_date']} at {dt_res['display_time']}! "
+                            f"Confirm the appointment clearly to the customer. Remind them to bring the required documents for {service} to our office at Kaushal Market, Rath Road, Orai."
+                        )
+                    else:
+                        booking_status_instruction = "Apologize and inform them there was a temporary system delay. Ask them to confirm if they can visit at that time or call/WhatsApp +91 7217646673."
+
+        elif service != "General" and existing_status in ("NEW", "SERVICE_IDENTIFIED"):
+            update_lead_funnel_stage(lead_id, "INFORMATION_PROVIDED", f"Provided checklist for {service}")
+            booking_status_instruction = (
+                f"The customer is asking about {service}. Provide the required document checklist for {service}. "
+                "Ask if they would like to visit our Kaushal Market, Orai office (Open 11 AM - 6 PM, Mon-Sat) or book an appointment."
+            )
+        else:
+            booking_status_instruction = (
+                "Greet the customer warmly in their language. Ask which specific service they need: PF claim/correction, Income Tax Return (ITR), GST filing, or CSC digital services. "
+                "Mention our office timings: 11:00 AM to 6:00 PM (Monday to Saturday) at Kaushal Market, Rath Road, Orai."
+            )
+
+        # 3. Retrieve Selective Knowledge Slice (ADR-091/092)
+        k_slice = get_selective_knowledge_slice(service)
+
+        # 4. Generate Final Natural Language Response
+        sys_prompt = (
+            "You are JARVIS, the official AI Support Consultant for 'Anshu Computer & Tax Consultancy', Kaushal Market, Rath Road, Orai, UP.\n"
+            f"Verified Business Facts:\n{k_slice}\n\n"
+            f"CRM Workflow Direction:\n{booking_status_instruction}\n\n"
+            "Guidelines:\n"
+            "- Reply in the SAME language as the customer (Hindi, Hinglish, or English).\n"
+            "- Be friendly, professional, and helpful (2-4 sentences).\n"
+            "- Plain text only, NO markdown asterisks (*) or bold symbols."
+        )
+
+        reply = None
+        for prov, mod in [("groq", "openai/gpt-oss-20b"), ("groq", "openai/gpt-oss-120b"), ("gemini", "gemini-2.5-flash")]:
+            try:
+                if prov == "groq" and os.environ.get("GROQ_API_KEY"):
+                    llm = ChatGroq(model=mod, temperature=0.4)
+                    res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=f"Customer message: {user_text}")])
+                    reply = res.content.strip().replace("*", "").replace("_", "")
+                    break
+                elif prov == "gemini" and os.environ.get("GEMINI_API_KEY"):
+                    from langchain_google_genai import ChatGoogleGenerativeAI
+                    llm = ChatGoogleGenerativeAI(model=mod, temperature=0.4, google_api_key=os.environ.get("GEMINI_API_KEY"))
+                    res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=f"Customer message: {user_text}")])
+                    reply = res.content.strip().replace("*", "").replace("_", "")
+                    break
+            except Exception:
+                continue
+
+        if not reply:
+            reply = "Namaste! Thank you for contacting Anshu Computer & Tax Consultancy, Orai. We specialize in ITR, GST, and PF claim solutions (11:00 AM to 6:00 PM Mon-Sat). How can we assist you today?"
+            
+        return reply
+    except Exception as e:
+        print(f"[DM RESPONSE ERROR] {e}", flush=True)
+        return "Namaste! Thank you for reaching out to Anshu Computer & Tax Consultancy, Kaushal Market, Orai. We are open Mon-Sat 11:00 AM to 6:00 PM for all PF, ITR, and GST services. How can we help you?"
+
+
+def generate_comment_reply(comment_text: str, sender_name: str) -> str:
+    """Generate grounded, polite comment reply + mention Messenger DM."""
+    try:
+        try:
+            from .crm_service import extract_lead_intent_and_service, get_selective_knowledge_slice
+        except ImportError:
+            from crm_service import extract_lead_intent_and_service, get_selective_knowledge_slice
+
+        extracted = extract_lead_intent_and_service(comment_text)
+        service = extracted.get("service_category", "General")
+        k_slice = get_selective_knowledge_slice(service)
+
+        sys_prompt = (
+            "You are JARVIS, replying publicly to a comment on an Anshu Computer & Tax Consultancy Facebook post.\n"
+            f"Business Facts:\n{k_slice}\n\n"
+            "Guidelines:\n"
+            "- Reply in 1-2 polite, helpful sentences in the same language as the commenter (Hindi/Hinglish/English).\n"
+            "- State office timing (11:00 AM to 6:00 PM Mon-Sat at Kaushal Market, Rath Road, Orai).\n"
+            "- Mention that we have also sent a private message to their Messenger inbox for direct guidance.\n"
+            "- Plain text only, no asterisks (*)."
+        )
+        reply = None
+        for prov, mod in [("groq", "openai/gpt-oss-20b"), ("groq", "openai/gpt-oss-120b"), ("gemini", "gemini-2.5-flash")]:
+            try:
+                if prov == "groq" and os.environ.get("GROQ_API_KEY"):
+                    llm = ChatGroq(model=mod, temperature=0.4)
+                    res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=f"Comment from {sender_name}: {comment_text}")])
+                    reply = res.content.strip().replace("*", "").replace("_", "")
+                    break
+                elif prov == "gemini" and os.environ.get("GEMINI_API_KEY"):
+                    from langchain_google_genai import ChatGoogleGenerativeAI
+                    llm = ChatGoogleGenerativeAI(model=mod, temperature=0.4, google_api_key=os.environ.get("GEMINI_API_KEY"))
+                    res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=f"Comment from {sender_name}: {comment_text}")])
+                    reply = res.content.strip().replace("*", "").replace("_", "")
+                    break
+            except Exception:
+                continue
+
+        if not reply:
+            reply = f"Namaste {sender_name}! Thank you for reaching out. Anshu Computer & Tax Consultancy is open 11:00 AM to 6:00 PM (Mon-Sat) at Kaushal Market, Orai. We have also sent you a private message on Messenger for direct assistance."
+
+        return reply
+    except Exception as e:
+        print(f"[COMMENT REPLY ERROR] {e}", flush=True)
+        return f"Namaste {sender_name}! Thank you for reaching out. We are open 11:00 AM to 6:00 PM (Mon-Sat) at Kaushal Market, Rath Road, Orai. Please check your Messenger inbox for direct assistance."
 
 def record_social_interaction(channel: str, sender_name: str, sender_id: str, user_text: str, reply_text: str, interaction_type: str = "FB_COMMENT", post_id: str = ""):
     """

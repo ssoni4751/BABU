@@ -1,12 +1,24 @@
 import unittest
 import os
 import sys
-import json
+from datetime import datetime, timezone, timedelta
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(CURRENT_DIR)
 
-from crm_service import ingest_lead, get_crm_pipeline_data, update_lead_stage, format_telegram_crm_digest, extract_lead_intent_and_service
+from crm_service import (
+    ingest_lead,
+    get_crm_pipeline_data,
+    update_lead_funnel_stage,
+    format_telegram_crm_digest,
+    extract_lead_intent_and_service,
+    parse_ist_datetime,
+    check_slot_availability,
+    commit_crm_appointment,
+    get_selective_knowledge_slice,
+    get_lead_by_source_ref,
+    IST
+)
 
 class TestCRMSubsystem(unittest.TestCase):
 
@@ -27,33 +39,106 @@ class TestCRMSubsystem(unittest.TestCase):
         res3 = extract_lead_intent_and_service("My PF withdrawal Form 19 is stuck")
         self.assertEqual(res3["service_category"], "PF")
 
-    def test_ingest_and_pipeline(self):
-        # Ingest a test lead
-        res = ingest_lead(
-            name="Rishabh K Swarnakar",
-            channel="Facebook Comment",
-            user_message="Can i book an appointment sir?",
-            assistant_reply="Thank you for reaching out! We can schedule an appointment for your ITR, GST, or PF needs.",
-            source_ref="test_fb_user_123"
+    def test_parse_ist_datetime_and_working_window(self):
+        # Base anchor: Friday, 21 Aug 2026 12:00 PM IST
+        base_anchor = datetime(2026, 8, 21, 12, 0, tzinfo=IST)
+
+        # 1. Valid weekday within hours: "kal" (Saturday) "2 baje" (14:00)
+        p1 = parse_ist_datetime("kal", "2 baje", base_dt=base_anchor)
+        self.assertTrue(p1["valid"])
+        self.assertEqual(p1["date_str"], "2026-08-22")
+        self.assertEqual(p1["time_str"], "14:00")
+        self.assertEqual(p1["weekday_name"], "Saturday")
+
+        # 2. Sunday rejection: "parso" (Sunday 23 Aug 2026)
+        p2 = parse_ist_datetime("parso", "12:00", base_dt=base_anchor)
+        self.assertFalse(p2["valid"])
+        self.assertEqual(p2["reason"], "SUNDAY_CLOSED")
+
+        # 3. Outside hours rejection (Morning 9:00 AM)
+        p3 = parse_ist_datetime("kal", "9:00 am", base_dt=base_anchor)
+        self.assertFalse(p3["valid"])
+        self.assertEqual(p3["reason"], "OUTSIDE_WORKING_HOURS")
+
+        # 4. Outside hours rejection (Evening 8:00 PM)
+        p4 = parse_ist_datetime("kal", "8 pm", base_dt=base_anchor)
+        self.assertFalse(p4["valid"])
+        self.assertEqual(p4["reason"], "OUTSIDE_WORKING_HOURS")
+
+        # 5. Boundary testing: 11:00 AM (Open) & 6:00 PM (18:00 Closing)
+        p5_open = parse_ist_datetime("somwar", "11:00 am", base_dt=base_anchor)
+        self.assertTrue(p5_open["valid"])
+        self.assertEqual(p5_open["time_str"], "11:00")
+
+        p5_close = parse_ist_datetime("somwar", "6:00 pm", base_dt=base_anchor)
+        self.assertTrue(p5_close["valid"])
+        self.assertEqual(p5_close["time_str"], "18:00")
+
+    def test_slot_availability_and_conflict_detection(self):
+        # Ingest lead & book a slot
+        ingest_res = ingest_lead(
+            name="Conflict Test Customer",
+            channel="Facebook Messenger",
+            user_message="I want to visit tomorrow at 3 PM",
+            source_ref="test_conflict_sender_99"
         )
-        self.assertEqual(res["status"], "SUCCESS")
-        self.assertTrue(res.get("lead_id", "").startswith("LEAD-"))
+        lead_id = ingest_res["lead_id"]
+        
+        # 1. First booking succeeds
+        commit_res = commit_crm_appointment(
+            lead_id=lead_id,
+            date_str="2026-08-25",
+            time_str="15:00",
+            purpose="PF Consultation"
+        )
+        self.assertEqual(commit_res["status"], "SUCCESS")
 
-        # Check pipeline data
+        # 2. Second booking on same date and time triggers conflict
+        avail_ok, alt_slots = check_slot_availability("2026-08-25", "15:00")
+        self.assertFalse(avail_ok)
+        self.assertGreater(len(alt_slots), 0)
+
+        # 3. Different slot on same date is available
+        avail_free, _ = check_slot_availability("2026-08-25", "11:00")
+        self.assertTrue(avail_free)
+
+    def test_selective_knowledge_slice(self):
+        # PF Slice contains PF facts and documents but no full dump
+        pf_slice = get_selective_knowledge_slice("PF")
+        self.assertIn("PF Consultancy", pf_slice)
+        self.assertIn("UAN", pf_slice)
+        self.assertIn("Aadhaar Card", pf_slice)
+        self.assertIn("11:00 AM to 6:00 PM", pf_slice)
+
+        # ITR Slice contains Form 16
+        itr_slice = get_selective_knowledge_slice("ITR")
+        self.assertIn("Income Tax Return", itr_slice)
+        self.assertIn("Form 16", itr_slice)
+
+    def test_multi_turn_state_machine(self):
+        source_id = "test_funnel_client_555"
+        # Turn 1: Discovery (General)
+        ing1 = ingest_lead("Test Client", "Facebook Messenger", "Hello, do you provide tax services?", source_ref=source_id)
+        lead_id = ing1["lead_id"]
+        self.assertIn(ing1["service_category"], ("General", "ITR"))
+
+        # Turn 2: Service Identified (PF)
+        ing2 = ingest_lead("Test Client", "Facebook Messenger", "Actually my EPFO PF claim was rejected", source_ref=source_id)
+        self.assertEqual(ing2["service_category"], "PF")
+
+        # Check retrieval by source_ref
+        retrieved = get_lead_by_source_ref(source_id)
+        self.assertIsNotNone(retrieved)
+        self.assertEqual(retrieved["lead_id"], lead_id)
+        self.assertEqual(retrieved["service_category"], "PF")
+
+        # Turn 3: Appointment Commitment
+        commit_res = commit_crm_appointment(lead_id, "2026-08-24", "14:00", purpose="EPFO Claim Resolution")
+        self.assertEqual(commit_res["status"], "SUCCESS")
+
+        # Check updated status in pipeline
         pipeline = get_crm_pipeline_data(limit=10)
-        self.assertIn("summary", pipeline)
-        self.assertIn("leads", pipeline)
-        self.assertGreaterEqual(pipeline["summary"]["total_leads"], 1)
-
-        # Update lead stage
-        lead_id = res["lead_id"]
-        ok = update_lead_stage(lead_id, "CONTACTED", "Called customer, confirmed interest in GST")
-        self.assertTrue(ok)
-
-        # Test Telegram formatting
-        digest = format_telegram_crm_digest()
-        self.assertIn("ANSHU COMPUTER & TAX CONSULTANCY", digest)
-        self.assertIn("Active Pipeline Overview", digest)
+        self.assertGreaterEqual(pipeline["summary"]["appointments"], 1)
 
 if __name__ == "__main__":
     unittest.main()
