@@ -95,6 +95,7 @@ def open_transports(state: BootstrapState) -> None:
     health_thread.start()
     bot = ApplicationBuilder().token(bot_module.TELEGRAM_TOKEN).build()
     bot_module.tg_application = bot
+    bot_module.start_social_scheduler(bot)
     for command, handler in (
         ("launch", bot_module.cmd_launch),
         ("clear", bot_module.cmd_clear),

@@ -1175,15 +1175,22 @@ def auto_refresh_facebook_token() -> str:
 
 
 def send_facebook_comment_reply(comment_id: str, message_text: str) -> tuple[bool, str]:
-    """Post a comment reply to a Facebook post comment, with automatic fallback to Private Messenger Reply."""
+    """
+    Dual-Dispatch:
+    1. Replies publicly to the comment on Facebook post so all users see prompt engagement.
+    2. Drops a direct private Messenger DM to the user for dedicated client inquiry / onboarding.
+    Returns True if either or both dispatches succeed.
+    """
     page_token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN")
     if not page_token:
         return False, "Missing FACEBOOK_PAGE_ACCESS_TOKEN."
     
     clean_id = comment_id.split("_")[-1] if "_" in comment_id else comment_id
     errors = []
+    public_success = False
+    dm_success = False
     
-    # 1. Try public comment reply (with raw comment_id and clean_id)
+    # 1. Public Comment Reply
     for cid in list(dict.fromkeys([comment_id, clean_id])):
         url = f"https://graph.facebook.com/v19.0/{cid}/comments"
         data = {"message": message_text, "access_token": page_token}
@@ -1191,13 +1198,14 @@ def send_facebook_comment_reply(comment_id: str, message_text: str) -> tuple[boo
             res = requests.post(url, data=data, timeout=15)
             if res.status_code == 200:
                 print(f"[FACEBOOK COMMENT SUCCESS] Public comment reply posted to {cid}: {res.json()}", flush=True)
+                public_success = True
                 break
             else:
                 errors.append(f"Public {cid}: {res.text}")
         except Exception as e:
             errors.append(f"Public Exception {cid}: {e}")
 
-    # 2. Try official Messenger Private DM reply (uses recipient.comment_id with pages_messaging)
+    # 2. Private Messenger DM Reply (recipient.comment_id with pages_messaging)
     for cid in list(dict.fromkeys([comment_id, clean_id])):
         url_dm = f"https://graph.facebook.com/v19.0/me/messages?access_token={page_token}"
         dm_payload = {
@@ -1208,33 +1216,44 @@ def send_facebook_comment_reply(comment_id: str, message_text: str) -> tuple[boo
             res_dm = requests.post(url_dm, json=dm_payload, timeout=15)
             if res_dm.status_code == 200:
                 print(f"[FACEBOOK MESSENGER COMMENT REPLY SUCCESS] Sent Private DM for comment {cid}: {res_dm.json()}", flush=True)
-                return True, f"Sent Private Messenger DM for comment {cid} successfully."
+                dm_success = True
+                break
             else:
                 err_json = res_dm.json().get("error", {})
                 code = err_json.get("code")
                 msg = err_json.get("message", "")
                 if code == 10900 or "already replied" in msg.lower():
                     print(f"[FACEBOOK MESSENGER COMMENT REPLY SUCCESS] Comment {cid} was already replied to: {msg}", flush=True)
-                    return True, f"Comment {cid} was already replied to."
+                    dm_success = True
+                    break
                 errors.append(f"Messenger DM {cid}: {res_dm.text}")
         except Exception as e:
             errors.append(f"Messenger DM Exception {cid}: {e}")
             
-    # 3. Try legacy private_replies endpoint
-    for cid in list(dict.fromkeys([comment_id, clean_id])):
-        priv_url = f"https://graph.facebook.com/v19.0/{cid}/private_replies"
-        priv_data = {"message": message_text, "access_token": page_token}
-        try:
-            res_priv = requests.post(priv_url, data=priv_data, timeout=15)
-            if res_priv.status_code == 200:
-                print(f"[FACEBOOK PRIVATE REPLY SUCCESS] Private reply sent for comment {cid}: {res_priv.json()}", flush=True)
-                return True, f"Sent Private Messenger Reply for comment {cid} successfully."
-            else:
-                errors.append(f"Private {cid}: {res_priv.text}")
-        except Exception as e:
-            errors.append(f"Private Exception {cid}: {e}")
+    # 3. Fallback to legacy private_replies endpoint if DM hasn't succeeded
+    if not dm_success:
+        for cid in list(dict.fromkeys([comment_id, clean_id])):
+            priv_url = f"https://graph.facebook.com/v19.0/{cid}/private_replies"
+            priv_data = {"message": message_text, "access_token": page_token}
+            try:
+                res_priv = requests.post(priv_url, data=priv_data, timeout=15)
+                if res_priv.status_code == 200:
+                    print(f"[FACEBOOK PRIVATE REPLY SUCCESS] Private reply sent for comment {cid}: {res_priv.json()}", flush=True)
+                    dm_success = True
+                    break
+                else:
+                    errors.append(f"Private {cid}: {res_priv.text}")
+            except Exception as e:
+                errors.append(f"Private Exception {cid}: {e}")
 
-    return False, f"Could not dispatch comment reply for {comment_id}. Details: {' | '.join(errors)}"
+    if public_success and dm_success:
+        return True, f"Successfully posted public comment reply AND sent private Messenger DM for {comment_id}."
+    elif public_success:
+        return True, f"Posted public comment reply for {comment_id} (DM: {' | '.join(errors)})."
+    elif dm_success:
+        return True, f"Sent private Messenger DM for {comment_id} (Public reply: {' | '.join(errors)})."
+    else:
+        return False, f"Could not dispatch comment reply for {comment_id}. Details: {' | '.join(errors)}"
 
 
 def fetch_facebook_recent_comments(limit: int = 5) -> tuple[bool, str]:
