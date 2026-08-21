@@ -5624,18 +5624,19 @@ def start_health_server():
     server.serve_forever()
 
 
-# â”€â”€ Autonomous Social Media Scheduler & State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─── Autonomous Social Media Scheduler & State ───────────────────────────────
 
 CHAT_ID_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chat_id.txt")
 LAST_POST_DATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_post_date.txt")
 LAST_PREVIEW_DATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_preview_date.txt")
+LAST_PREVIEW_EVENING_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_preview_evening_date.txt")
 
 # State Management for Social Post Previews
 PENDING_POSTS = {}      # Map of chat_id (int) -> draft dict
 WAITING_FOR_TOPIC = {}  # Map of chat_id (int) -> bool
 
-def get_last_preview_date() -> str:
-    """Read the last scheduled preview generation date."""
+def get_last_preview_date_morning() -> str:
+    """Read the last morning (9 AM) preview generation date."""
     if os.path.exists(LAST_PREVIEW_DATE_FILE):
         try:
             with open(LAST_PREVIEW_DATE_FILE, "r", encoding="utf-8") as f:
@@ -5644,13 +5645,35 @@ def get_last_preview_date() -> str:
             pass
     return ""
 
-def set_last_preview_date(date_str: str):
-    """Write the last scheduled preview generation date."""
+def set_last_preview_date_morning(date_str: str):
+    """Write the last morning (9 AM) preview generation date."""
     try:
         with open(LAST_PREVIEW_DATE_FILE, "w", encoding="utf-8") as f:
             f.write(date_str)
     except Exception as e:
-        print(f"[SCHEDULER ERROR] Failed to write last preview date: {e}", flush=True)
+        print(f"[SCHEDULER ERROR] Failed to write morning preview date: {e}", flush=True)
+
+def get_last_preview_date_evening() -> str:
+    """Read the last evening (6 PM) preview generation date."""
+    if os.path.exists(LAST_PREVIEW_EVENING_FILE):
+        try:
+            with open(LAST_PREVIEW_EVENING_FILE, "r", encoding="utf-8") as f:
+                return f.read().strip()
+        except Exception:
+            pass
+    return ""
+
+def set_last_preview_date_evening(date_str: str):
+    """Write the last evening (6 PM) preview generation date."""
+    try:
+        with open(LAST_PREVIEW_EVENING_FILE, "w", encoding="utf-8") as f:
+            f.write(date_str)
+    except Exception as e:
+        print(f"[SCHEDULER ERROR] Failed to write evening preview date: {e}", flush=True)
+
+# Compatibility aliases
+get_last_preview_date = get_last_preview_date_morning
+set_last_preview_date = set_last_preview_date_morning
 
 def get_post_keyboard() -> InlineKeyboardMarkup:
     """Generate the interactive control panel for social post reviews."""
@@ -5684,15 +5707,16 @@ def get_action_approval_keyboard(session_id: str) -> InlineKeyboardMarkup:
         ]]
     return InlineKeyboardMarkup(keyboard)
 
-async def generate_and_send_preview(chat_id: int, bot, custom_topic: str = None, reply_to_message_id: int = None):
-    """Generate a high-fidelity social media draft and send it to the user for approval."""
+async def generate_and_send_preview(chat_id: int, bot, custom_topic: str = None, reply_to_message_id: int = None, language: str = "en"):
+    """Generate a high-fidelity social media draft (1080x1350) and send it to the user for approval."""
     try:
         try:
             from .social_media import generate_social_post_draft
         except ImportError:
             from social_media import generate_social_post_draft
-        draft = await asyncio.to_thread(generate_social_post_draft, custom_topic)
+        draft = await asyncio.to_thread(generate_social_post_draft, custom_topic, language=language)
         draft["custom_topic"] = custom_topic
+        draft["language"] = language
         
         # Cache the draft
         import time
@@ -5702,7 +5726,7 @@ async def generate_and_send_preview(chat_id: int, bot, custom_topic: str = None,
         
         # 1. Send the Proposed Caption & FLUX Prompt in a separate text message
         details_text = (
-            f"📝 *Proposed Caption:*\n"
+            f"📝 *Proposed Caption ({('Hindi' if language=='hi' else 'English')}):*\n"
             f"```\n{escape_markdown(draft['caption'])}\n```\n\n"
             f"🎨 *FLUX Prompt:*\n"
             f"_{escape_markdown(draft['image_prompt'])}_"
@@ -5718,8 +5742,9 @@ async def generate_and_send_preview(chat_id: int, bot, custom_topic: str = None,
         # 2. Send the image preview with interactive keyboard
         with open(draft["image_path"], "rb") as photo_file:
             caption_text = (
-                f"📊 *BABU Marketing Department - Post Preview*\n\n"
-                f"Please review the graphic above and the proposed caption sent in the previous message.\n\n"
+                f"📊 *BABU Marketing Studio — 4:5 Feed Preview*\n\n"
+                f"Language: **{('Hindi (हिंदी)' if language=='hi' else 'English')}** | Ratio: **4:5 (Mobile & PC Safe)**\n"
+                f"Please review the graphic above and the caption sent in the previous message.\n\n"
                 f"Click Approve to publish directly to Facebook Page."
             )
             
@@ -5748,26 +5773,24 @@ def get_persisted_chat_id() -> Optional[int]:
         try:
             with open(CHAT_ID_FILE, "r", encoding="utf-8") as f:
                 content = f.read().strip()
-                if content:
+                if content.isdigit() or (content.startswith('-') and content[1:].isdigit()):
                     return int(content)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[CHAT_ID WARNING] Failed to read {CHAT_ID_FILE}: {e}", flush=True)
             
-    env_id = os.environ.get("TELEGRAM_USER_CHAT_ID")
-    if env_id:
-        try:
-            return int(env_id)
-        except ValueError:
-            pass
+    admin_id = os.environ.get("TELEGRAM_USER_CHAT_ID")
+    if admin_id and (admin_id.isdigit() or (admin_id.startswith('-') and admin_id[1:].isdigit())):
+        return int(admin_id)
+        
     return None
 
 def persist_chat_id(chat_id: int):
-    """Save the user's Telegram chat ID to local state file."""
+    """Save the chat ID to file so the scheduler knows where to send daily previews."""
     try:
         with open(CHAT_ID_FILE, "w", encoding="utf-8") as f:
             f.write(str(chat_id))
     except Exception as e:
-        print(f"[CHAT_ID ERROR] Failed to write chat ID: {e}", flush=True)
+        print(f"[CHAT_ID WARNING] Failed to save {CHAT_ID_FILE}: {e}", flush=True)
 
 def get_last_post_date() -> str:
     """Read the last success post date."""
@@ -5788,18 +5811,20 @@ def set_last_post_date(date_str: str):
         print(f"[SCHEDULER ERROR] Failed to write last post date: {e}", flush=True)
 
 async def scheduler_async_loop(application):
-    """Background async event loop for the daily post checking."""
-    print("[SCHEDULER] Autonomous social posting scheduler thread started.", flush=True)
+    """Background loop that triggers daily morning 9:00 AM (English) and evening 6:00 PM (Hindi) previews."""
+    print("[SCHEDULER] Autonomous Marketing Scheduler initialized. Checking time intervals every 15 minutes...", flush=True)
     ist_tz = timezone(timedelta(hours=5, minutes=30))
     
-    # Avoid triggering retroactively if the bot starts up/restarts after 9:00 AM IST
+    # Check if startup is past scheduled hours
     try:
         now_ist = datetime.now(timezone.utc).astimezone(ist_tz)
+        today_str = now_ist.strftime("%Y-%m-%d")
         if now_ist.hour >= 9:
-            today_str = now_ist.strftime("%Y-%m-%d")
-            if get_last_preview_date() != today_str:
-                print(f"[SCHEDULER] Startup time {now_ist.strftime('%H:%M:%S')} is past 9:00 AM IST. Marking today ({today_str}) as previewed to prevent retroactive run.", flush=True)
-                set_last_preview_date(today_str)
+            if get_last_preview_date_morning() != today_str:
+                set_last_preview_date_morning(today_str)
+        if now_ist.hour >= 18:
+            if get_last_preview_date_evening() != today_str:
+                set_last_preview_date_evening(today_str)
     except Exception as e:
         print(f"[SCHEDULER ERROR] Failed to run startup initialization: {e}", flush=True)
         
@@ -5808,32 +5833,53 @@ async def scheduler_async_loop(application):
             now_ist = datetime.now(timezone.utc).astimezone(ist_tz)
             today_str = now_ist.strftime("%Y-%m-%d")
             
-            # 1. Trigger if it is 9:00 AM IST or later, and we haven't sent a preview today yet
-            if now_ist.hour >= 9 and get_last_preview_date() != today_str:
+            # 1. Morning Trigger (9:00 AM IST or later -> English Post)
+            if now_ist.hour >= 9 and get_last_preview_date_morning() != today_str:
                 chat_id = get_persisted_chat_id()
                 if chat_id:
-                    print(f"[SCHEDULER] Triggering scheduled daily post preview for {today_str}...", flush=True)
-                    # Mark that we generated/sent preview for today immediately to avoid duplicate runs
-                    set_last_preview_date(today_str)
+                    print(f"[SCHEDULER] Triggering Morning 9:00 AM English post preview for {today_str}...", flush=True)
+                    set_last_preview_date_morning(today_str)
                     
                     try:
                         await application.bot.send_message(
                             chat_id=chat_id,
-                            text="Scheduled Marketing Swarm engaged. Generating daily custom tech graphic and copywriting..."
+                            text="🌅 **Morning Marketing Swarm (9:00 AM)** engaged. Generating daily English compliance graphic and copywriting..."
                         )
                     except Exception as err:
-                        print(f"[SCHEDULER ERROR] Failed to send starting notification: {err}", flush=True)
+                        print(f"[SCHEDULER ERROR] Failed to send morning notification: {err}", flush=True)
 
-                    await generate_and_send_preview(chat_id, application.bot)
+                    await generate_and_send_preview(chat_id, application.bot, language="en")
                     
-                    # Store timestamp and auto-scheduled flag of preview generation in draft dict for auto-publish timeout
                     if chat_id in PENDING_POSTS:
                         import time
                         PENDING_POSTS[chat_id]["scheduled_at"] = time.time()
                         PENDING_POSTS[chat_id]["is_auto_scheduled"] = True
-                        print(f"[SCHEDULER] Timestamped auto-scheduled pending post for chat {chat_id} at {today_str}", flush=True)
                 else:
-                    print("[SCHEDULER] It's time to post, but no Telegram chat ID is registered yet. Waiting for user interaction...", flush=True)
+                    print("[SCHEDULER] Morning slot active, but no Telegram chat ID is registered yet.", flush=True)
+
+            # 2. Evening Trigger (6:00 PM / 18:00 IST or later -> Hindi Post)
+            if now_ist.hour >= 18 and get_last_preview_date_evening() != today_str:
+                chat_id = get_persisted_chat_id()
+                if chat_id:
+                    print(f"[SCHEDULER] Triggering Evening 6:00 PM Hindi post preview for {today_str}...", flush=True)
+                    set_last_preview_date_evening(today_str)
+                    
+                    try:
+                        await application.bot.send_message(
+                            chat_id=chat_id,
+                            text="🌇 **Evening Marketing Swarm (6:00 PM)** engaged. Generating daily Hindi (हिंदी) compliance graphic and copywriting..."
+                        )
+                    except Exception as err:
+                        print(f"[SCHEDULER ERROR] Failed to send evening notification: {err}", flush=True)
+
+                    await generate_and_send_preview(chat_id, application.bot, language="hi")
+                    
+                    if chat_id in PENDING_POSTS:
+                        import time
+                        PENDING_POSTS[chat_id]["scheduled_at"] = time.time()
+                        PENDING_POSTS[chat_id]["is_auto_scheduled"] = True
+                else:
+                    print("[SCHEDULER] Evening slot active, but no Telegram chat ID is registered yet.", flush=True)
             
             # 2. Check for pending drafts that have timed out without user feedback (1 hour = 3600 seconds)
             import time
@@ -5951,15 +5997,35 @@ async def edit_callback_message(query, text: str, reply_markup=None):
 
 
 async def cmd_postnow(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Force immediately generating and sending today's marketing post preview."""
+    """Force immediately generating and sending today's marketing post preview with language selection."""
     chat_id = update.effective_chat.id
     persist_chat_id(chat_id)
     
-    custom_topic = " ".join(context.args) if context.args else None
-    topic_str = f" for topic: '{custom_topic}'" if custom_topic else ""
-    await update.message.reply_text(f"Generating marketing swarm preview{topic_str}... This takes about 15-20 seconds.")
-    
-    await generate_and_send_preview(chat_id, context.bot, custom_topic=custom_topic, reply_to_message_id=update.message.message_id)
+    args = context.args
+    if args:
+        arg_text = " ".join(args).strip()
+        lang = "hi" if any(w in arg_text.lower() for w in ["hindi", "हिंदी", "hinglish"]) else "en"
+        lang_label = "Hindi (हिंदी)" if lang == "hi" else "English"
+        await update.message.reply_text(f"🎨 Generating **{lang_label}** marketing post for: '_{escape_markdown(arg_text)}_'... (15-20s)", parse_mode="Markdown")
+        await generate_and_send_preview(chat_id, context.bot, custom_topic=arg_text, reply_to_message_id=update.message.message_id, language=lang)
+        return
+        
+    # Interactive language menu
+    keyboard = [
+        [
+            InlineKeyboardButton("🇮🇳 Post in Hindi (हिंदी)", callback_data="post_lang|hindi"),
+            InlineKeyboardButton("🇬🇧 Post in English", callback_data="post_lang|english")
+        ],
+        [
+            InlineKeyboardButton("📂 Multi-Service Catalog Poster (4:5)", callback_data="post_lang|catalog")
+        ]
+    ]
+    await update.message.reply_text(
+        "📊 **BABU Marketing Studio**\n\n"
+        "Please choose language or style for today's Facebook flyer (Mobile & PC 4:5 optimized):",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 
 async def cmd_promote(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -7165,6 +7231,19 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("Pending action cancelled.")
             return
         
+        if data.startswith("post_lang|"):
+            selected_lang = data.split("|")[1]
+            if selected_lang == "hindi":
+                await edit_callback_message(query, "🎨 Generating custom **Hindi (हिंदी)** marketing flyer... (15-20s)")
+                await generate_and_send_preview(chat_id, context.bot, custom_topic=None, language="hi")
+            elif selected_lang == "catalog":
+                await edit_callback_message(query, "🎨 Generating **Multi-Service Catalog Poster (4:5)**... (15-20s)")
+                await generate_and_send_preview(chat_id, context.bot, custom_topic="FORCE_CATALOG", language="en")
+            else:
+                await edit_callback_message(query, "🎨 Generating custom **English** marketing flyer... (15-20s)")
+                await generate_and_send_preview(chat_id, context.bot, custom_topic=None, language="en")
+            return
+
         if data == "post_approve":
             # Pop draft immediately to prevent concurrent duplicate execution
             draft = PENDING_POSTS.pop(chat_id, None)
