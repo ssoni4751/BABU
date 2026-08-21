@@ -1367,7 +1367,7 @@ def process_facebook_webhook_event(payload: dict):
                 comment_text = value.get("message")
                 sender_id = value.get("from", {}).get("id")
                 raw_name = value.get("from", {}).get("name", "Customer")
-                sender_name = str(raw_name).encode("ascii", "replace").decode("ascii")
+                sender_name = str(raw_name).strip() if raw_name else "Customer"
                 
                 # Filter out self-comments from Page itself
                 if sender_id and str(sender_id) == str(page_id):
@@ -1375,7 +1375,10 @@ def process_facebook_webhook_event(payload: dict):
                     continue
 
                 if (field == "feed" or item in ("comment", "post")) and verb in ("add", "created") and comment_id and comment_text:
-                    print(f"[FACEBOOK WEBHOOK] Incoming Comment from {sender_name} ({sender_id}) on comment {comment_id}: '{str(comment_text).encode('ascii', 'replace').decode('ascii')}'", flush=True)
+                    try:
+                        print(f"[FACEBOOK WEBHOOK] Incoming Comment from {sender_name} ({sender_id}) on comment {comment_id}: '{comment_text}'", flush=True)
+                    except Exception:
+                        pass
                     reply = generate_comment_reply(comment_text, sender_name)
                     
                     ok, msg = send_facebook_comment_reply(comment_id, reply)

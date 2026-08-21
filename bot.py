@@ -6913,10 +6913,12 @@ async def cmd_leads(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines = ["📋 **ANSHU CONSULTANCY — RECENT CLIENT LEADS**\n"]
         for idx, l in enumerate(leads, 1):
             badge = "📅" if l["status"] == "APPOINTMENT_SCHEDULED" else ("🆕" if l["status"] == "NEW" else ("🤝" if l["status"] == "CONVERTED" else "⚡"))
-            lines.append(f"{idx}. {badge} **{l['name']}** [{l['service_category']}] — Status: `{l['status']}`")
+            c_name = str(l.get('name', 'Customer')).replace('*', '').replace('_', '').replace('`', '')
+            c_notes = str(l.get('notes', '')).replace('*', '').replace('_', '').replace('`', '')
+            lines.append(f"{idx}. {badge} **{c_name}** [{l['service_category']}] — Status: `{l['status']}`")
             lines.append(f"   Channel: `{l['channel']}` | Contact: `{l['contact_info']}`")
-            if l.get("notes"):
-                lines.append(f"   Notes: _{l['notes']}_")
+            if c_notes:
+                lines.append(f"   Notes: {c_notes}")
         await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
     except Exception as e:
         await update.message.reply_text(f"Leads list unavailable: {e}")
