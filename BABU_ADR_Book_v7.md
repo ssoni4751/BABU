@@ -76,14 +76,26 @@
 
 ---
 
-## ADR-098: Production Default Swarm Model Matrix Calibration
+## ADR-099: Deterministic Conversational Sales Funnel & IST Datetime Slot Engine
 * **Status:** Accepted / Live in Production
-* **Context:** Using heavy models for repetitive swarm workers caused rate-limiting (HTTP 429), while using smaller models for the Personal Assistant compromised reasoning depth.
-* **Decision:** Calibrated production model roles:
-  * **Personal Assistant (PA):** Defaulted to `openai/gpt-oss-120b` (120B parameter high-capacity reasoning model).
-  * **Swarm Department Workers & Social Webhook Engine:** Defaulted to `openai/gpt-oss-20b` (20B fast inference model with high throughput).
-* **Consequences:** Eliminated rate-limiting delays while maximizing executive conversational reasoning quality.
+* **Context:** LLMs should not own appointment scheduling state or simulate booking confirmations without verified database transactions. Moreover, customers communicate in natural Hindi/English phrases ("kal 2 baje", "somwar shaam 4 baje") that require precise interpretation in `Asia/Kolkata` (IST) within strict working hours (11:00 AM to 6:00 PM Mon-Sat).
+* **Decision:**
+  1. **LLM Extraction + Deterministic Validation:** LLM extracts candidate entities (`service`, `date_expr`, `time_expr`, `intent`, `phone`); deterministic Python validator (`parse_ist_datetime`) resolves relative dates and strictly validates working interval ($11:00 \le \text{time} \le 18:00$, Sunday Closed).
+  2. **Selective Knowledge Grounding (ADR-091/092):** Replaced bulk profile dumps with targeted K-slices (`K_PF`, `K_ITR`, `K_GST`, `K_GENERAL`).
+  3. **Strict Commit-Before-Alert Sequence:** System executes DB transaction first; real-time Telegram alert to business owner is dispatched only upon verified DB commit.
+* **Consequences:** Eliminates hallucinatory booking simulation, delivers airtight working window compliance, and notifies the owner with 100% truthful data.
+
+---
+
+## ADR-100: Database-Level Concurrency Isolation & Slot Anti-Collision
+* **Status:** Accepted / Live in Production
+* **Context:** In high-traffic social environments, two customers can request the same appointment time slot simultaneously (TOCTOU race condition). Application-level checks alone cannot prevent race conditions across parallel requests.
+* **Decision:**
+  1. **Database Partial Unique Index:** Enforced unique constraint on `babu_followups (scheduled_date) WHERE status = 'PENDING' AND proposed_action = 'IN_OFFICE_APPOINTMENT'` where `scheduled_date` stores composite `YYYY-MM-DD HH:MM`.
+  2. **Transactional Integrity Error Rollback:** Catch `IntegrityError` at the database driver level, immediately roll back dirty transactions, query fresh alternate available slots, and gracefully return alternative options to the colliding client without triggering false Telegram alerts.
+* **Consequences:** Absolute concurrency safety at the database tier. Multiple appointments on the same day at distinct hours succeed, while identical slot collisions are intercepted and resolved gracefully.
 
 ---
 
 *BABU ADR Book Volume 7 — Published August 2026*
+

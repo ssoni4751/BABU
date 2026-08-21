@@ -34,6 +34,30 @@ The Bot dispatches to the appropriate handler:
 
 ---
 
+### 3. Inbound Social CRM Conversational Funnel (Facebook / Messenger)
+```
+Customer Message (Comment / DM)
+  → Webhook Ingestion (process_facebook_webhook_event in social_media.py)
+  → Retrieve Conversational State & Lead History (get_lead_by_source_ref in crm_service.py)
+  → LLM Entity Extraction: service, date_expr, time_expr, intent, phone
+  → Deterministic Business Validation (parse_ist_datetime):
+      → Asia/Kolkata IST relative date resolution (kal/parso/somwar -> YYYY-MM-DD HH:MM)
+      → Enforce Working Window: Mon-Sat, 11:00 AM <= time <= 6:00 PM (Sunday Closed)
+  → Slot Availability & Conflict Check (check_slot_availability):
+      → Check babu_followups for occupied slots (within +-30 mins)
+      → If occupied: generate alternative available slots
+  → CRM Transactional Commit (commit_crm_appointment):
+      → Update babu_leads status = 'APPOINTMENT_SCHEDULED'
+      → INSERT INTO babu_followups (protected by DB partial unique index)
+      → COMMIT Transaction
+  → Real-Time Telegram Alert (dispatch_telegram_appointment_alert):
+      → Dispatched to owner strictly AFTER verified DB commit
+  → Customer Reply:
+      → Grounded with Selective Knowledge Slice (get_selective_knowledge_slice)
+```
+
+---
+
 ### 3. Promote Flow (`/promote`)
 ```
 User → /promote sig goal_id

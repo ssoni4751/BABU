@@ -97,11 +97,17 @@ To maintain absolute engineering clarity and commercial focus, BABU maintains tw
 ### 2. Live Social CRM & Bidirectional Engagement
 - Inbound Facebook comments and Messenger DMs receive zero-latency contextual replies and are automatically persisted into `babu_k0_working_memory`, `execution_ledger`, and the `babu_leads` commercial database table.
 
-### 3. Authoritative Business Knowledge Grounding
-- Structured facts stored in `business_profile.json` and Supabase PostgreSQL ground all client communications on verified pricing, deadlines (GST 11th/20th, PF 15th, ITR 31st July), and address details.
+### 3. Deterministic Conversational Sales Funnel & Slot Booking
+- **Multi-Turn Stateful Discovery:** Progressively qualifies client services (`ITR`, `GST`, `PF`, `PAN`, `Accounting`), delivers itemized document checklists, and negotiates appointments.
+- **Deterministic Working Window:** Enforces `11:00 <= appointment_time <= 18:00` (Mon-Sat, Sunday Closed) using `Asia/Kolkata` IST relative date parsing.
+- **Database-Level Concurrency Isolation:** Partial unique index on `babu_followups (scheduled_date) WHERE status = 'PENDING' AND proposed_action = 'IN_OFFICE_APPOINTMENT'` intercepts TOCTOU race conditions and offers alternate slots.
+- **Transactional Commit-Before-Alert:** Dispatches instant Telegram alerts to the business owner only after verified DB commit.
 
-### 4. Truthful Degradation & Non-Simulation
-- If an infrastructure endpoint is rate-limited or unavailable, BABU states the limitation honestly rather than generating fake success.
+### 4. Authoritative Selective Knowledge Grounding (ADR-091/092)
+- Targeted K-slices (`K_PF`, `K_ITR`, `K_GST`, `K_GENERAL`) replace bulk JSON dumps, grounding communications on verified address, timings, and document checklists.
+
+### 5. Truthful Degradation & Non-Simulation
+- If an infrastructure endpoint is rate-limited or a slot collides concurrently, BABU states the limitation honestly rather than generating fake success.
 
 ---
 
