@@ -398,8 +398,31 @@ def commit_crm_appointment(
             "service": service
         }
     except Exception as e:
-        print(f"[CRM TRANSACTION ERROR] Failed to commit appointment: {e}", flush=True)
-        return {"status": "ERROR", "error": str(e)}
+        err_str = str(e).lower()
+        if "unique" in err_str or "integrity" in err_str:
+            print(f"[CRM CONCURRENCY COLLISION] Slot {scheduled_stamp} collided in DB: {e}", flush=True)
+            try:
+                conn.rollback()
+                cursor.close()
+                conn.close()
+            except Exception:
+                pass
+            avail_ok, alt_slots = check_slot_availability(date_str, time_str)
+            return {
+                "status": "SLOT_CONFLICT",
+                "reason": "CONCURRENT_SLOT_COLLISION",
+                "alternatives": alt_slots,
+                "error": "This slot was just booked by another customer."
+            }
+        else:
+            try:
+                conn.rollback()
+                cursor.close()
+                conn.close()
+            except Exception:
+                pass
+            print(f"[CRM TRANSACTION ERROR] Failed to commit appointment: {e}", flush=True)
+            return {"status": "ERROR", "error": str(e)}
 
 
 def dispatch_telegram_appointment_alert(

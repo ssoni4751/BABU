@@ -1527,6 +1527,11 @@ def generate_conversational_dm_response(sender_id: str, user_text: str) -> str:
                             f"CRITICAL: Appointment has been successfully BOOKED and CONFIRMED in the system for {dt_res['display_date']} at {dt_res['display_time']}! "
                             f"Confirm the appointment clearly to the customer. Remind them to bring the required documents for {service} to our office at Kaushal Market, Rath Road, Orai."
                         )
+                    elif commit_res.get("status") == "SLOT_CONFLICT":
+                        alts = commit_res.get("alternatives", [])
+                        alt_str = " or ".join(alts) if alts else "another time between 11 AM and 6 PM"
+                        booking_status_instruction = f"IMPORTANT: The slot on {dt_res['display_date']} at {dt_res['display_time']} was just reserved a moment ago by another client. Truthfully inform them and propose alternate open slots: {alt_str}."
+                        update_lead_funnel_stage(lead_id, "APPOINTMENT_PROPOSED", f"Concurrent slot collision on {dt_res['time_str']}; offered {alt_str}")
                     else:
                         booking_status_instruction = "Apologize and inform them there was a temporary system delay. Ask them to confirm if they can visit at that time or call/WhatsApp +91 7217646673."
 

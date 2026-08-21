@@ -22,6 +22,19 @@ from crm_service import (
 
 class TestCRMSubsystem(unittest.TestCase):
 
+    def setUp(self):
+        try:
+            from services import get_db_connection
+            conn, is_pg = get_db_connection()
+            if conn:
+                cur = conn.cursor()
+                cur.execute("DELETE FROM babu_followups WHERE scheduled_date LIKE '2026-08-%'")
+                conn.commit()
+                cur.close()
+                conn.close()
+        except Exception:
+            pass
+
     def test_extract_lead_intent(self):
         # 1. Test ITR appointment
         res1 = extract_lead_intent_and_service("Can i book an appointment for ITR filing tomorrow?")
@@ -101,6 +114,22 @@ class TestCRMSubsystem(unittest.TestCase):
         # 3. Different slot on same date is available
         avail_free, _ = check_slot_availability("2026-08-25", "11:00")
         self.assertTrue(avail_free)
+
+    def test_concurrent_database_collision_isolation(self):
+        # Simulate TOCTOU race condition: Two concurrent requests attempting to commit the same slot
+        ingest1 = ingest_lead("Customer A", "Facebook Messenger", "Booking for 4 PM", source_ref="user_a_sim")
+        ingest2 = ingest_lead("Customer B", "Facebook Messenger", "Booking for 4 PM", source_ref="user_b_sim")
+        
+        # Request 1 commits
+        res1 = commit_crm_appointment(ingest1["lead_id"], "2026-08-26", "16:00", purpose="ITR Filing")
+        self.assertEqual(res1["status"], "SUCCESS")
+
+        # Request 2 attempts to commit the exact same slot directly (bypassing check_slot_availability)
+        res2 = commit_crm_appointment(ingest2["lead_id"], "2026-08-26", "16:00", purpose="GST Filing")
+        # Database UNIQUE constraint intercepts race condition
+        self.assertEqual(res2["status"], "SLOT_CONFLICT")
+        self.assertEqual(res2["reason"], "CONCURRENT_SLOT_COLLISION")
+        self.assertGreater(len(res2["alternatives"]), 0)
 
     def test_selective_knowledge_slice(self):
         # PF Slice contains PF facts and documents but no full dump

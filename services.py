@@ -236,6 +236,10 @@ def _ensure_sqlite_schema(conn):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_leads_category ON babu_leads (service_category);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_interactions_lead ON babu_interactions (lead_id);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_followups_lead_status ON babu_followups (lead_id, status);")
+    try:
+        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_appointment_slot ON babu_followups (scheduled_date) WHERE status = 'PENDING' AND proposed_action = 'IN_OFFICE_APPOINTMENT';")
+    except Exception:
+        pass
 
     # Bootstrap initial seed data for empty databases (e.g. fresh Render deployments)
     try:
