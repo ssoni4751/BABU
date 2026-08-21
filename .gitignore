@@ -86,8 +86,16 @@ temp/
 attached_assets/
 scratch/
 
+# Structural Anti-Nesting Safeguards (Prevents babu/babu recursion)
+babu/babu/
+babu/artifacts/
+babu/lib/
+.pytest_cache/
+babu/.pytest_cache/
+
 # Backups & Archives
 babu_backup.zip
 *.zip
 *.tar.gz
 *.tgz
+
