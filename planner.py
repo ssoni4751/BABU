@@ -648,8 +648,8 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
             packet.query_category = "SYSTEM_INFORMATION"
         elif any(k in lowered for k in ("anshu", "shubham", "swarnkar", "ash", "ssoni", "who am i", "my father", "my mother", "my brother", "my sibling", "my parents", "my cousin", "my background", "my journey", "my education", "my career", "my email", "my phone", "my number", "my address", "my location", "where i live", "tell me about me", "my profile", "my biography", "my bio", "about me", "know about me")):
             packet.query_category = "PERSONAL_INFORMATION"
-        elif any(k in lowered for k in ("client", "clients", "customer", "customers", "invoice", "invoices", "payment", "payments", "transaction", "transactions", "sales", "earnings", "revenue", "profit", "profits", "ledger", "ledgers", "pf claim", "pf claims", "uan consolidation", "kyc correction", "joint declaration", "gst registration", "gstr-1", "gstr-3b")):
-            is_general = any(g in lowered for g in ("what is", "how to", "definition", "explain", "tutorial", "general process"))
+        elif any(k in lowered for k in ("facebook", "faceook", "fb", "instagram", "insta", "post", "posts", "comment", "comments", "lead", "leads", "appointment", "followup", "client", "clients", "customer", "customers", "invoice", "invoices", "payment", "payments", "transaction", "transactions", "sales", "earnings", "revenue", "profit", "profits", "ledger", "ledgers", "pf claim", "pf claims", "uan consolidation", "kyc correction", "joint declaration", "gst registration", "gstr-1", "gstr-3b")):
+            is_general = any(g in lowered for g in ("what is", "how to", "definition", "explain", "tutorial", "general process")) and not any(f in lowered for f in ("facebook", "faceook", "fb", "post", "lead", "appointment"))
             if not is_general:
                 packet.query_category = "BUSINESS_INFORMATION"
             else:
@@ -682,8 +682,8 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
             packet.query_category = "SYSTEM_INFORMATION"
         elif any(k in lowered for k in ("anshu", "shubham", "swarnkar", "ash", "ssoni", "who am i", "my father", "my mother", "my brother", "my sibling", "my parents", "my cousin", "my background", "my journey", "my education", "my career", "my email", "my phone", "my number", "my address", "my location", "where i live", "tell me about me", "my profile", "my biography", "my bio", "about me", "know about me")):
             packet.query_category = "PERSONAL_INFORMATION"
-        elif any(k in lowered for k in ("client", "clients", "customer", "customers", "invoice", "invoices", "payment", "payments", "transaction", "transactions", "sales", "earnings", "revenue", "profit", "profits", "ledger", "ledgers", "pf claim", "pf claims", "uan consolidation", "kyc correction", "joint declaration", "gst registration", "gstr-1", "gstr-3b")):
-            is_general = any(g in lowered for g in ("what is", "how to", "definition", "explain", "tutorial", "general process"))
+        elif any(k in lowered for k in ("facebook", "faceook", "fb", "instagram", "insta", "post", "posts", "comment", "comments", "lead", "leads", "appointment", "followup", "client", "clients", "customer", "customers", "invoice", "invoices", "payment", "payments", "transaction", "transactions", "sales", "earnings", "revenue", "profit", "profits", "ledger", "ledgers", "pf claim", "pf claims", "uan consolidation", "kyc correction", "joint declaration", "gst registration", "gstr-1", "gstr-3b")):
+            is_general = any(g in lowered for g in ("what is", "how to", "definition", "explain", "tutorial", "general process")) and not any(f in lowered for f in ("facebook", "faceook", "fb", "post", "lead", "appointment"))
             if not is_general:
                 packet.query_category = "BUSINESS_INFORMATION"
             else:
