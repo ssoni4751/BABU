@@ -430,8 +430,14 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
     
     # 1. Rule-based fast-track bypass for greetings, short chitchat, and stats commands
     greetings = {"hi", "hello", "hey", "good morning", "good afternoon", "good evening", "how are you", "help", "clear", "stats", "model"}
-    if t in greetings or len(t) < 15:
-        print("[INTENT CLASSIFIER] Fast-track classification: CHORE", flush=True)
+    is_greeting = (
+        t in greetings 
+        or len(t) < 15 
+        or any(t.startswith(g) for g in ("hi ", "hello ", "hey ", "good morning", "good afternoon", "good evening"))
+    ) and not any(k in t for k in ("email", "mail", "post", "facebook", "doc", "sheet", "drive", "lead", "appointment", "event", "task", "pf", "itr", "gst", "tax", "report", "client", "customer", "delete"))
+
+    if is_greeting:
+        print("[INTENT CLASSIFIER] Fast-track classification: CHORE / GREETING", flush=True)
         return IntentPacket(
             allowed_departments=["information", "pa"],
             allowed_actions=["search_sheet", "search_gmail"],
@@ -442,9 +448,11 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
             topology_source="INTERNAL",
             topology_mode="CHITCHAT",
             mutation_type="NONE",
-            domain="GENERAL",
+            domain="USER",
             surface="SYSTEM",
-            planning_required=False
+            planning_required=False,
+            demand_domains={"USER"},
+            execution_shape="CLASS_A"
         )
 
     # 1b. Rule-based programmatic override: force lookup when query contains personal data references
