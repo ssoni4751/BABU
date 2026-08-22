@@ -64,6 +64,88 @@ def fetch_india_tech_trends() -> str:
         return "Could not fetch real-time trends due to network error."
 
 
+def extract_and_parse_post_json(text: str) -> dict:
+    """Extract and parse JSON from LLM output, resilient to unescaped newlines, quotes, and markdown."""
+    if not text:
+        raise ValueError("Empty LLM output")
+    
+    text = text.strip()
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    candidate = match.group(0) if match else text
+    
+    # 1. Standard json.loads
+    try:
+        return json.loads(candidate)
+    except Exception:
+        pass
+        
+    # 2. Strict=False
+    try:
+        return json.loads(candidate, strict=False)
+    except Exception:
+        pass
+        
+    # 3. State-machine to escape raw newlines inside double-quoted strings
+    try:
+        fixed = []
+        in_string = False
+        escape = False
+        for ch in candidate:
+            if ch == '\\' and not escape:
+                escape = True
+                fixed.append(ch)
+                continue
+            if ch == '"' and not escape:
+                in_string = not in_string
+            elif ch == '\n' and in_string:
+                fixed.append('\\n')
+                escape = False
+                continue
+            elif ch == '\r' and in_string:
+                escape = False
+                continue
+            fixed.append(ch)
+            escape = False
+        fixed_str = ''.join(fixed)
+        return json.loads(fixed_str, strict=False)
+    except Exception:
+        pass
+
+    # 4. Regex key-value extraction fallback
+    data = {}
+    cat_match = re.search(r'"category"\s*:\s*"([^"]+)"', candidate)
+    if cat_match:
+        data["category"] = cat_match.group(1)
+        
+    title_match = re.search(r'"card_title"\s*:\s*"([^"]+)"', candidate)
+    if title_match:
+        data["card_title"] = title_match.group(1)
+        
+    prompt_match = re.search(r'"image_prompt"\s*:\s*"([^"]+)"', candidate)
+    if prompt_match:
+        data["image_prompt"] = prompt_match.group(1)
+        
+    cap_match = re.search(r'"caption"\s*:\s*"(.*?)"\s*,\s*"[a-zA-Z_]+"\s*:', candidate, re.DOTALL)
+    if cap_match:
+        data["caption"] = cap_match.group(1).replace('\n', ' ').replace('\\n', '\n')
+    else:
+        # Fallback simple caption search
+        cap_simple = re.search(r'"caption"\s*:\s*"([^"]+)"', candidate)
+        if cap_simple:
+            data["caption"] = cap_simple.group(1)
+        
+    tips_match = re.search(r'"card_tips"\s*:\s*\[(.*?)\]', candidate, re.DOTALL)
+    if tips_match:
+        raw_tips = re.findall(r'"([^"]+)"', tips_match.group(1))
+        if raw_tips:
+            data["card_tips"] = raw_tips
+            
+    if data.get("caption") or data.get("card_title"):
+        return data
+        
+    raise ValueError(f"Could not parse valid JSON from text: {text[:150]}...")
+
+
 def generate_daily_post(custom_topic: str = None, language: str = "en") -> tuple[str, str, str, list, str]:
     """Use Groq LLM to generate a caption and matching graphic prompt incorporating real-time India tax and compliance trends in English or Hindi."""
     groq_key = os.environ.get("GROQ_API_KEY")
@@ -83,6 +165,7 @@ def generate_daily_post(custom_topic: str = None, language: str = "en") -> tuple
     if is_hindi:
         user_prompt += (
             "\n\nCRITICAL LANGUAGE & BRAND INSTRUCTIONS FOR HINDI POST:\n"
+            "- Output valid single-line escaped JSON only. Do not put unescaped raw newlines inside string values.\n"
             "- 'caption': Write engaging, high-converting, professional Hindi copywriting (in clean Devanagari script) with natural Hinglish terms (PF Claim, UAN, KYC, ITR Filing, GST Return, CSC, PAN). Explain the benefit clearly and mention 'अंशु कंप्यूटर एंड टैक्स कंसल्टेंसी, कौशल मार्केट, राठ रोड, उरई (समय सुबह 11:00 बजे से शाम 6:00 बजे तक)'. Add hashtags (#ITRFiling #PFClaim #GSTRegistration #Orai #AnshuConsultancy).\n"
             "- 'card_title': Punchy 2-4 word title in Hindi (e.g. 'PF क्लेम आसान समाधान', 'ITR फाइल करें टैक्स बचाएं', 'GST रिटर्न सही समय पर', 'डिजिटल सेवा केंद्र').\n"
             "- 'card_tips': Exactly 3 actionable points in clean Hindi Devanagari (max 6-8 words per point).\n"
@@ -106,15 +189,12 @@ def generate_daily_post(custom_topic: str = None, language: str = "en") -> tuple
         ("gemini", "gemini-2.5-flash")
     ]
     
-    res = None
+    data = None
     for provider, model_name in models_to_try:
         try:
             if provider == "groq" and os.environ.get("GROQ_API_KEY"):
                 llm = ChatGroq(model=model_name, temperature=0.7)
                 res = llm.invoke([SystemMessage(content=DAILY_POST_PROMPT), HumanMessage(content=user_prompt)])
-                if res and res.content:
-                    print(f"[SOCIAL LLM SUCCESS] Generated post using {provider}:{model_name}", flush=True)
-                    break
             elif provider == "nvidia" and os.environ.get("NVIDIA_API_KEY"):
                 from langchain_openai import ChatOpenAI
                 llm = ChatOpenAI(
@@ -125,29 +205,23 @@ def generate_daily_post(custom_topic: str = None, language: str = "en") -> tuple
                     timeout=25.0
                 )
                 res = llm.invoke([SystemMessage(content=DAILY_POST_PROMPT), HumanMessage(content=user_prompt)])
-                if res and res.content:
-                    print(f"[SOCIAL LLM SUCCESS] Generated post using {provider}:{model_name}", flush=True)
-                    break
             elif provider == "gemini" and os.environ.get("GEMINI_API_KEY"):
                 from langchain_google_genai import ChatGoogleGenerativeAI
                 llm = ChatGoogleGenerativeAI(model=model_name, temperature=0.7, google_api_key=os.environ.get("GEMINI_API_KEY"))
                 res = llm.invoke([SystemMessage(content=DAILY_POST_PROMPT), HumanMessage(content=user_prompt)])
-                if res and res.content:
-                    print(f"[SOCIAL LLM SUCCESS] Generated post using {provider}:{model_name}", flush=True)
-                    break
+            else:
+                continue
+
+            if res and res.content:
+                data = extract_and_parse_post_json(res.content)
+                print(f"[SOCIAL LLM SUCCESS] Generated and parsed post using {provider}:{model_name}", flush=True)
+                break
         except Exception as err:
             print(f"[SOCIAL LLM FAILOVER] {provider}:{model_name} failed ({err}). Trying next model...", flush=True)
             continue
     
-    if not res or not res.content:
-        raise RuntimeError("All LLM providers failed to generate post content.")
-
-    text = res.content.strip()
-    match = re.search(r'\{.*\}', text, re.DOTALL)
-    if match:
-        data = json.loads(match.group())
-    else:
-        data = json.loads(text)
+    if not data:
+        raise RuntimeError("All LLM providers failed to generate valid parseable post content.")
     
     caption = data.get("caption", "Boost your digital productivity today! Visit Anshu Computers Orai for all tech assistance.")
     image_prompt = data.get("image_prompt", "Sleek modern office desk with high-tech computer monitor showing text 'TECH TIPS' in clean typography, professional lighting, 4k resolution")
