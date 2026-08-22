@@ -1115,31 +1115,22 @@ def plan_goal(
     goal_type = "CORRECTION" if is_correction else "NEW"
     p_tokens = None
 
-    # DECOUPLED ORCHESTRATION BYPASS:
-    # Bypass the heavy multi-agent LLM planner ONLY for non-mutating lookups and chitchat.
-    # Mutating actions (send_email, post_to_facebook, etc.) requiring drafting, governance, and user permission
-    # MUST pass through the dynamic LLM planner DAG.
-    read_only_actions = {"read_facebook_comments", "read_facebook_posts", "search_sheet", "search_gmail", "search_image"}
-    is_mutating = False
-    if intent_packet:
-        mut_type = getattr(intent_packet, "mutation_type", "NONE")
-        exec_mode = getattr(intent_packet, "execution_mode", "READ_ONLY")
-        actions_list = getattr(intent_packet, "allowed_actions", [])
-        if mut_type not in ("NONE", "") or exec_mode in ("APPROVAL_REQUIRED", "AUTO_EXECUTE"):
-            is_mutating = True
-        elif any(act not in read_only_actions for act in actions_list):
-            is_mutating = True
-
-    if intent_packet and not is_mutating and not getattr(intent_packet, "planning_required", False) and not is_correction:
-        topo_mode = getattr(intent_packet, "topology_mode", "LOOKUP")
+    # ADR-101 Execution Shape Fast-Track:
+    # CLASS_A (LOOKUP): Pure read-only requests execute via synthetic single-task graph (0s LLM planning).
+    # CLASS_B / CLASS_C: Pass through muscle memory / dynamic goal graph planner.
+    if intent_packet and not is_correction:
+        exec_shape = getattr(intent_packet, "execution_shape", "CLASS_A")
+        planning_req = getattr(intent_packet, "planning_required", False)
         actions = getattr(intent_packet, "allowed_actions", [])
-        if topo_mode in ("CHITCHAT", "LOOKUP") and not actions:
-            print(f"[PLANNER NODE] Decoupled Orchestration Bypass: Routing '{topo_mode}' query via build_walk_graph (0s LLM planning)", flush=True)
-            return build_walk_graph(query, goal_id=goal_id)
-        elif actions and len(actions) == 1 and actions[0] in read_only_actions:
-            act_name = actions[0]
-            print(f"[PLANNER NODE] Decoupled Orchestration Bypass: Routing read-only action '{act_name}' via build_action_graph (0s LLM planning)", flush=True)
-            return build_action_graph(query, {"action": act_name, "params": {}}, goal_id=goal_id)
+        
+        if exec_shape == "CLASS_A" and not planning_req:
+            if not actions:
+                print(f"[PLANNER NODE] ADR-101 Fast-Track: Routing Class A pure lookup via build_walk_graph (0s LLM planning)", flush=True)
+                return build_walk_graph(query, goal_id=goal_id)
+            elif len(actions) == 1:
+                act_name = actions[0]
+                print(f"[PLANNER NODE] ADR-101 Fast-Track: Routing Class A single action '{act_name}' via build_action_graph (0s LLM planning)", flush=True)
+                return build_action_graph(query, {"action": act_name, "params": {}}, goal_id=goal_id)
 
     # Build the user prompt ------------------------------------------------
     from datetime import timedelta

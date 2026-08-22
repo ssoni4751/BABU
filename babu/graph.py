@@ -108,32 +108,24 @@ class BabuState(TypedDict):
     awareness_report: Optional[dict]
 
 def route_after_router(state: BabuState) -> str:
+    """
+    ADR-101 Tri-Domain & Execution Shape Router:
+    1. Pending Approval / Confirmation Notice -> route to 'pending'
+    2. CHITCHAT Gate -> route directly to 'pa' (<0.05s bypass)
+    3. Operational Demands (CLASS_A, CLASS_B, CLASS_C) -> route to 'plan'
+    """
     notice = state.get("pending_action_notice", "")
     if notice:
         return "pending"
     
     query = state.get("user_query", "")
     routing_metadata = state.get("routing_metadata") or {}
-    intent_packet_dict = routing_metadata.get("intent_packet")
+    intent_packet_dict = routing_metadata.get("intent_packet") or {}
     
-    query_category = None
-    if intent_packet_dict:
-        query_category = intent_packet_dict.get("query_category")
-        
-    is_faq = is_pure_greeting(query) or is_deterministic_faq_query(query)
-    is_multi = has_multiple_tasks_or_requests(query, intent_packet_dict)
-    if is_faq and not is_multi:
-        print(f"[ROUTE AFTER ROUTER] Deterministic FAQ/greeting detected for query: '{query}'. Short-circuiting directly to PA node.", flush=True)
+    topology_mode = intent_packet_dict.get("topology_mode")
+    if topology_mode == "CHITCHAT" or is_pure_greeting(query):
+        print(f"[ROUTE AFTER ROUTER] ADR-101 Fast-Track CHITCHAT detected for query: '{query}'. Short-circuiting directly to PA node.", flush=True)
         return "pa"
-
-    if query_category == "SYSTEM_INFORMATION" and is_faq and not is_multi:
-        print(f"[ROUTE AFTER ROUTER] SYSTEM_INFORMATION FAQ query detected ('{query}'). Routing to PA short-circuit.", flush=True)
-        return "pa"
-
-    PRIVATE_QUERY_TYPES = ("BUSINESS_INFORMATION", "PERSONAL_INFORMATION", "SYSTEM_INFORMATION")
-    if query_category in PRIVATE_QUERY_TYPES:
-        print(f"[ROUTE AFTER ROUTER] Private category '{query_category}' detected. Disabling PA direct response bypass and forcing plan route.", flush=True)
-        return "plan"
 
     return "plan"
 
