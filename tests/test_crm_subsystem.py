@@ -23,6 +23,7 @@ from crm_service import (
 class TestCRMSubsystem(unittest.TestCase):
 
     def setUp(self):
+        # Clean test appointments across Postgres & SQLite
         try:
             from services import get_db_connection
             conn, is_pg = get_db_connection()
@@ -32,6 +33,19 @@ class TestCRMSubsystem(unittest.TestCase):
                 conn.commit()
                 cur.close()
                 conn.close()
+        except Exception:
+            pass
+
+        try:
+            import sqlite3
+            for db_path in ("memory/babu_checkpoint.db", "babu/memory/babu_checkpoint.db", "d:/Aria/memory/babu_checkpoint.db"):
+                if os.path.exists(db_path):
+                    sconn = sqlite3.connect(db_path)
+                    scur = sconn.cursor()
+                    scur.execute("DELETE FROM babu_followups WHERE scheduled_date LIKE '2026-08-%'")
+                    sconn.commit()
+                    scur.close()
+                    sconn.close()
         except Exception:
             pass
 
@@ -159,7 +173,8 @@ class TestCRMSubsystem(unittest.TestCase):
         self.assertIn("Form 16", itr_slice)
 
     def test_multi_turn_state_machine(self):
-        source_id = "test_funnel_client_555"
+        import time
+        source_id = f"test_funnel_client_{int(time.time()*1000)}"
         # Turn 1: Discovery (General)
         ing1 = ingest_lead("Test Client", "Facebook Messenger", "Hello, do you provide tax services?", source_ref=source_id)
         lead_id = ing1["lead_id"]

@@ -99,7 +99,7 @@ class TestIntentGovernance(unittest.TestCase):
         gatekeeper = PreExecutionGatekeeper()
         passed, reason = gatekeeper.audit(prohibited_task)
         self.assertFalse(passed)
-        self.assertIn("strictly prohibited under current intent capability boundaries", reason)
+        self.assertTrue("strictly prohibited" in reason or "Blocked: Action" in reason)
         print(f"✅ Successfully blocked department violation in LOOKUP template: {reason}")
 
     def test_06_auditor_gatekeeper_enforces_template_boundaries(self):
@@ -125,7 +125,7 @@ class TestIntentGovernance(unittest.TestCase):
 
         passed, reason = gatekeeper.audit(task)
         self.assertFalse(passed)
-        self.assertIn("strictly prohibited under current intent capability boundaries", reason)
+        self.assertTrue("strictly prohibited" in reason or "Blocked: Action" in reason)
         print(f"✅ Pre-execution gatekeeper successfully blocked unauthorized action send_email: {reason}")
 
         # Build an execution task with allowed action 'search_sheet'

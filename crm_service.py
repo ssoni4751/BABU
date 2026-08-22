@@ -296,6 +296,8 @@ def check_slot_availability(date_str: str, time_str: str) -> Tuple[bool, List[st
                                 alternatives.append(cand_ampm)
                     if len(alternatives) >= 2:
                         break
+                if not alternatives:
+                    alternatives = ["11:00 AM", "03:00 PM"]
                 return False, alternatives
 
         return True, []
@@ -328,7 +330,36 @@ def commit_crm_appointment(
     try:
         cursor = conn.cursor()
         
-        # 1. Update lead status in babu_leads
+        # 1. Transactional Slot Anti-Collision Check
+        slot_pattern = f"{date_str}%{time_str}%"
+        if is_pg:
+            cursor.execute("""
+                SELECT followup_id FROM babu_followups 
+                WHERE scheduled_date LIKE %s AND status = 'PENDING' AND proposed_action = 'IN_OFFICE_APPOINTMENT'
+                FOR UPDATE
+            """, (slot_pattern,))
+        else:
+            cursor.execute("""
+                SELECT followup_id FROM babu_followups 
+                WHERE scheduled_date LIKE ? AND status = 'PENDING' AND proposed_action = 'IN_OFFICE_APPOINTMENT'
+            """, (slot_pattern,))
+        existing_slot = cursor.fetchone()
+        if existing_slot:
+            print(f"[CRM CONCURRENCY COLLISION] Slot {scheduled_stamp} collided in DB", flush=True)
+            conn.rollback()
+            cursor.close()
+            conn.close()
+            avail_ok, alt_slots = check_slot_availability(date_str, time_str)
+            if not alt_slots:
+                alt_slots = ["11:00 AM", "03:00 PM"]
+            return {
+                "status": "SLOT_CONFLICT",
+                "reason": "CONCURRENT_SLOT_COLLISION",
+                "alternatives": alt_slots,
+                "error": "This slot was just booked by another customer."
+            }
+
+        # 2. Update lead status in babu_leads
         if is_pg:
             cursor.execute("""
                 UPDATE babu_leads 
@@ -350,7 +381,7 @@ def commit_crm_appointment(
             cursor.execute("SELECT name, channel, contact_info, service_category FROM babu_leads WHERE lead_id = ?", (lead_id,))
             lead_row = cursor.fetchone()
 
-        # 2. Insert into babu_followups
+        # 3. Insert into babu_followups
         draft_msg = f"Confirmed appointment for {purpose} at Kaushal Market, Orai on {scheduled_stamp}."
         if is_pg:
             cursor.execute("""

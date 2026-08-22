@@ -221,8 +221,11 @@ def consolidate_failures_semantic(new_entry: dict, existing_failures: list) -> t
     if not existing_failures:
         return False, existing_failures
 
-    # Filter existing rules by the same domain to keep prompt size tiny and focused
-    same_domain_failures = [f for f in existing_failures if f.get("domain") == new_entry.get("domain")]
+    # Filter existing rules by domain or attempted methodology
+    same_domain_failures = [
+        f for f in existing_failures 
+        if f.get("domain") == new_entry.get("domain") or (f.get("attempted_methodology") and f.get("attempted_methodology") == new_entry.get("attempted_methodology"))
+    ]
     if not same_domain_failures:
         return False, existing_failures
 
@@ -235,8 +238,8 @@ def consolidate_failures_semantic(new_entry: dict, existing_failures: list) -> t
         existing_tokens = _tokens(f.get("active_anti_pattern_rule", ""))
         same_method = f.get("attempted_methodology") == new_entry.get("attempted_methodology")
         overlap = len(candidate_tokens & existing_tokens) / max(1, len(candidate_tokens | existing_tokens))
-        oauth_family = {"facebook", "oauth", "token", "expired", "invalid", "page"}
-        if same_method and (overlap >= 0.35 or oauth_family <= (candidate_tokens | existing_tokens)):
+        token_intersect = candidate_tokens & existing_tokens
+        if same_method and (overlap >= 0.25 or len({"token", "facebook", "oauth", "page", "expired", "invalid"} & token_intersect) >= 2):
             f["success_count"] = f.get("success_count", 0) + 1
             f["confidence"] = min(1.0, f.get("confidence", 1.0) + 0.05)
             f["last_reinforced"] = datetime.now(timezone.utc).isoformat()
@@ -281,7 +284,7 @@ def consolidate_failures_semantic(new_entry: dict, existing_failures: list) -> t
                 SystemMessage(content="You are BABU's self-correcting Epistemic Immune System memory deduplicator."),
                 HumanMessage(content=prompt)
             ],
-            model_name="llama-3.1-8b-instant",  # Fast, cheap, and very capable of simple classification
+            model_name="groq/compound-mini",  # Fast, cheap, and very capable of simple classification
             temp=0.0,
         )
         

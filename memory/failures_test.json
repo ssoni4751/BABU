@@ -1,1 +1,17 @@
-[]
+[
+  {
+    "failure_signature": "SOCIAL_MEDIA.FACEBOOK_PUBLISHER_20260819_115410",
+    "domain": "social_media.facebook_publisher",
+    "attempted_methodology": "publish_to_facebook_page(img_path, caption) with Page ID invalid_page_123",
+    "observed_consequence": "The publication to the Facebook page failed because the provided Page ID (invalid_page_123) was not valid and the OAuth access token used was invalid or malformed, causing the Facebook API to reject the request.",
+    "active_anti_pattern_rule": "NEVER attempt to post to a Facebook Page using an unverified Page ID or a parent User OAuth token; always retrieve and validate a proper Page Access Token via /me/accounts and confirm the Page ID before publishing.",
+    "confidence": 1.0,
+    "decay_rate": 0.15,
+    "success_count": 0,
+    "ttl_sessions_remaining": 20,
+    "timestamp": "2026-08-19T06:24:10.153669+00:00",
+    "last_reinforced": "2026-08-19T06:24:10.153669+00:00",
+    "failure_type": "METHODOLOGY",
+    "goal": "Daily Autonomous Marketing Post generation and publishing"
+  }
+]
