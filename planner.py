@@ -37,51 +37,111 @@ DEPARTMENTS: Dict[str, str] = {
 }
 
 # ---------------------------------------------------------------------------
-# Intent Governance Layer & Packet Structures
+# ADR-101 Tri-Domain & Capability Demand Action Registry
 # ---------------------------------------------------------------------------
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Set, Dict, Any, Union
+
+DOMAIN_ACTIONS_REGISTRY: Dict[str, Set[str]] = {
+    "USER": {
+        "send_email", "search_profile", "search_gmail", "search_sheet", "create_doc", 
+        "create_event", "create_task", "upload_to_drive", "copy_photos_to_drive", 
+        "copy_contacts_to_drive", "delete_document", "delete_spreadsheet", "delete_event"
+    },
+    "SYSTEM": {
+        "system_status", "system_diagnostics", "memory_stats", "model_info", "clear_memory"
+    },
+    "BUSINESS": {
+        "read_facebook_comments", "read_facebook_posts", "reply_facebook_comment", 
+        "post_to_facebook", "generate_image", "crm_query_leads", "crm_book_appointment", 
+        "crm_update_lead", "crm_schedule_followup", "crm_cancel_appointment", "log_to_sheet", "send_slack"
+    }
+}
+
+VALID_DOMAINS: Set[str] = {"USER", "SYSTEM", "BUSINESS"}
+
+
+def derive_authorized_actions(domains: Set[str], candidate_actions: List[str]) -> List[str]:
+    """
+    Gatekeeper derivation: Filter candidate actions against the authorized domain registries.
+    Invariant: An action is eligible only when its declared capability domain belongs to 
+    the demand's authorized domain set.
+    """
+    authorized_registry = set()
+    for d in (domains or set()):
+        if d in DOMAIN_ACTIONS_REGISTRY:
+            authorized_registry.update(DOMAIN_ACTIONS_REGISTRY[d])
+            
+    # Universal read-only lookup helpers
+    universal_lookups = {"search_sheet", "search_gmail", "search_image", "web_search", "wikipedia_search"}
+    authorized_registry.update(universal_lookups)
+    
+    return [act for act in candidate_actions if act in authorized_registry]
+
 
 @dataclass
-class IntentPacket:
-    """Represents a classified query intent with dynamic execution capability boundaries."""
-    allowed_departments: List[str] = field(default_factory=lambda: ["pa"])
-    allowed_actions: List[str] = field(default_factory=list)
-    execution_mode: str = "READ_ONLY"  # "READ_ONLY", "APPROVAL_REQUIRED", "AUTO_EXECUTE"
+class DemandPacket:
+    """Streamlined Capability Demand Packet (ADR-101) representing the core execution demand."""
+    domains: set[str]                 # Authorized subset of {"USER", "SYSTEM", "BUSINESS"}
+    execution_shape: str              # "CLASS_A" (LOOKUP) | "CLASS_B" (LOOKUP+ACTION) | "CLASS_C" (COMPOSED / MULTI-STEP)
+    operations: set[str]              # {"LOOKUP"}, {"LOOKUP", "ACTION"}, {"LOOKUP", "ACTION", "COMPOSED"}
+    candidate_actions: list[str]      # Proposed actions from intent classification
+    allowed_actions: list[str]        # Strictly derived by Gatekeeper domain authorization
+    approval_policy: str = "AUTO"     # "AUTO" | "APPROVAL_REQUIRED" | "DOUBLE_CONFIRMATION"
+    risk_level: str = "LOW"           # "LOW" | "MEDIUM" | "HIGH"
+    planning_required: bool = False
     confidence: float = 1.0
-    tokens: Optional[dict] = None
-    model: Optional[str] = None
-    system_query: bool = False
-    query_category: str = "PUBLIC_INFORMATION"  # "PUBLIC_INFORMATION", "PERSONAL_INFORMATION", "BUSINESS_INFORMATION", "SYSTEM_INFORMATION"
+    query_category: str = "PUBLIC_INFORMATION"
+
+    def to_dict(self) -> dict:
+        return {
+            "domains": list(self.domains),
+            "execution_shape": self.execution_shape,
+            "operations": list(self.operations),
+            "candidate_actions": self.candidate_actions,
+            "allowed_actions": self.allowed_actions,
+            "approval_policy": self.approval_policy,
+            "risk_level": self.risk_level,
+            "planning_required": self.planning_required,
+            "confidence": self.confidence,
+            "query_category": self.query_category
+        }
+
+
+class IntentPacket:
+    """Carries the output of the query intent classifier."""
 
     def __init__(
         self,
-        allowed_departments: Optional[List[str]] = None,
-        allowed_actions: Optional[List[str]] = None,
+        lookup: bool = False,
+        research: bool = False,
+        generate: bool = False,
+        execute: bool = False,
+        websearch: bool = False,
+        writer: bool = False,
         execution_mode: str = "READ_ONLY",
         confidence: float = 1.0,
+        allowed_departments: Optional[list[str]] = None,
+        allowed_actions: Optional[list[str]] = None,
+        candidate_actions: Optional[list[str]] = None,
         tokens: Optional[dict] = None,
         model: Optional[str] = None,
         system_query: bool = False,
         query_category: str = "PUBLIC_INFORMATION",
-        topology_source: str = "INTERNAL",
+        topology_source: str = "EXTERNAL",
         topology_mode: str = "LOOKUP",
         mutation_type: str = "NONE",
-        domain: str = "BABU_SYSTEM",
+        domain: str = "USER",
         surface: str = "SYSTEM",
         planning_required: bool = False,
-        # Legacy keyword args for compatibility
-        lookup: Optional[bool] = None,
-        research: Optional[bool] = None,
-        generate: Optional[bool] = None,
-        execute: Optional[bool] = None,
-        websearch: Optional[bool] = None,
-        writer: Optional[bool] = None,
-        **kwargs
-    ):
+        demand_domains: Optional[set[str] | list[str]] = None,
+        execution_shape: Optional[str] = None,
+        approval_policy: Optional[str] = None,
+        risk_level: Optional[str] = None,
+    ) -> None:
         self.execution_mode = execution_mode
         self.confidence = confidence
-        self.tokens = tokens
+        self.tokens = tokens or {"prompt": 0, "completion": 0, "total": 0}
         self.model = model
         self.system_query = system_query
         self.query_category = query_category
@@ -92,22 +152,29 @@ class IntentPacket:
         self.surface = surface
         self.planning_required = planning_required
 
-        if allowed_departments is not None:
-            self.allowed_departments = allowed_departments
+        # Resolve ADR-101 Authorized Domains Set (USER | SYSTEM | BUSINESS)
+        if demand_domains:
+            self.demand_domains = set(demand_domains) & VALID_DOMAINS
+            if not self.demand_domains:
+                self.demand_domains = {"USER"}
         else:
-            depts = ["pa"]
-            if lookup or websearch:
-                depts.extend(["information", "execution"])
-            if research:
-                depts.extend(["research", "information", "execution"])
-            if generate or writer:
-                depts.extend(["analysis", "writing"])
-            if execute:
-                depts.extend(["execution"])
-            self.allowed_departments = list(dict.fromkeys(depts))
+            resolved = set()
+            if query_category == "PERSONAL_INFORMATION" or domain == "USER":
+                resolved.add("USER")
+            if query_category == "SYSTEM_INFORMATION" or domain in ("SYSTEM", "BABU_SYSTEM"):
+                resolved.add("SYSTEM")
+            if query_category == "BUSINESS_INFORMATION" or domain in ("BUSINESS", "META", "TAX_COMPLIANCE"):
+                resolved.add("BUSINESS")
+            if not resolved:
+                # Default to USER for operator queries, BUSINESS for client queries
+                resolved = {"USER"}
+            self.demand_domains = resolved
 
-        if allowed_actions is not None:
-            self.allowed_actions = allowed_actions
+        # Candidate actions from classifier
+        if candidate_actions is not None:
+            self.candidate_actions = candidate_actions
+        elif allowed_actions is not None:
+            self.candidate_actions = allowed_actions
         else:
             actions = []
             if execute:
@@ -115,28 +182,85 @@ class IntentPacket:
                     "send_email", "create_event", "log_to_sheet", "create_doc", 
                     "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
                     "send_slack", "create_task", "search_image", "search_gmail",
-                    "post_to_facebook", "generate_image", "upload_to_drive"
+                    "post_to_facebook", "generate_image", "upload_to_drive",
+                    "read_facebook_comments", "read_facebook_posts", "reply_facebook_comment",
+                    "crm_query_leads", "crm_book_appointment", "crm_update_lead", "crm_schedule_followup"
                 ]
             else:
-                actions = ["search_sheet", "search_gmail"]
-            self.allowed_actions = actions
+                actions = ["search_sheet", "search_gmail", "read_facebook_comments", "read_facebook_posts"]
+            self.candidate_actions = actions
 
-        # Align allowed_departments with allowed_actions: if any execution actions are specified, ensure "execution" is in allowed_departments
-        _execution_actions = {
-            "send_email", "create_event", "log_to_sheet", "create_doc", 
-            "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
-            "send_slack", "create_task", "search_image", "search_gmail",
-            "post_to_facebook", "generate_image", "upload_to_drive"
-        }
-        if any(act in self.allowed_actions for act in _execution_actions):
-            if "execution" not in self.allowed_departments:
-                self.allowed_departments = list(self.allowed_departments) + ["execution"]
+        # Gatekeeper Authorizes Actions: candidate_actions -> domain authorization filter
+        self.allowed_actions = derive_authorized_actions(self.demand_domains, self.candidate_actions)
 
-        # If mutating execution actions that require drafting/content generation are allowed, ensure "writing" is allowed
-        _drafting_actions = {"send_email", "create_doc", "post_to_facebook", "generate_image"}
-        if any(act in self.allowed_actions for act in _drafting_actions):
-            if "writing" not in self.allowed_departments:
-                self.allowed_departments = list(self.allowed_departments) + ["writing"]
+        # Resolve ADR-101 Execution Shape: CLASS_A (LOOKUP), CLASS_B (LOOKUP+ACTION), CLASS_C (COMPOSED)
+        if execution_shape:
+            self.execution_shape = execution_shape
+        else:
+            if planning_required or len(self.demand_domains) > 1:
+                self.execution_shape = "CLASS_C"
+            elif execute or any(act in self.allowed_actions for act in ("send_email", "create_event", "create_doc", "post_to_facebook", "reply_facebook_comment", "crm_book_appointment", "crm_update_lead", "delete_document", "delete_spreadsheet")):
+                self.execution_shape = "CLASS_B"
+            else:
+                self.execution_shape = "CLASS_A"
+
+        # Resolve Risk Level & Mutation Approval Policy
+        destructive_actions = {"delete_document", "delete_spreadsheet", "delete_event", "mass_update", "bulk_delete"}
+        if risk_level:
+            self.risk_level = risk_level
+        else:
+            if any(act in self.allowed_actions for act in destructive_actions):
+                self.risk_level = "HIGH"
+            elif self.execution_shape in ("CLASS_B", "CLASS_C") and self.execute:
+                self.risk_level = "MEDIUM"
+            else:
+                self.risk_level = "LOW"
+
+        if approval_policy:
+            self.approval_policy = approval_policy
+        else:
+            if self.risk_level == "HIGH":
+                self.approval_policy = "DOUBLE_CONFIRMATION"
+            elif any(act in self.allowed_actions for act in ("reply_facebook_comment", "crm_book_appointment")):
+                self.approval_policy = "AUTO"  # Autonomous Meta/CRM responses
+            elif self.execute:
+                self.approval_policy = "APPROVAL_REQUIRED"
+            else:
+                self.approval_policy = "AUTO"
+
+        if allowed_departments is not None:
+            self.allowed_departments = allowed_departments
+        else:
+            depts = ["pa"]
+            if lookup or websearch or self.execution_shape == "CLASS_A":
+                depts.extend(["information", "execution"])
+            if research or self.execution_shape == "CLASS_C":
+                depts.extend(["research", "information", "execution"])
+            if generate or writer:
+                depts.extend(["analysis", "writing"])
+            if execute or self.execution_shape in ("CLASS_B", "CLASS_C"):
+                depts.extend(["execution"])
+            self.allowed_departments = list(dict.fromkeys(depts))
+
+    @property
+    def demand_packet(self) -> DemandPacket:
+        ops = {"LOOKUP"}
+        if self.execution_shape == "CLASS_B":
+            ops.add("ACTION")
+        elif self.execution_shape == "CLASS_C":
+            ops.update({"ACTION", "COMPOSED"})
+        return DemandPacket(
+            domains=self.demand_domains,
+            execution_shape=self.execution_shape,
+            operations=ops,
+            candidate_actions=self.candidate_actions,
+            allowed_actions=self.allowed_actions,
+            approval_policy=self.approval_policy,
+            risk_level=self.risk_level,
+            confidence=self.confidence,
+            planning_required=self.planning_required,
+            query_category=self.query_category
+        )
 
     @property
     def lookup(self) -> bool:
@@ -155,7 +279,8 @@ class IntentPacket:
         mutating_actions = {
             "send_email", "create_event", "log_to_sheet", "create_doc", 
             "copy_photos_to_drive", "copy_contacts_to_drive", 
-            "send_slack", "create_task", "post_to_facebook", "upload_to_drive"
+            "send_slack", "create_task", "post_to_facebook", "upload_to_drive",
+            "reply_facebook_comment", "crm_book_appointment", "crm_update_lead", "crm_schedule_followup"
         }
         return any(act in self.allowed_actions for act in mutating_actions)
 
@@ -179,6 +304,7 @@ class IntentPacket:
             "confidence": self.confidence,
             "allowed_departments": self.allowed_departments,
             "allowed_actions": self.allowed_actions,
+            "candidate_actions": self.candidate_actions,
             "tokens": self.tokens,
             "model": self.model,
             "system_query": self.system_query,
@@ -189,6 +315,11 @@ class IntentPacket:
             "domain": self.domain,
             "surface": self.surface,
             "planning_required": self.planning_required,
+            "demand_domains": list(self.demand_domains),
+            "execution_shape": self.execution_shape,
+            "approval_policy": self.approval_policy,
+            "risk_level": self.risk_level,
+            "demand_packet": self.demand_packet.to_dict()
         }
 
     @classmethod
@@ -215,10 +346,12 @@ class IntentPacket:
                     "send_email", "create_event", "log_to_sheet", "create_doc", 
                     "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
                     "send_slack", "create_task", "search_image", "search_gmail",
-                    "post_to_facebook", "generate_image"
+                    "post_to_facebook", "generate_image", "upload_to_drive",
+                    "read_facebook_comments", "read_facebook_posts", "reply_facebook_comment",
+                    "crm_query_leads", "crm_book_appointment", "crm_update_lead", "crm_schedule_followup"
                 ]
             else:
-                allowed_actions = ["search_sheet", "search_gmail"]
+                allowed_actions = ["search_sheet", "search_gmail", "read_facebook_comments", "read_facebook_posts"]
 
         return cls(
             allowed_departments=allowed_depts,
@@ -234,7 +367,11 @@ class IntentPacket:
             mutation_type=data.get("mutation_type", "EXTERNAL" if data.get("execute") else "NONE"),
             domain=data.get("domain", "META" if "facebook" in str(allowed_actions) else ("GOOGLE" if any(act in str(allowed_actions) for act in ("gmail", "sheet", "drive", "event")) else "GENERAL")),
             surface=data.get("surface", "SYSTEM"),
-            planning_required=data.get("planning_required", True if data.get("execute") and data.get("lookup") else False)
+            planning_required=data.get("planning_required", True if data.get("execute") and data.get("lookup") else False),
+            demand_domains=data.get("demand_domains") or data.get("domains") or ([data.get("demand_domain")] if data.get("demand_domain") else None),
+            execution_shape=data.get("execution_shape"),
+            approval_policy=data.get("approval_policy"),
+            risk_level=data.get("risk_level")
         )
 
 INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
@@ -379,6 +516,20 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
             tokens={"prompt": 0, "completion": 0, "total": 0},
             model="rules_engine",
             query_category="PERSONAL_INFORMATION" if _force_lookup or "my" in t else "PUBLIC_INFORMATION",
+        )
+
+    # 1c. Ambiguous / Vague directive gate -> trigger low-confidence clarification
+    _vague_patterns = ("take care of this", "handle it", "you know what to do", "do the thing", "do this thing", "take care of that")
+    if any(p in t for p in _vague_patterns) and not any(k in t for k in ("email", "mail", "post", "facebook", "doc", "sheet", "drive", "lead", "appointment", "event", "task")):
+        return IntentPacket(
+            allowed_departments=["pa"],
+            allowed_actions=[],
+            execution_mode="READ_ONLY",
+            confidence=0.4,
+            tokens={"prompt": 0, "completion": 0, "total": 0},
+            model="clarification_gate",
+            query_category="PUBLIC_INFORMATION",
+            planning_required=False
         )
 
     # 2. LLM-based robust classification

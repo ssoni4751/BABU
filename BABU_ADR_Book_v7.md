@@ -97,5 +97,28 @@
 
 ---
 
-*BABU ADR Book Volume 7 — Published August 2026*
+## ADR-101: Tri-Domain Execution Shape & Capability Demand Router
+* **Status:** Accepted / Live in Production
+* **Context:** Based on the notebook architectural blueprint and the core separation principle (*Understanding $\neq$ Authorization $\neq$ Execution*), the system needed a lean, deterministic demand model that hard-partitions execution capability domains and streamlines workflow shapes without dynamic planner bloat.
+* **Decision:**
+  1. **Strict Tri-Domain Partitioning:** Every operational demand authorizes one or more explicit domains: `{"USER", "SYSTEM", "BUSINESS"}`. No ambiguous pseudo-domains (e.g. `GENERAL`) are permitted in authorized sets.
+  2. **Three Execution Shapes:**
+     * **Class A (Pure LOOKUP):** Read-only single retrieval ($<0.05$s, zero LLM dynamic planning).
+     * **Class B (LOOKUP + ACTION):** Fetch + linear mutation (governed by capability policy).
+     * **Class C (COMPOSED / MULTI-STEP):** Composed DAG workflows or multi-domain operations.
+  3. **Domain-Grounded Action Invariant:**
+     $$\text{Authorized Actions} = \text{Candidate Actions} \cap \text{DOMAIN\_ACTIONS\_REGISTRY}[\text{Authorized Domains}] \cap \text{Universal Read Helpers}$$
+     *The Gatekeeper deterministically rejects any action whose declared capability domain is not authorized by the DemandPacket.*
+  4. **Policy-Driven Mutation Approvals:** Decoupled risk from execution shape:
+     * `AUTO`: Autonomous lead qualification, Facebook comments/DMs, slot querying.
+     * `APPROVAL_REQUIRED`: Operator-originated external mutating actions (email, tasks).
+     * `DOUBLE_CONFIRMATION`: High-risk / destructive actions (`delete_document`, `bulk_delete`).
+  5. **Classifier Demand vs. Gatekeeper Authority Separation:**
+     * **Classifier:** Infers demand intent and proposes `candidate_actions`.
+     * **Gatekeeper:** Deterministically enforces domain authorization and derives `allowed_actions`.
+  6. **Closed-Loop Execution Lifecycle:** Execute action $\rightarrow$ Notify User $\rightarrow$ Auto-Save Template into Muscle Memory ($E[\text{Temp}]$) $\rightarrow$ Commit to Ledger & Timeline.
+* **Consequences:** Eliminates tool hallucination, prevents cross-domain capability leakage, optimizes query latency, and ensures total operational auditability.
 
+---
+
+*BABU ADR Book Volume 7 — Published August 2026*

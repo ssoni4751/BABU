@@ -22,10 +22,29 @@ except ImportError:
     from memory import get_anti_pattern_rules
     from google_service import is_google_configured
     from governance import get_constitution
+DOMAIN_ACTIONS_REGISTRY = {
+    "USER": {
+        "send_email", "search_profile", "search_gmail", "search_sheet", "create_doc", 
+        "create_event", "create_task", "upload_to_drive", "copy_photos_to_drive", 
+        "copy_contacts_to_drive", "delete_document", "delete_spreadsheet", "delete_event"
+    },
+    "SYSTEM": {
+        "system_status", "system_diagnostics", "memory_stats", "model_info", "clear_memory"
+    },
+    "BUSINESS": {
+        "read_facebook_comments", "read_facebook_posts", "reply_facebook_comment", 
+        "post_to_facebook", "generate_image", "crm_query_leads", "crm_book_appointment", 
+        "crm_update_lead", "crm_schedule_followup", "crm_cancel_appointment", "log_to_sheet", "send_slack"
+    }
+}
+
+VALID_DOMAINS = {"USER", "SYSTEM", "BUSINESS"}
+
+
 def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]]:
-    """Dynamically resolve allowed departments and allowed actions based on intent packet."""
+    """Dynamically resolve allowed departments and allowed actions based on ADR-101 domain authorization."""
     allowed_depts = intent_packet_dict.get("allowed_departments")
-    allowed_actions = intent_packet_dict.get("allowed_actions")
+    raw_actions = intent_packet_dict.get("candidate_actions") or intent_packet_dict.get("allowed_actions")
 
     if allowed_depts is None:
         # Fallback to reconstructing from legacy boolean flags for backward compatibility
@@ -40,21 +59,36 @@ def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]
             allowed_depts.extend(["execution"])
         allowed_depts = list(dict.fromkeys(allowed_depts))
 
-    if allowed_actions is None:
+    if raw_actions is None:
         if intent_packet_dict.get("execute"):
-            allowed_actions = [
+            raw_actions = [
                 "send_email", "create_event", "log_to_sheet", "create_doc", 
                 "search_sheet", "copy_photos_to_drive", "copy_contacts_to_drive", 
                 "send_slack", "create_task", "search_image", "search_gmail",
-                "post_to_facebook", "generate_image"
+                "post_to_facebook", "generate_image", "upload_to_drive",
+                "read_facebook_comments", "read_facebook_posts", "reply_facebook_comment",
+                "crm_query_leads", "crm_book_appointment", "crm_update_lead", "crm_schedule_followup"
             ]
         else:
-            allowed_actions = ["search_sheet", "search_gmail"]
+            raw_actions = ["search_sheet", "search_gmail", "read_facebook_comments", "read_facebook_posts"]
+
+    # ADR-101: Derive authorized actions from demand domains
+    domains = intent_packet_dict.get("demand_domains") or intent_packet_dict.get("domains")
+    if isinstance(domains, str):
+        domains = [domains]
+    domain_set = (set(domains) if domains else {"USER"}) & VALID_DOMAINS
+    if not domain_set:
+        domain_set = {"USER"}
+
+    authorized_registry = set()
+    for d in domain_set:
+        authorized_registry.update(DOMAIN_ACTIONS_REGISTRY.get(d, set()))
+    authorized_registry.update({"search_sheet", "search_gmail", "search_image", "web_search", "wikipedia_search"})
+
+    allowed_actions = [act for act in raw_actions if act in authorized_registry]
 
     allowed_depts_set = set(allowed_depts)
     allowed_depts_set.add("pa")
-    # Dynamically allow all helper non-mutating departments so the gatekeeper
-    # permits dynamically planned helper/reasoning/synthesis tasks.
     allowed_depts_set.update({"information", "research", "analysis", "writing", "pa"})
     return allowed_depts_set, set(allowed_actions)
 
@@ -62,9 +96,9 @@ def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]
 def get_service_class(action: str) -> str:
     """Classify execution action into Service Class A, B, or C according to V2 Vision Draft."""
     # Class A: Read-only services (Auto Approved)
-    class_a = {"search_sheet", "search_gmail", "search_image", "web_search", "wikipedia_search"}
+    class_a = {"search_sheet", "search_gmail", "search_image", "web_search", "wikipedia_search", "read_facebook_comments", "read_facebook_posts", "crm_query_leads", "system_status", "system_diagnostics", "memory_stats", "model_info"}
     # Class C: Destructive services (Preview -> Approval -> Confirmation -> Execute)
-    class_c = {"delete_document", "delete_spreadsheet", "delete_event", "mass_update", "bulk_delete"}
+    class_c = {"delete_document", "delete_spreadsheet", "delete_event", "mass_update", "bulk_delete", "clear_memory", "crm_cancel_appointment"}
     
     if action in class_a:
         return "A"
@@ -79,7 +113,7 @@ class PreExecutionGatekeeper:
     """Deterministic, rules-based checks. Executes at Layer 5 before task dispatch."""
 
     def __init__(self) -> None:
-        # Supported Google Workspace execution actions
+        # Supported Google Workspace and Meta/CRM execution actions
         self.supported_actions = {
             "send_email",
             "create_event",
@@ -98,12 +132,24 @@ class PreExecutionGatekeeper:
             "reply_facebook_comment",
             "generate_image",
             "upload_to_drive",
+            # CRM Desk Actions
+            "crm_query_leads",
+            "crm_book_appointment",
+            "crm_update_lead",
+            "crm_schedule_followup",
+            "crm_cancel_appointment",
+            # System Diagnostic Actions
+            "system_status",
+            "system_diagnostics",
+            "memory_stats",
+            "model_info",
             # Class C Destructive actions
             "delete_document",
             "delete_spreadsheet",
             "delete_event",
             "mass_update",
-            "bulk_delete"
+            "bulk_delete",
+            "clear_memory"
         }
 
     def audit(self, task: TaskDTO) -> Tuple[bool, str]:
@@ -137,8 +183,25 @@ class PreExecutionGatekeeper:
             # Check actions for execution tasks
             if dept == "execution":
                 action = task.context.get("action")
+                if not action:
+                    return False, f"Blocked: Execution task '{task.task_id}' missing declared 'action' in context."
+                    
+                # ADR-101: Domain authorization invariant
+                domains = intent_packet_dict.get("demand_domains") or intent_packet_dict.get("domains")
+                if isinstance(domains, str):
+                    domains = [domains]
+                domain_set = (set(domains) if domains else {"USER"}) & VALID_DOMAINS
+                
+                authorized_registry = set()
+                for d in domain_set:
+                    authorized_registry.update(DOMAIN_ACTIONS_REGISTRY.get(d, set()))
+                authorized_registry.update({"search_sheet", "search_gmail", "search_image", "web_search", "wikipedia_search"})
+                
+                if action not in authorized_registry:
+                    return False, f"Blocked: Action '{action}' is not authorized under declared demand domains {domain_set} (ADR-101 Domain Invariant)."
+                
                 if action not in allowed_actions:
-                    return False, f"Blocked: Task '{task.task_id}' attempts physical execution action '{action}', which is strictly prohibited under current intent capability boundaries."
+                    return False, f"Blocked: Action '{action}' is not in allowed_actions list for task '{task.task_id}'."
 
         if dept == "execution":
             action = task.context.get("action")

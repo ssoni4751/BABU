@@ -1163,5 +1163,70 @@ def execute_google_action(action: str, params: dict) -> tuple[bool, str]:
         except Exception as e:
             return False, f"Failed to reply to Facebook comment: {e}"
 
+    elif action in ("crm_query_leads", "get_crm_leads"):
+        limit = int(params.get("limit", 10))
+        try:
+            try:
+                from .crm_service import get_crm_pipeline_data
+            except ImportError:
+                from crm_service import get_crm_pipeline_data
+            data = get_crm_pipeline_data(limit=limit)
+            leads = data.get("leads", [])
+            lead_summary = "\n".join([f"• [{l.get('lead_id')}] {l.get('name')} ({l.get('service_interest')}) - Stage: {l.get('funnel_stage')}" for l in leads])
+            return True, f"Active Leads ({len(leads)}):\n{lead_summary}" if leads else "No active leads found in CRM."
+        except Exception as e:
+            return False, f"Failed to query CRM leads: {e}"
+
+    elif action in ("crm_book_appointment", "commit_crm_appointment"):
+        lead_id = params.get("lead_id", "")
+        date_str = params.get("date", params.get("date_str", ""))
+        time_str = params.get("time", params.get("time_str", ""))
+        purpose = params.get("purpose", "General Consultation")
+        notes = params.get("notes", "Booked via BABU")
+        if not lead_id or not date_str or not time_str:
+            return False, "Missing 'lead_id', 'date', or 'time' parameter to book appointment."
+        try:
+            try:
+                from .crm_service import commit_crm_appointment
+            except ImportError:
+                from crm_service import commit_crm_appointment
+            res = commit_crm_appointment(lead_id, date_str, time_str, purpose=purpose, notes=notes)
+            if res.get("status") == "SUCCESS":
+                return True, f"Appointment successfully booked for Lead {lead_id} on {date_str} at {time_str}."
+            else:
+                return False, f"Failed to book appointment: {res.get('error', res.get('reason'))}"
+        except Exception as e:
+            return False, f"Exception while booking appointment: {e}"
+
+    elif action in ("crm_update_lead", "update_lead_funnel"):
+        lead_id = params.get("lead_id", "")
+        stage = params.get("stage", params.get("funnel_stage", params.get("status", "")))
+        notes = params.get("notes")
+        if not lead_id or not stage:
+            return False, "Missing 'lead_id' or 'stage' parameter to update lead."
+        try:
+            try:
+                from .crm_service import update_lead_funnel_stage
+            except ImportError:
+                from crm_service import update_lead_funnel_stage
+            ok = update_lead_funnel_stage(lead_id, stage.upper(), notes=notes)
+            if ok:
+                return True, f"Lead {lead_id} status updated to {stage.upper()}."
+            else:
+                return False, f"Could not update lead {lead_id}."
+        except Exception as e:
+            return False, f"Exception updating lead: {e}"
+
+    elif action in ("system_status", "system_diagnostics", "memory_stats"):
+        try:
+            try:
+                from .memory import get_runtime_stats
+            except ImportError:
+                from memory import get_runtime_stats
+            stats = get_runtime_stats(limit=20)
+            return True, f"System Diagnostic Snapshot:\n• Routing Events: {stats.get('routing_events')}\n• Workflows: {stats.get('workflow_events')}\n• Success Rate: {int(stats.get('success_rate', 0)*100)}%\n• Avg Latency: {stats.get('avg_latency_seconds')}s"
+        except Exception as e:
+            return False, f"Failed to fetch system stats: {e}"
+
     else:
         return False, f"Action `{action}` is not natively supported in direct Google Workspace integration."
