@@ -471,9 +471,11 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
     # unavailable.  High-confidence execution classes are therefore identified
     # before the optional semantic classifier runs.
     detected_action = None
-    if ("facebook" in t or "fb" in t) and ("comment" in t or "comments" in t or "feed" in t or "activity" in t):
+    _fb_markers = ("facebook", "faceook", "fb", "meta", "page")
+    _has_fb = any(m in t for m in _fb_markers)
+    if _has_fb and any(k in t for k in ("comment", "comments", "feed", "activity", "review", "reviews")):
         detected_action = "read_facebook_comments"
-    elif ("facebook" in t or "fb" in t) and ("post" in t or "posts" in t) and any(kw in t for kw in ("check", "read", "fetch", "get", "recent", "list", "latest", "show")):
+    elif _has_fb and any(k in t for k in ("post", "posts", "update", "updates", "wall")) and any(kw in t for kw in ("check", "read", "fetch", "get", "recent", "list", "latest", "show")):
         detected_action = "read_facebook_posts"
     elif "send" in t and ("email" in t or "mail" in t):
         detected_action = "send_email"
@@ -481,13 +483,14 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
         detected_action = "create_event"
     elif "create" in t and ("document" in t or "doc" in t):
         detected_action = "create_doc"
-    elif "facebook" in t and ("post" in t or "publish" in t):
+    elif _has_fb and any(kw in t for kw in ("post", "publish", "share", "upload")):
         detected_action = "post_to_facebook"
     elif ("save" in t or "upload" in t) and ("drive" in t or "google drive" in t or "report" in t):
         detected_action = "upload_to_drive"
 
     if detected_action:
         is_read_action = detected_action in ("read_facebook_comments", "read_facebook_posts", "search_sheet", "search_gmail")
+        is_fb_action = "facebook" in detected_action
         scheduled = any(marker in t for marker in ("scheduled", "daily", "automatically", "background"))
         try:
             from babu.bot import is_system_aware_query
@@ -495,6 +498,7 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
             from bot import is_system_aware_query
         
         is_sys = is_system_aware_query(query)
+        target_domain = "SYSTEM" if is_sys else ("BUSINESS" if is_fb_action else "USER")
         packet = IntentPacket(
             allowed_departments=["information", "writing", "execution", "pa"],
             allowed_actions=[detected_action],
@@ -502,14 +506,18 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
             confidence=0.95,
             tokens={"prompt": 0, "completion": 0, "total": 0},
             model="rules_engine",
-            query_category="SYSTEM_INFORMATION" if is_sys else ("PERSONAL_INFORMATION" if _force_lookup else "PUBLIC_INFORMATION"),
+            query_category="SYSTEM_INFORMATION" if is_sys else ("BUSINESS_INFORMATION" if is_fb_action else ("PERSONAL_INFORMATION" if _force_lookup else "PUBLIC_INFORMATION")),
             system_query=is_sys,
             topology_source="EXTERNAL",
             topology_mode="LOOKUP" if is_read_action else "ACTION",
             mutation_type="NONE" if is_read_action else "EXTERNAL",
-            domain="META" if "facebook" in detected_action else "GOOGLE",
-            surface="PAGE" if "facebook" in detected_action else "SYSTEM",
-            planning_required=False
+            domain=target_domain,
+            surface="PAGE" if is_fb_action else "SYSTEM",
+            planning_required=False,
+            demand_domains={target_domain},
+            execution_shape="CLASS_A" if is_read_action else "CLASS_B",
+            risk_level="LOW" if is_read_action else "MEDIUM",
+            approval_policy="AUTO" if is_read_action else ("AUTO" if scheduled else "APPROVAL_REQUIRED")
         )
         if is_sys and not is_read_action:
             packet.execution_mode = "APPROVAL_REQUIRED"
