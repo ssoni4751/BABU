@@ -1430,6 +1430,13 @@ def generate_conversational_dm_response(sender_id: str, user_text: str) -> str:
         # 2. Deterministic Funnel & Appointment Handling
         booking_status_instruction = ""
         
+        # Check for Identity / "Who are you" query
+        is_identity_query = any(k in user_text.lower() for k in (
+            "who are you", "who r u", "who is this", "tum kaun ho", "aap kaun ho",
+            "kaun ho", "kisse baat", "bot ho", "human ho", "apna intro", "introduce yourself",
+            "kya ho", "what are you", "whom am i talking"
+        ))
+
         # Case A: Unsupported / Out-of-Scope Services (e.g. Aadhaar Correction)
         if service == "Unsupported":
             update_lead_funnel_stage(lead_id, "UNSUPPORTED_INQUIRY", f"Customer inquired for unsupported service: {user_text[:60]}")
@@ -1489,23 +1496,25 @@ def generate_conversational_dm_response(sender_id: str, user_text: str) -> str:
                         booking_status_instruction = "Apologize and inform them there was a temporary system delay. Ask them to confirm if they can visit at that time or call/WhatsApp +91 7217646673."
 
         # Case C: Supported Service Inquiry (No timing yet) -> Document Checklist & Offer Booking
-        elif service in ("PF", "ITR", "GST", "General") and service != "General":
+        elif service in ("PF", "ITR", "GST", "General") and service != "General" and not is_identity_query:
             update_lead_funnel_stage(lead_id, "SERVICE_IDENTIFIED", f"Customer identified service: {service}")
             booking_status_instruction = (
                 f"The customer is inquiring about {service}. Provide the required document checklist for {service}. "
                 "Ask what day and time (Monday to Saturday, 11:00 AM to 6:00 PM) they would like to visit our Kaushal Market, Rath Road, Orai office to schedule their consultation."
             )
         
-        # Case D: General Discovery / Catalog Presentation
+        # Case D: Identity Query ("Who are you?") or General Discovery
         else:
-            update_lead_funnel_stage(lead_id, "DISCOVERY", "Presented service catalog")
+            update_lead_funnel_stage(lead_id, "DISCOVERY", "Presented identity and service catalog")
             booking_status_instruction = (
-                "Greet the customer warmly in their language. Show our authorized service catalog:\n"
+                "Introduce yourself clearly: 'I am JARVIS, the AI-Powered Social Media Manager of Mr. Shubham Swarnkar (Consultant) at Anshu Computer & Tax Consultancy, Orai.'\n"
+                "Explain what you can do (answer inquiries, explain document requirements, and book consultations with Mr. Shubham Swarnkar).\n"
+                "Present our 4 core service categories:\n"
                 "1️⃣ PF / EPFO (Advance Claim, Transfer, KYC, Joint Declaration, Settlement)\n"
                 "2️⃣ Income Tax (ITR-1, 2, 4 Filing, Tax Planning & Refund)\n"
                 "3️⃣ GST Services (Registration & GSTR-1/3B Monthly Filing)\n"
                 "4️⃣ Digital & E-Governance (MSME Udyam, Life Certificate, Passport, Sevayojan, PAN Card)\n"
-                "Ask which service they need assistance with today."
+                "Ask how you can assist them today."
             )
 
         # 3. Retrieve Selective Knowledge Slice (ADR-091/092)
@@ -1513,10 +1522,13 @@ def generate_conversational_dm_response(sender_id: str, user_text: str) -> str:
 
         # 4. Generate Final Natural Language Response
         sys_prompt = (
-            "You are JARVIS, the official AI Support Consultant for 'Anshu Computer & Tax Consultancy', Kaushal Market, Rath Road, Orai, UP.\n"
+            "You are JARVIS, the official AI-Powered Social Media Manager of Mr. Shubham Swarnkar (Consultant) at 'Anshu Computer & Tax Consultancy', Kaushal Market, Rath Road, Orai, UP.\n"
             f"Verified Business Facts:\n{k_slice}\n\n"
             f"CRM Workflow Direction:\n{booking_status_instruction}\n\n"
-            "Guidelines:\n"
+            "Identity Directives:\n"
+            "- When asked 'who are you' or introduced, state: 'I am JARVIS, the AI-Powered Social Media Manager of Mr. Shubham Swarnkar (Consultant) at Anshu Computer & Tax Consultancy.'\n"
+            "- Explain your role: assisting clients with tax, PF, GST, and e-governance queries, and scheduling in-office appointments with Mr. Shubham Swarnkar.\n"
+            "General Guidelines:\n"
             "- Reply in the SAME language as the customer (Hindi, Hinglish, or English).\n"
             "- Be friendly, professional, and helpful (2-4 sentences).\n"
             "- Plain text only, NO markdown asterisks (*) or bold symbols."
@@ -1546,22 +1558,28 @@ def generate_conversational_dm_response(sender_id: str, user_text: str) -> str:
                     "Our Authorized Services: 1) PF / EPFO Claim & KYC, 2) Income Tax (ITR) Filing, 3) GST Services, 4) Digital & MSME Udyam Services. "
                     "Please let us know which of these 4 services you need help with (Office: Kaushal Market, Orai, 11 AM - 6 PM Mon-Sat)."
                 )
+            elif is_identity_query:
+                reply = (
+                    "Namaste! I am JARVIS, the AI-Powered Social Media Manager of Mr. Shubham Swarnkar (Consultant) at Anshu Computer & Tax Consultancy, Kaushal Market, Orai. "
+                    "I can answer your queries and book consultations for: 1) PF / EPFO Services, 2) Income Tax (ITR) Filing, 3) GST Services, 4) Digital & MSME Services. "
+                    "How can I assist you today?"
+                )
             elif service in ("PF", "ITR", "GST"):
                 reply = (
                     f"Namaste! Thank you for contacting Anshu Computer & Tax Consultancy, Orai regarding {service}. "
                     "We are open Monday to Saturday from 11:00 AM to 6:00 PM at Kaushal Market, Rath Road, Orai. "
-                    "Please let us know your preferred day and time (11 AM - 6 PM) to schedule your consultation."
+                    "Please let us know your preferred day and time (11 AM - 6 PM) to schedule your consultation with Mr. Shubham Swarnkar."
                 )
             else:
                 reply = (
-                    "Namaste! Welcome to Anshu Computer & Tax Consultancy, Orai. "
-                    "Our Authorized Services: 1) PF / EPFO Consultancy, 2) Income Tax (ITR) Filing, 3) GST Services, 4) Digital & MSME Services. "
+                    "Namaste! I am JARVIS, AI Manager for Mr. Shubham Swarnkar at Anshu Computer & Tax Consultancy, Orai. "
+                    "Our Authorized Services: 1) PF / EPFO Services, 2) Income Tax (ITR) Filing, 3) GST Services, 4) Digital & MSME Services. "
                     "Which of these services can we assist you with today?"
                 )
         return reply
     except Exception as e:
         print(f"[DM RESPONSE ERROR] {e}", flush=True)
-        return "Namaste! Thank you for reaching out to Anshu Computer & Tax Consultancy, Kaushal Market, Orai. We are open Mon-Sat 11:00 AM to 6:00 PM for all PF, ITR, and GST services. How can we help you?"
+        return "Namaste! I am JARVIS, AI Manager of Mr. Shubham Swarnkar at Anshu Computer & Tax Consultancy, Kaushal Market, Orai. We are open Mon-Sat 11:00 AM to 6:00 PM for all PF, ITR, and GST services. How can we help you?"
 
 
 def generate_comment_reply(comment_text: str, sender_name: str) -> str:
@@ -1577,7 +1595,7 @@ def generate_comment_reply(comment_text: str, sender_name: str) -> str:
         k_slice = get_selective_knowledge_slice(service)
 
         sys_prompt = (
-            "You are JARVIS, replying publicly to a comment on an Anshu Computer & Tax Consultancy Facebook post.\n"
+            "You are JARVIS, the official AI-Powered Social Media Manager of Mr. Shubham Swarnkar (Consultant) at Anshu Computer & Tax Consultancy, Orai, replying publicly to a comment on a Facebook post.\n"
             f"Business Facts:\n{k_slice}\n\n"
             "Guidelines:\n"
             "- Reply in 1-2 polite, helpful sentences in the same language as the commenter (Hindi/Hinglish/English).\n"
