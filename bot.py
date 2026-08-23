@@ -5040,9 +5040,9 @@ class HealthHandler(BaseHTTPRequestHandler):
                     except ImportError:
                         from crm_service import get_crm_pipeline_data
                     crm_data = get_crm_pipeline_data(limit=100)
-                    body = json.dumps(crm_data).encode("utf-8")
+                    body = json.dumps(crm_data, ensure_ascii=False).encode("utf-8")
                     self.send_response(200)
-                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
                     self._cors()
                     self.end_headers()
                     self.wfile.write(body)

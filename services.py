@@ -319,6 +319,7 @@ def get_db_connection():
                     url = url.replace("postgres://", "postgresql://", 1)
                 try:
                     conn = psycopg2.connect(url, connect_timeout=2)
+                    conn.set_client_encoding('UTF8')
                     _PG_FAILED = False
                     return conn, True
                 except Exception as e:
