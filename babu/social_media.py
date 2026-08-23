@@ -1522,15 +1522,16 @@ def generate_conversational_dm_response(sender_id: str, user_text: str) -> str:
 
         # 4. Generate Final Natural Language Response
         sys_prompt = (
-            "You are JARVIS, the official AI-Powered Social Media Manager of Mr. Shubham Swarnkar (Consultant) at 'Anshu Computer & Tax Consultancy', Kaushal Market, Rath Road, Orai, UP.\n"
+            "You are JARVIS, the official AI-Powered Social Media Manager of Shubham Swarnkar (Consultant) at 'Anshu Computer & Tax Consultancy', Kaushal Market, Rath Road, Orai, UP.\n"
             f"Verified Business Facts:\n{k_slice}\n\n"
             f"CRM Workflow Direction:\n{booking_status_instruction}\n\n"
             "Language & Communication Directives:\n"
             "- DEFAULT LANGUAGE: Use natural, polite, daily-life Hindi in Devanagari script (सरल और सहज दैनिक बोलचाल की हिंदी) as your primary communication language.\n"
             "- LANGUAGE SWITCH OPTION: Offer the customer the option to switch to English if they prefer (e.g. 'आप चाहें तो बातचीत के लिए English भी चुन सकते हैं।').\n"
+            "- In Hindi, DO NOT use 'मिस्टर' or 'Mister'. Always refer to 'शुभम स्वर्णकार जी' or 'शुभम जी'.\n"
             "- If the user specifically writes entirely in English, respond in fluent, courteous English.\n"
-            "- Identity Directive: When asked who you are, introduce yourself: 'नमस्ते! मैं अंशु कंप्यूटर एंड टैक्स कंसल्टेंसी, उरई से मिस्टर शुभम स्वर्णकार (कंसल्टेंट) का AI सोशल मीडिया मैनेजर जार्विस (JARVIS) हूँ।'\n"
-            "- Explain your role: Assisting clients with PF, ITR, GST, and MSME/Digital services, and scheduling consultations with Mr. Shubham Swarnkar.\n"
+            "- Identity Directive: When asked who you are, introduce yourself: 'नमस्ते! मैं अंशु कंप्यूटर एंड टैक्स कंसल्टेंसी, उरई से शुभम स्वर्णकार जी (कंसल्टेंट) का AI सोशल मीडिया मैनेजर जार्विस (JARVIS) हूँ।'\n"
+            "- Explain your role: Assisting clients with PF, ITR, GST, and MSME/Digital services, and scheduling consultations with Shubham Swarnkar ji.\n"
             "- Plain text only, NO markdown asterisks (*) or bold symbols."
         )
 
@@ -1561,8 +1562,8 @@ def generate_conversational_dm_response(sender_id: str, user_text: str) -> str:
                 )
             elif is_identity_query:
                 reply = (
-                    "नमस्ते! मैं अंशु कंप्यूटर एंड टैक्स कंसल्टेंसी, कौशल मार्केट, उरई से मिस्टर शुभम स्वर्णकार (कंसल्टेंट) का AI सोशल मीडिया मैनेजर 'जार्विस' (JARVIS) हूँ। "
-                    "मैं आपके प्रश्नों के उत्तर देने और मिस्टर शुभम स्वर्णकार जी से अपॉइंटमेंट बुक करने में सहायता करता हूँ: "
+                    "नमस्ते! मैं अंशु कंप्यूटर एंड टैक्स कंसल्टेंसी, कौशल मार्केट, उरई से शुभम स्वर्णकार जी (कंसल्टेंट) का AI सोशल मीडिया मैनेजर 'जार्विस' (JARVIS) हूँ। "
+                    "मैं आपके प्रश्नों के उत्तर देने और शुभम स्वर्णकार जी से अपॉइंटमेंट बुक करने में सहायता करता हूँ: "
                     "1) PF / EPFO सेवाएं, 2) इनकम टैक्स (ITR) फाइलिंग, 3) GST सेवाएं, 4) MSME उद्यम व डिजिटल सेवाएं। "
                     "आज आपकी किस सेवा में सहायता कर सकता हूँ? (आप चाहें तो बातचीत के लिए English भी चुन सकते हैं।)"
                 )
@@ -1570,18 +1571,18 @@ def generate_conversational_dm_response(sender_id: str, user_text: str) -> str:
                 reply = (
                     f"नमस्ते! अंशु कंप्यूटर एंड टैक्स कंसल्टेंसी, उरई में {service} सेवा के लिए संपर्क करने हेतु धन्यवाद। "
                     "हमारा कार्यालय सोमवार से शनिवार सुबह 11:00 बजे से शाम 6:00 बजे तक कौशल मार्केट, राठ रोड, उरई में खुला है। "
-                    "मिस्टर शुभम स्वर्णकार जी से परामर्श के लिए आप किस दिन और समय आना चाहेंगे? (You can also reply in English.)"
+                    "शुभम स्वर्णकार जी से परामर्श के लिए आप किस दिन और समय आना चाहेंगे? (You can also reply in English.)"
                 )
             else:
                 reply = (
-                    "नमस्ते! मैं अंशु कंप्यूटर एंड टैक्स कंसल्टेंसी, उरई से मिस्टर शुभम स्वर्णकार जी का AI मैनेजर 'जार्विस' हूँ। "
+                    "नमस्ते! मैं अंशु कंप्यूटर एंड टैक्स कंसल्टेंसी, उरई से शुभम स्वर्णकार जी का AI मैनेजर 'जार्विस' हूँ। "
                     "हमारी प्रमुख सेवाएं: 1) PF / EPFO सेवाएं, 2) Income Tax (ITR) फाइलिंग, 3) GST सेवाएं, 4) MSME उद्यम व डिजिटल सेवाएं। "
                     "बताएं, आपकी किस सेवा में सहायता करें? (आप चाहें तो English में भी बातचीत कर सकते हैं।)"
                 )
         return reply
     except Exception as e:
         print(f"[DM RESPONSE ERROR] {e}", flush=True)
-        return "नमस्ते! मैं अंशु कंप्यूटर एंड टैक्स कंसल्टेंसी, उरई से मिस्टर शुभम स्वर्णकार जी का AI मैनेजर 'जार्विस' हूँ। हम सोमवार से शनिवार सुबह 11:00 से शाम 6:00 बजे तक उपलब्ध हैं। बताएं, हम आपकी क्या मदद कर सकते हैं? (You can also chat in English.)"
+        return "नमस्ते! मैं अंशु कंप्यूटर एंड टैक्स कंसल्टेंसी, उरई से शुभम स्वर्णकार जी का AI मैनेजर 'जार्विस' हूँ। हम सोमवार से शनिवार सुबह 11:00 से शाम 6:00 बजे तक उपलब्ध हैं। बताएं, हम आपकी क्या मदद कर सकते हैं? (You can also chat in English.)"
 
 
 def generate_comment_reply(comment_text: str, sender_name: str) -> str:
