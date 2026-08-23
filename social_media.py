@@ -1171,7 +1171,7 @@ def send_facebook_comment_reply(comment_id: str, message_text: str) -> tuple[boo
 
 
 def fetch_facebook_recent_comments(limit: int = 5) -> tuple[bool, str]:
-    """Fetch recent comments across Facebook Page posts using Meta Graph API."""
+    """Fetch recent comments across Facebook Page posts using Meta Graph API with full Devanagari/UTF-8 support."""
     page_id = os.environ.get("FACEBOOK_PAGE_ID")
     page_token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN")
     if not page_id or not page_token:
@@ -1179,12 +1179,13 @@ def fetch_facebook_recent_comments(limit: int = 5) -> tuple[bool, str]:
     
     url = f"https://graph.facebook.com/v19.0/{page_id}/feed"
     params = {
-        "fields": "id,message,created_time,comments{id,message,from,created_time}",
+        "fields": "id,message,created_time,from{id,name},comments{id,message,from{id,name},created_time}",
         "limit": limit,
         "access_token": page_token
     }
     try:
         resp = requests.get(url, params=params, timeout=12)
+        resp.encoding = "utf-8"
         if resp.status_code == 200:
             data = resp.json()
             posts = data.get("data", [])
@@ -1192,14 +1193,18 @@ def fetch_facebook_recent_comments(limit: int = 5) -> tuple[bool, str]:
             total_comments = 0
             for post in posts:
                 post_id = post.get("id")
-                post_msg = post.get("message", "Post")[:50]
+                post_msg = (post.get("message") or "Post")[:70]
                 comments_data = post.get("comments", {}).get("data", [])
                 if comments_data:
                     summary_lines.append(f"📌 **Post** `{post_id}` ('{post_msg}...'):")
                     for c in comments_data:
                         total_comments += 1
                         c_id = c.get("id")
-                        commenter = c.get("from", {}).get("name", "Customer")
+                        from_obj = c.get("from")
+                        if isinstance(from_obj, dict):
+                            commenter = from_obj.get("name") or from_obj.get("id") or "Customer"
+                        else:
+                            commenter = "Customer"
                         msg = c.get("message", "")
                         created = c.get("created_time", "")[:10]
                         summary_lines.append(f"  • **{commenter}** on {created} (ID: `{c_id}`): \"{msg}\"")
@@ -1215,7 +1220,7 @@ def fetch_facebook_recent_comments(limit: int = 5) -> tuple[bool, str]:
 
 
 def fetch_facebook_recent_posts(limit: int = 5) -> tuple[bool, str]:
-    """Fetch recent published posts from Facebook Page timeline."""
+    """Fetch recent published posts from Facebook Page timeline with full Devanagari/UTF-8 support."""
     page_id = os.environ.get("FACEBOOK_PAGE_ID")
     page_token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN")
     if not page_id or not page_token:
@@ -1229,6 +1234,7 @@ def fetch_facebook_recent_posts(limit: int = 5) -> tuple[bool, str]:
     }
     try:
         resp = requests.get(url, params=params, timeout=12)
+        resp.encoding = "utf-8"
         if resp.status_code == 200:
             posts = resp.json().get("data", [])
             if not posts:
@@ -1236,7 +1242,7 @@ def fetch_facebook_recent_posts(limit: int = 5) -> tuple[bool, str]:
             summary_lines = []
             for idx, p in enumerate(posts, 1):
                 p_id = p.get("id")
-                msg = p.get("message", "Image/Graphic Post")[:80]
+                msg = (p.get("message") or "Image/Graphic Post")[:80]
                 created = p.get("created_time", "")[:10]
                 summary_lines.append(f"{idx}. **Post ID** `{p_id}` ({created}): \"{msg}...\"")
             return True, f"Recent Published Posts on Facebook Page:\n\n" + "\n".join(summary_lines)

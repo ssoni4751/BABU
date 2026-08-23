@@ -1884,7 +1884,10 @@ def pa_node(state: BabuState):
                 "- 📌 **Post Summary**: Caption / ID / Date\n"
                 "- 💬 **Comments / Interactions**: List each comment (Author, Date, Comment Text)\n"
                 "- ⚡ **Actionable Prompt**: Briefly ask if the owner wants to reply or take action.\n"
-                "CRITICAL: Do NOT output academic research sections (Overview, Findings, Risks, Outlook, Recommendation). Keep it direct, clean, and operational."
+                "CRITICAL DEVANAGARI & LANGUAGE FIDELITY:\n"
+                "- Always preserve Hindi / Devanagari script for author names, post captions, and comment messages exactly as received in the source data. Do NOT translate Devanagari Hindi text to English.\n"
+                "- If an author name or ID is provided, show their exact name (e.g. Hindi or English). Do NOT replace author names with 'Unidentified customer' unless the source data literally lacks an author name.\n"
+                "- Do NOT output academic research sections (Overview, Findings, Risks, Outlook, Recommendation). Keep it direct, clean, and operational."
             )
         elif any(f in lowered_q for f in ("lead", "leads", "appointment", "appointments", "followup", "client", "crm", "customer", "pipeline")):
             style = (
