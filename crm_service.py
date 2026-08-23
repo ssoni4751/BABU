@@ -35,6 +35,20 @@ IST = timezone(timedelta(hours=5, minutes=30))
 # 1. Selective Knowledge Slice Retrieval (Zero Bulk Dumps - ADR-091/092)
 # ----------------------------------------------------------------------
 
+SUPPORTED_SERVICE_CATALOG: Dict[str, str] = {
+    "PF": "PF / EPFO Services (Advance Claim, Transfer, UAN Consolidation, KYC Correction, Joint Declaration, Settlement)",
+    "ITR": "Income Tax Return (ITR-1, 2, 4 Filing, Tax Planning, Refund Status)",
+    "GST": "GST Services (Registration, GSTR-1, GSTR-3B Monthly Filing, LUT, Notice Assistance)",
+    "General": "Digital & E-Governance (MSME Udyam Registration, Life Certificate / Jeevan Pramaan, Passport Application, Sevayojan Registration, PAN Card)"
+}
+
+UNSUPPORTED_SERVICE_KEYWORDS: List[str] = [
+    "aadhaar", "aadhar", "adhar", "uidai", "fingerprint", "biometric", "aadhaar update", "aadhaar correction",
+    "ration card", "rashan card", "driving license", "dl renewal", "dl apply", "driving licence",
+    "voter card correction", "voter id correction", "voter id update", "birth certificate", "death certificate"
+]
+
+
 def get_selective_knowledge_slice(service_category: str) -> str:
     """Return only service-relevant business facts and document requirements."""
     general_header = (
@@ -46,7 +60,19 @@ def get_selective_knowledge_slice(service_category: str) -> str:
     
     svc = (service_category or "General").upper()
     
-    if "PF" in svc:
+    if "UNSUPPORTED" in svc or "OUT_OF_SCOPE" in svc:
+        return (
+            f"{general_header}\n"
+            "SERVICE NOTICE (OUT OF SCOPE):\n"
+            "We DO NOT provide Aadhaar Card Correction / Biometric Update, Ration Card, or Driving License services.\n"
+            "Authorized Services We Provide:\n"
+            "1. 🏢 PF / EPFO Services (Advance Claim, Transfer, UAN Consolidation, KYC Correction, Joint Declaration, Settlement)\n"
+            "2. 📑 Income Tax Return (ITR-1, 2, 4 Filing, Tax Planning, Refund Status)\n"
+            "3. 💼 GST Services (Registration, GSTR-1, GSTR-3B Monthly Filing, LUT, Notice Assistance)\n"
+            "4. 🌐 Digital & E-Governance (MSME Udyam Registration, Life Certificate / Jeevan Pramaan, Passport Application, Sevayojan Registration, PAN Card)\n"
+            "Appointment Policy: In-office appointments can ONLY be booked for our 4 authorized services above."
+        )
+    elif "PF" in svc:
         return (
             f"{general_header}\n"
             "Service: PF Consultancy & Dispute Resolution\n"
@@ -62,7 +88,7 @@ def get_selective_knowledge_slice(service_category: str) -> str:
         return (
             f"{general_header}\n"
             "Service: Income Tax Return (ITR) Filing & Tax Advisory\n"
-            "Scope: Salaried/Business ITR Filing, Tax Computation, AIS/TIS Review, Tax Notice Assistance.\n"
+            "Scope: Salaried/Business ITR Filing (ITR-1, 2, 4), Tax Computation, AIS/TIS Review, Tax Notice Assistance.\n"
             "Required Documents for ITR:\n"
             "1. Form 16 (for salaried individuals)\n"
             "2. Bank Statements for the Financial Year\n"
@@ -81,18 +107,26 @@ def get_selective_knowledge_slice(service_category: str) -> str:
             "3. Bank Account Details / Cancelled Cheque\n"
             "4. Passport-size Photo"
         )
-    elif "PAN" in svc or "DOCUMENT" in svc or "CSC" in svc:
+    elif "GENERAL" in svc or "DIGITAL" in svc or "MSME" in svc or "CSC" in svc or "UDYAM" in svc or "PASSPORT" in svc:
         return (
             f"{general_header}\n"
-            "Service: PAN Card & Digital Documentation Services\n"
-            "Scope: New PAN Card, PAN-Aadhaar Linking, Jeevan Pramaan (Life Certificate for Pensioners), Digital Citizen Services.\n"
-            "Required Documents: Aadhaar Card with linked mobile number and 2 passport photos."
+            "Service: General Digital & E-Governance Services\n"
+            "Scope:\n"
+            "1. MSME Udyam Registration (for business loans & benefits)\n"
+            "2. Jeevan Pramaan (Digital Life Certificate for Pensioners)\n"
+            "3. Passport Online Application & Appointment\n"
+            "4. Sevayojan (Employment Portal) Registration & PAN Card\n"
+            "Required Documents: Aadhaar Card (with mobile linked), PAN Card, relevant scheme documents."
         )
     else:
         return (
             f"{general_header}\n"
-            "Services Offered: 1) PF Consultancy (Claims/KYC/UAN), 2) Income Tax Filing (ITR), 3) GST Registration & Filing, 4) Digital/CSC Services.\n"
-            "Appointment Policy: In-office visits at Kaushal Market, Orai between 11:00 AM and 6:00 PM (Mon-Sat)."
+            "Authorized Service Catalog:\n"
+            "1. 🏢 PF / EPFO Services (Advance Claim, KYC, Joint Declaration, Settlement)\n"
+            "2. 📑 Income Tax Filing (ITR-1, 2, 4, Refund, Tax Planning)\n"
+            "3. 💼 GST Registration & Monthly Filing (GSTR-1, GSTR-3B)\n"
+            "4. 🌐 Digital & E-Governance (MSME Udyam, Life Certificate, Passport, Sevayojan, PAN Card)\n"
+            "Office Timings: 11:00 AM to 6:00 PM (Monday to Saturday) at Kaushal Market, Rath Road, Orai."
         )
 
 
@@ -605,25 +639,32 @@ def update_lead_funnel_stage(lead_id: str, new_stage: str, notes: Optional[str] 
 
 
 def extract_lead_intent_and_service(text: str) -> Dict[str, Any]:
-    """Analyze inquiry text to detect service category, contact details, and appointment intent."""
+    """Analyze inquiry text to detect service category, unsupported flags, contact details, and appointment intent."""
     t_lower = text.lower()
     
+    # 0. Check for Unsupported / Out-of-Scope Services
+    is_unsupported = any(k in t_lower for k in (
+        "aadhaar", "aadhar", "adhar", "uidai", "biometric", "fingerprint", "aadhaar update", "aadhaar correction",
+        "ration card", "rashan card", "driving license", "dl renewal", "dl apply", "driving licence",
+        "voter card correction", "voter id correction", "voter id update", "birth certificate", "death certificate"
+    ))
+    
     # 1. Service Category
-    if any(k in t_lower for k in ("gst", "gstr", "eway", "e-way", "tax invoice", "lut")):
+    if is_unsupported:
+        service = "Unsupported"
+    elif any(k in t_lower for k in ("gst", "gstr", "eway", "e-way", "tax invoice", "lut")):
         service = "GST"
     elif any(k in t_lower for k in ("itr", "income tax", "tax return", "form 16", "26as", "ais", "tis", "tax audit")):
         service = "ITR"
-    elif any(k in t_lower for k in ("pf", "epf", "epfo", "uan", "pension", "provident", "19", "10c", "31")):
+    elif any(k in t_lower for k in ("pf", "epf", "epfo", "uan", "pension", "provident", "19", "10c", "31", "joint declaration", "claim", "passbook")):
         service = "PF"
-    elif any(k in t_lower for k in ("pan", "tan", "aadhaar", "pan card")):
-        service = "PAN/Documentation"
-    elif any(k in t_lower for k in ("account", "tally", "bookkeep", "ledger", "balance sheet")):
-        service = "Accounting"
+    elif any(k in t_lower for k in ("udyam", "msme", "jeevan pramaan", "life certificate", "passport", "sevayojan", "pan", "pan card")):
+        service = "General"
     else:
         service = "General"
 
     # 2. Appointment Intent & Urgency
-    is_appointment = any(k in t_lower for k in ("appointment", "book", "milna", "visit", "aana", "timing", "kab", "office", "consult", "kal", "parso"))
+    is_appointment = any(k in t_lower for k in ("appointment", "book", "milna", "visit", "aana", "timing", "kab", "office", "consult", "kal", "parso")) and not is_unsupported
     is_urgent = any(k in t_lower for k in ("urgent", "today", "aaj", "notice", "penalty", "last date", "deadline", "emergency", "freeze", "stuck"))
     
     urgency_score = 0.9 if is_urgent else (0.75 if is_appointment else 0.5)
@@ -634,6 +675,7 @@ def extract_lead_intent_and_service(text: str) -> Dict[str, Any]:
 
     return {
         "service_category": service,
+        "is_unsupported": is_unsupported,
         "is_appointment": is_appointment,
         "urgency_score": urgency_score,
         "contact_info": extracted_contact

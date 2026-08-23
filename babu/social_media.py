@@ -1347,14 +1347,20 @@ def generate_conversational_dm_response(sender_id: str, user_text: str) -> str:
         existing_service = lead_data.get("service_category", "General") if lead_data else "General"
         existing_status = lead_data.get("status", "NEW") if lead_data else "NEW"
         
-        # 1. First extract candidate entities with fast model
+        # 1. First extract candidate entities with fast model and rule checking
+        from crm_service import extract_lead_intent_and_service
+        rule_extracted = extract_lead_intent_and_service(user_text)
+        is_unsupported = rule_extracted.get("is_unsupported", False)
+        
         extraction_sys = (
-            "You are an intent and entity extractor for a tax and PF consultancy business CRM in Orai, India.\n"
+            "You are an intent and entity extractor for a tax, PF, and e-governance consultancy in Orai, India.\n"
+            "Authorized services we offer: 'PF' | 'ITR' | 'GST' | 'General' (MSME Udyam, Life Certificate, Passport, Sevayojan, PAN).\n"
+            "Services we DO NOT offer: 'Unsupported' (Aadhaar Card Correction / Update / Biometrics, Ration Card, Driving License, Voter Card Correction).\n"
             "Extract JSON with fields:\n"
-            "- 'service': 'PF', 'ITR', 'GST', 'PAN', or 'General'\n"
+            "- 'service': 'PF' | 'ITR' | 'GST' | 'General' | 'Unsupported' | 'Unknown'\n"
             "- 'date_expr': requested appointment date (e.g. 'kal', 'tomorrow', 'somwar', '22/08', or null)\n"
             "- 'time_expr': requested time slot (e.g. '2 baje', '2 pm', '14:00', '11:30 am', 'shaam 4 baje', or null)\n"
-            "- 'intent': 'DISCOVERY', 'INFO_REQUEST', 'APPOINTMENT_REQUEST', 'CONFIRM_APPOINTMENT', 'DECLINE', or 'GENERAL'\n"
+            "- 'intent': 'DISCOVERY' | 'INFO_REQUEST' | 'APPOINTMENT_REQUEST' | 'CONFIRM_APPOINTMENT' | 'DECLINE' | 'GENERAL'\n"
             "- 'phone': 10-digit mobile number if mentioned, else null\n"
             "Return valid JSON only."
         )
@@ -1381,12 +1387,19 @@ def generate_conversational_dm_response(sender_id: str, user_text: str) -> str:
             except Exception:
                 continue
 
-        service = entities.get("service") or existing_service
-        if service == "General" and existing_service != "General":
-            service = existing_service
+        extracted_service = entities.get("service") or rule_extracted.get("service_category") or "General"
+        if is_unsupported or extracted_service == "Unsupported":
+            service = "Unsupported"
+        elif extracted_service in ("PF", "ITR", "GST"):
+            service = extracted_service
+        elif extracted_service in ("General", "CSC", "PAN", "MSME", "PASSPORT"):
+            service = "General"
+        else:
+            service = existing_service if existing_service != "General" else "General"
+
         date_expr = entities.get("date_expr")
         time_expr = entities.get("time_expr")
-        phone = entities.get("phone")
+        phone = entities.get("phone") or rule_extracted.get("contact_info")
 
         # Ingest/update lead with extracted info
         if not lead_id:
@@ -1414,10 +1427,27 @@ def generate_conversational_dm_response(sender_id: str, user_text: str) -> str:
                 cur.close()
                 conn.close()
 
-        # 2. Deterministic Appointment Handling
+        # 2. Deterministic Funnel & Appointment Handling
         booking_status_instruction = ""
         
-        if date_expr or time_expr or entities.get("intent") in ("APPOINTMENT_REQUEST", "CONFIRM_APPOINTMENT"):
+        # Case A: Unsupported / Out-of-Scope Services (e.g. Aadhaar Correction)
+        if service == "Unsupported":
+            update_lead_funnel_stage(lead_id, "UNSUPPORTED_INQUIRY", f"Customer inquired for unsupported service: {user_text[:60]}")
+            booking_status_instruction = (
+                "CRITICAL POLICY INSTRUCTION:\n"
+                "The customer is asking for an UNSUPPORTED service (such as Aadhaar Card Correction/Update, Ration Card, or Driving License).\n"
+                "1. Politely inform them that Anshu Computer & Tax Consultancy DOES NOT provide Aadhaar Card correction / update services.\n"
+                "2. Clearly present our 4 authorized service categories:\n"
+                "   1️⃣ PF / EPFO (Advance Claim, Transfer, KYC, Joint Declaration, Settlement)\n"
+                "   2️⃣ Income Tax Return (ITR-1, 2, 4 Filing, Tax Planning & Refund)\n"
+                "   3️⃣ GST Services (Registration & GSTR-1/3B Monthly Filing)\n"
+                "   4️⃣ Digital & E-Governance (MSME Udyam, Life Certificate / Jeevan Pramaan, Passport, Sevayojan, PAN Card)\n"
+                "3. Ask which of these 4 services they need help with.\n"
+                "4. STRICT INVARIANT: DO NOT schedule, propose, or confirm any appointment for unsupported services."
+            )
+        
+        # Case B: Supported Service + Timing Request -> Schedule Appointment
+        elif service in ("PF", "ITR", "GST", "General") and (date_expr or time_expr or entities.get("intent") in ("APPOINTMENT_REQUEST", "CONFIRM_APPOINTMENT")):
             dt_res = parse_ist_datetime(date_expr, time_expr)
             
             if not dt_res.get("valid"):
@@ -1458,16 +1488,24 @@ def generate_conversational_dm_response(sender_id: str, user_text: str) -> str:
                     else:
                         booking_status_instruction = "Apologize and inform them there was a temporary system delay. Ask them to confirm if they can visit at that time or call/WhatsApp +91 7217646673."
 
-        elif service != "General" and existing_status in ("NEW", "SERVICE_IDENTIFIED"):
-            update_lead_funnel_stage(lead_id, "INFORMATION_PROVIDED", f"Provided checklist for {service}")
+        # Case C: Supported Service Inquiry (No timing yet) -> Document Checklist & Offer Booking
+        elif service in ("PF", "ITR", "GST", "General") and service != "General":
+            update_lead_funnel_stage(lead_id, "SERVICE_IDENTIFIED", f"Customer identified service: {service}")
             booking_status_instruction = (
-                f"The customer is asking about {service}. Provide the required document checklist for {service}. "
-                "Ask if they would like to visit our Kaushal Market, Orai office (Open 11 AM - 6 PM, Mon-Sat) or book an appointment."
+                f"The customer is inquiring about {service}. Provide the required document checklist for {service}. "
+                "Ask what day and time (Monday to Saturday, 11:00 AM to 6:00 PM) they would like to visit our Kaushal Market, Rath Road, Orai office to schedule their consultation."
             )
+        
+        # Case D: General Discovery / Catalog Presentation
         else:
+            update_lead_funnel_stage(lead_id, "DISCOVERY", "Presented service catalog")
             booking_status_instruction = (
-                "Greet the customer warmly in their language. Ask which specific service they need: PF claim/correction, Income Tax Return (ITR), GST filing, or CSC digital services. "
-                "Mention our office timings: 11:00 AM to 6:00 PM (Monday to Saturday) at Kaushal Market, Rath Road, Orai."
+                "Greet the customer warmly in their language. Show our authorized service catalog:\n"
+                "1️⃣ PF / EPFO (Advance Claim, Transfer, KYC, Joint Declaration, Settlement)\n"
+                "2️⃣ Income Tax (ITR-1, 2, 4 Filing, Tax Planning & Refund)\n"
+                "3️⃣ GST Services (Registration & GSTR-1/3B Monthly Filing)\n"
+                "4️⃣ Digital & E-Governance (MSME Udyam, Life Certificate, Passport, Sevayojan, PAN Card)\n"
+                "Ask which service they need assistance with today."
             )
 
         # 3. Retrieve Selective Knowledge Slice (ADR-091/092)
@@ -1502,8 +1540,24 @@ def generate_conversational_dm_response(sender_id: str, user_text: str) -> str:
                 continue
 
         if not reply:
-            reply = "Namaste! Thank you for contacting Anshu Computer & Tax Consultancy, Orai. We specialize in ITR, GST, and PF claim solutions (11:00 AM to 6:00 PM Mon-Sat). How can we assist you today?"
-            
+            if service == "Unsupported":
+                reply = (
+                    "Namaste! Anshu Computer & Tax Consultancy does NOT provide Aadhaar Card correction / update services. "
+                    "Our Authorized Services: 1) PF / EPFO Claim & KYC, 2) Income Tax (ITR) Filing, 3) GST Services, 4) Digital & MSME Udyam Services. "
+                    "Please let us know which of these 4 services you need help with (Office: Kaushal Market, Orai, 11 AM - 6 PM Mon-Sat)."
+                )
+            elif service in ("PF", "ITR", "GST"):
+                reply = (
+                    f"Namaste! Thank you for contacting Anshu Computer & Tax Consultancy, Orai regarding {service}. "
+                    "We are open Monday to Saturday from 11:00 AM to 6:00 PM at Kaushal Market, Rath Road, Orai. "
+                    "Please let us know your preferred day and time (11 AM - 6 PM) to schedule your consultation."
+                )
+            else:
+                reply = (
+                    "Namaste! Welcome to Anshu Computer & Tax Consultancy, Orai. "
+                    "Our Authorized Services: 1) PF / EPFO Consultancy, 2) Income Tax (ITR) Filing, 3) GST Services, 4) Digital & MSME Services. "
+                    "Which of these services can we assist you with today?"
+                )
         return reply
     except Exception as e:
         print(f"[DM RESPONSE ERROR] {e}", flush=True)
