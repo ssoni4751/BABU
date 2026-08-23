@@ -1804,18 +1804,21 @@ def pa_node(state: BabuState):
                     sources[k] = sc[k]
 
     if category == "BUSINESS_INFORMATION":
+        has_action_data = bool(action_result or state.get("action_result") or research or state.get("search_results"))
         allowed_keys = ["AUTHORITY_MEMORY", "AUTHORITY_DATABASE", "AUTHORITY_LEDGER"]
-        has_local_source = False
-        for k in allowed_keys:
-            if sources.get(k):
-                has_local_source = True
-                break
-        for k in ("profile_slice", "knowledge_base"):
-            if k in sources and sources[k]:
-                has_local_source = True
-                break
-        
+        has_local_source = has_action_data
         if not has_local_source:
+            for k in allowed_keys:
+                if sources.get(k):
+                    has_local_source = True
+                    break
+            for k in ("profile_slice", "knowledge_base"):
+                if k in sources and sources[k]:
+                    has_local_source = True
+                    break
+        
+        is_client_record_query = any(k in user_query.lower() for k in ("client name", "list of client", "who are my client", "client count", "my customer list"))
+        if not has_local_source and is_client_record_query:
             refusal_msg = "Mere paas aapke actual client records ka access nahi hai."
             print(f"[PA NODE] Hard Refusal triggered: category is BUSINESS_INFORMATION with 0 local sources.", flush=True)
             return {"messages": state["messages"] + [AIMessage(content=refusal_msg)], "tokens": {"prompt": 0, "completion": 0, "total": 0}}
