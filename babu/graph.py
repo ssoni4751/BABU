@@ -1868,10 +1868,60 @@ def pa_node(state: BabuState):
             research = full_profile
             print(f"[PA NODE] Injecting full user profile for profile-relevant conversational query.", flush=True)
 
+    intent_packet = state.get("routing_metadata", {}).get("intent_packet") or {}
+    domain = intent_packet.get("domain", "USER")
+    demand_domains = intent_packet.get("demand_domains") or [domain]
+    lowered_q = user_query.lower()
+    
+    # ── Domain-Driven Structured Briefing Styles ──
     if is_conversational:
         style = "[CONVERSATIONAL]\nBrief, warm, direct. Max two short paragraphs. Confirm any automation action clearly."
+    elif "BUSINESS" in demand_domains or category == "BUSINESS_INFORMATION":
+        if any(f in lowered_q for f in ("facebook", "faceook", "fb", "post", "posts", "comment", "comments", "instagram", "insta")):
+            style = (
+                "[BUSINESS: SOCIAL OPERATIONS BRIEF]\n"
+                "Format the response cleanly and operationally for the business owner:\n"
+                "- 📌 **Post Summary**: Caption / ID / Date\n"
+                "- 💬 **Comments / Interactions**: List each comment (Author, Date, Comment Text)\n"
+                "- ⚡ **Actionable Prompt**: Briefly ask if the owner wants to reply or take action.\n"
+                "CRITICAL: Do NOT output academic research sections (Overview, Findings, Risks, Outlook, Recommendation). Keep it direct, clean, and operational."
+            )
+        elif any(f in lowered_q for f in ("lead", "leads", "appointment", "appointments", "followup", "client", "crm", "customer", "pipeline")):
+            style = (
+                "[BUSINESS: CRM & PIPELINE BRIEF]\n"
+                "Format the response as a direct commercial pipeline digest:\n"
+                "- 📊 **Pipeline Status**: Active counts and lead statuses\n"
+                "- 🗓️ **Appointments / Entries**: Bulleted list (Name, Service: PF/GST/ITR, Slot/Date, Status)\n"
+                "- ⚡ **Next Step**: Actionable follow-up prompt.\n"
+                "CRITICAL: Do NOT output academic research sections (Overview, Findings, Risks, Outlook, Recommendation). Keep it focused on business operations."
+            )
+        else:
+            style = (
+                "[BUSINESS: EXECUTIVE SUMMARY]\n"
+                "Provide a direct, factual business answer with clear bullet points and actionable takeaways. No academic padding or generic boilerplate."
+            )
+    elif "SYSTEM" in demand_domains or category == "SYSTEM_INFORMATION":
+        style = (
+            "[SYSTEM: ENGINEERING DIAGNOSTIC]\n"
+            "Format as an engineering diagnostic summary:\n"
+            "- ⚙️ **Status & Services**: Current health and active components\n"
+            "- 📈 **Metrics & Telemetry**: Latency breakdowns, tokens, active models\n"
+            "- 🛡️ **Governance / ADRs**: Relevant architectural rules or recent checkpoints\n"
+            "Dense, technical, and precise. No conversational filler."
+        )
+    elif "USER" in demand_domains or category == "PERSONAL_INFORMATION":
+        style = (
+            "[USER: WORKSPACE & ASSISTANT DIGEST]\n"
+            "Format as a clean personal assistant digest:\n"
+            "- Clear, structured bullet points for the retrieved items (emails, events, tasks, notes).\n"
+            "- Direct, natural tone without bureaucratic or academic headers."
+        )
     else:
-        style = "[WORKFLOW]\nStructured briefing: ## headers. Cover overview, findings, risks, outlook. End with one concrete recommendation. Dense and precise."
+        is_deep_research = any(w in lowered_q for w in ("research", "compare", "comprehensive", "detailed analysis", "case study", "in-depth"))
+        if is_deep_research:
+            style = "[RESEARCH: STRUCTURED ANALYSIS]\nStructured report: Executive Summary, Key Findings, Comparative Breakdown, Actionable Recommendation."
+        else:
+            style = "[DIRECT SUMMARY]\nClear, concise, and structured bulleted response answering the user's objective directly without unnecessary headers or filler."
 
     now_utc_dt = datetime.now(timezone.utc)
     now_ist_dt = now_utc_dt + timedelta(hours=5, minutes=30)
