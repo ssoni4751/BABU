@@ -761,7 +761,7 @@ def planner_node(state: BabuState):
     plan_latency_ms = round((plan_end_time - plan_start_time) * 1000, 2)
     plan_latency_sec = round(plan_end_time - plan_start_time, 4)
     
-    if getattr(graph, "planner_status", "") in ("TEMPLATE_MATCH", "WALK", "FAST_TRACK"):
+    if getattr(graph, "planner_status", "") in ("TEMPLATE_MATCH", "WALK", "FAST_TRACK", "CACHE_MATCH", "CHITCHAT"):
         graph.planning_tokens = {"prompt": 0, "completion": 0, "total": 0}
     else:
         graph.planning_tokens = getattr(graph, "planning_tokens", None) or {"prompt": 1800, "completion": 500, "total": 2300}
@@ -787,7 +787,7 @@ def planner_node(state: BabuState):
         }
     )
     
-    if getattr(graph, "planner_status", "") in ("TEMPLATE_MATCH", "WALK", "FAST_TRACK"):
+    if getattr(graph, "planner_status", "") in ("TEMPLATE_MATCH", "WALK", "FAST_TRACK", "CACHE_MATCH", "CHITCHAT"):
         plan_tokens = {"prompt": 0, "completion": 0, "total": 0}
         plan_cost = 0.0
         has_actual_tokens = True
@@ -1971,14 +1971,15 @@ def pa_node(state: BabuState):
     pa_latency_ms = round((pa_end_time - pa_start_time) * 1000, 2)
     pa_latency_sec = round(pa_end_time - pa_start_time, 4)
     
-    if graph_dict and graph_dict.get("planner_status", "SUCCESS") not in ("SUCCESS", "WALK", "TEMPLATE_MATCH"):
+    if graph_dict and graph_dict.get("planner_status", "SUCCESS") not in ("SUCCESS", "WALK", "TEMPLATE_MATCH", "CACHE_MATCH", "FAST_TRACK", "CHITCHAT"):
         p_status = graph_dict.get("planner_status")
         reason_map = {
             "RATE_LIMIT": "Planner rate-limited by Groq API limits (429)",
             "NETWORK": "Planner encountered network timeout or connectivity issues",
             "PROVIDER_ERROR": "Planner API provider returned an execution error",
             "JSON_ERROR": "Planner LLM output could not be parsed as valid JSON",
-            "VALIDATION_ERROR": "Planner generated an invalid or cyclic task dependency graph"
+            "VALIDATION_ERROR": "Planner generated an invalid or cyclic task dependency graph",
+            "AMBIGUOUS_QUERY": "Query required clarification"
         }
         reason_text = reason_map.get(p_status, "Planner encountered an unexpected exception")
         degradation_notice = (
