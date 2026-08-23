@@ -1378,6 +1378,10 @@ def task_executor_node(state: BabuState):
         
     # Consolidate scoped contexts
     aggregated_scoped_context = {}
+    if action_result:
+        aggregated_scoped_context["action_result"] = action_result
+    if execution_log:
+        aggregated_scoped_context["execution_log"] = execution_log
     for t in goal_graph.tasks:
         if t.context and "scoped_context" in t.context:
             if isinstance(t.context["scoped_context"], dict):
@@ -1396,11 +1400,11 @@ def task_executor_node(state: BabuState):
         compliance_checklist=aggregated_checklist
     )
     
-    only_pa_tasks = all(t.department == "pa" for t in goal_graph.tasks) if goal_graph.tasks else False
-    if only_pa_tasks:
-        print("[EXECUTOR] Bypassing post-execution audit because all tasks are personal assistant passthrough tasks.", flush=True)
+    only_pa_or_exec_tasks = all(t.department in ("pa", "execution") for t in goal_graph.tasks) if goal_graph.tasks else False
+    if only_pa_or_exec_tasks:
+        print("[EXECUTOR] Bypassing LLM post-execution audit because all tasks are deterministic execution/PA tasks.", flush=True)
         passed = True
-        reason = "Bypassed for PA passthrough tasks."
+        reason = "Bypassed for deterministic execution and PA tasks."
     else:
         passed, reason = auditor.audit_post(dummy_task, final_brief)
     

@@ -342,7 +342,7 @@ class PostExecutionValidator:
                 system_prompt += (
                     "\n\nCRITICAL SOURCE AUTHORITY AUDIT RULES (PRIVATE DATA QUERY):\n"
                     "- This query concerns private user/business data. You must strictly check if the worker's result contains fabricated facts, client counts, names, dates, or details.\n"
-                    "- Cross-reference every factual claim in the worker's result (e.g. client names, numbers of clients) with the 'scoped_context' inside the context of the audit payload. The local context (profile_slice, knowledge_base) is the ONLY source of truth.\n"
+                    "- Cross-reference every factual claim in the worker's result (e.g. client names, numbers of clients, social comments/posts) with the 'scoped_context' inside the context of the audit payload. The local context (profile_slice, knowledge_base, action_result, execution_log) is the authoritative source of truth. If the data is present in 'action_result' or 'execution_log' (returned by an executed tool like read_facebook_comments or crm_query_leads), treat it as authentic and verified.\n"
                     "- If the local context does NOT contain any client list or client names, and the worker still lists names, counts, or claims about them, you MUST fail the audit (set 'passed': false, 'confidence': 0.0, 'uncertainty_flag': true, and explain 'Source Authority Violation: fabricated client data without local evidence' in reason).\n"
                     "- If the worker correctly refused to answer (e.g. outputted 'Mere paas aapke actual client records ka access nahi hai.' or 'Information unavailable.'), you MUST pass the audit (set 'passed': true, 'confidence': 1.0).\n"
                 )
