@@ -37,7 +37,8 @@ BABU is a bounded, resilient, multi-agent Cognitive Operating System and Governe
   - 🥇 Primary: Groq API (`openai/gpt-oss-120b` for Strategic Planner & PA, `openai/gpt-oss-20b` for Swarm Workers & Webhooks; legacy Llama models discontinued)
   - 🥈 Secondary: NVIDIA NIM API / OpenRouter
   - 🥉 Tertiary: Google Gemini Native (`gemini-2.5-flash`)
-- **Web Search:** DuckDuckGo (`ddgs` / `duckduckgo_search` — free, no key needed)
+- **Web Search:** Tavily Search API (`TAVILY_API_KEY`) with fallback to DuckDuckGo (`ddgs`), augmented with live Wikipedia research
+- **Intent Taxonomy:** 7-domain typed taxonomy (`COMMUNICATION`, `WORKSPACE`, `BUSINESS_INFORMATION`, `PERSONAL_INFORMATION`, `SYSTEM_INFORMATION`, `CONVERSATION`, `PUBLIC_INFORMATION`)
 - **Persistence & Ledgers:** PostgreSQL (Supabase) + SQLite (`execution_ledger`, `trusted_templates`, `pending_actions`, `search_cache`, `system_memory`)
 - **Governance:** E0 Constitutional Rules (`e0/constitution.json`, `e0/policies.json`) + Bipartite Pre/Post Auditor
 

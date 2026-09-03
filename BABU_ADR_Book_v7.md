@@ -157,5 +157,39 @@
 
 ---
 
+## ADR-103: Intent Taxonomy Modernization, Elimination of the PUBLIC_INFORMATION Catch-All Black Hole, and Dedicated Search Grounding (Tavily & Wikipedia)
+* **Status:** Accepted / Live in Production
+* **Context:** A comprehensive review of the `IntentPacket` pipeline revealed a critical architectural defect: `classify_intent` relied on an overly narrow 4-bucket taxonomy (`BUSINESS_INFORMATION`, `PERSONAL_INFORMATION`, `SYSTEM_INFORMATION`, `PUBLIC_INFORMATION`). Any user instruction outside tax consultancy records or personal family queries (such as sending emails, booking calendar events, creating documents, logging sheets, or simple greetings) defaulted into `PUBLIC_INFORMATION`. This caused:
+  1. False privacy assessments (`is_private_data_query` returned `False`, unblocking external web searches on private action context).
+  2. Plan cache poisoning (`planned_graphs_cache` indexed action plans under `goal_class = 'PUBLIC_INFORMATION'`, replaying failed fallback graphs).
+  3. Conversational action hallucination in `pa_node` where single-task refusal graphs bypassed anti-hallucination constraints and falsely claimed actions were executed.
+* **Decision:**
+  1. **Strict Isolation of `PUBLIC_INFORMATION`:**
+     * `PUBLIC_INFORMATION` is strictly and exclusively reserved for external public knowledge inquiries, live web search (via Tavily Search API with DuckDuckGo fallback), and Wikipedia factual research.
+  2. **Multi-Domain Intent Classification Taxonomy:**
+     * Formalize dedicated typed intent categories:
+       - `COMMUNICATION`: Email drafting, sending, and Gmail search.
+       - `WORKSPACE`: Google Calendar events, Google Docs creation, Google Sheets logging, and Google Drive storage.
+       - `BUSINESS_INFORMATION`: Anshu Computer & Tax Consultancy client records, tax filings (ITR, GST, PF), and Facebook marketing.
+       - `PERSONAL_INFORMATION`: Personal identity, family graph, private phone, address, and personal profile details.
+       - `SYSTEM_INFORMATION`: BABU internal architecture, code, logs, ADRs, health dashboard, and uptime telemetry.
+       - `CONVERSATION`: Greetings, casual chitchat, thank-you pleasantries, and clarification gates.
+       - `PUBLIC_INFORMATION`: Explicit web search (Tavily), Wikipedia lookup, and public facts/news.
+  3. **Data Boundary Enforcement:**
+     * Update `services.py:is_private_data_query()` to recognize `COMMUNICATION` and `WORKSPACE` as private data, strictly prohibiting external web searches for these domains.
+     * Expand `graph.py:PRIVATE_QUERY_TYPES` to ensure private actions are never bypassed into simple lookup shortcuts.
+  4. **Plan Cache Poisoning Prevention & Auto-Purge:**
+     * Disallow writing error, fallback, or refusal graphs (`JSON_ERROR`, `FALLBACK`, `could not be planned securely`) into `planned_graphs_cache`.
+     * On cache lookup, detect poisoned or refusal plans, purge them immediately from the database, and force a fresh strategic planning cycle.
+  5. **Universal Anti-Hallucination Invariant:**
+     * Enforce the anti-hallucination directive globally in `pa_node` across all dialogue modes (conversational, single-task, and multi-task). If `[Automation Result]` is missing, the model is strictly forbidden from claiming any external action was performed.
+* **Consequences:**
+  * Complete elimination of cache poisoning and plan collision under generic buckets.
+  * Flawless classification of email, calendar, docs, sheets, and greetings.
+  * Total prevention of PA action hallucinations.
+  * Clean, grounded public information retrieval via Tavily API and Wikipedia.
+
+---
+
 *BABU ADR Book Volume 7 — Updated September 2026*
 
