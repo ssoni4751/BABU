@@ -1007,13 +1007,16 @@ def task_executor_node(state: BabuState):
                 from governance import get_constitution
             mandatory_approvals = get_constitution("mandatory_human_approval", [])
             
-            if detected_action and detected_action.get("action") == action:
+            # Read-only search and fetch actions are pre-approved
+            if action in ("search_sheet", "search_gmail", "read_document", "list_events"):
                 task.context["approved"] = True
             elif action in mandatory_approvals:
+                # Class B and Class C mutating actions ALWAYS require explicit operator approval
                 if not task.context.get("approved"):
                     task.context["approved"] = False
-            elif action in ("search_sheet", "search_gmail"):
-                task.context["approved"] = True
+            elif not task.context.get("approved"):
+                # If an action was detected but not in mandatory approvals, leave as-is or default
+                pass
                 
             if not task.context.get("approved") and not pending_approval_task:
                 pending_approval_task = task
@@ -2012,7 +2015,7 @@ def pa_node(state: BabuState):
     except Exception as e:
         err_msg = str(e)
         if "413" in err_msg or "too large" in err_msg.lower() or "limit exceeded" in err_msg.lower():
-            used_model = "nvidia/meta/llama-3.3-70b-instruct" if CURRENT_PA_MODEL.startswith("nvidia/") else "llama-3.3-70b-versatile"
+            used_model = "nvidia/meta/llama-3.3-70b-instruct" if CURRENT_PA_MODEL.startswith("nvidia/") else "gemini-2.5-flash"
             print(f"[PA NODE WARNING] Model {CURRENT_PA_MODEL} failed with 413/limit exceeded. Falling back to bigger model {used_model}. Error: {err_msg}", flush=True)
             llm_pa = build_llm(used_model, 0.2)
             response = llm_pa.invoke([SystemMessage(content=manifesto), HumanMessage(content="\n\n".join(parts))])

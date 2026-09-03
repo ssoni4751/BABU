@@ -122,3 +122,40 @@
 ---
 
 *BABU ADR Book Volume 7 — Published August 2026*
+
+---
+
+## ADR-102: Cloud Production Hardening, Render Runtime Alignment, Dual-Plane Security, and Model Matrix Consolidation
+* **Status:** Accepted / Live in Production (Render Cloud Alignment)
+* **Context:** BABU operates as a 24/7 governed agentic control plane deployed on Render web services. A full system audit revealed key production risks: public exposure of unauthenticated `/api/crm` and `/api/chat` endpoints on `.onrender.com`, missing Meta HMAC webhook signature validation, an approval bypass bug in `graph.py` auto-approving pre-detected mutating actions, ephemeral container filesystem wipes, SQLite schema lock contention on every connection, a boot-path resolution bug in `bootstrap.py`, and the need to formally finalize the model matrix around Groq open weights (`openai/gpt-oss-120b` and `openai/gpt-oss-20b`) while retiring legacy Llama models.
+* **Decision:**
+  1. **Canonical Model Matrix Realignment:**
+     * Formally retire and discontinue `llama-3.3-70b-versatile` and `llama-3.1-8b-instant`.
+     * Anchor `openai/gpt-oss-120b` as the canonical high-fidelity Personal Assistant (PA) model.
+     * Anchor `openai/gpt-oss-20b` as the canonical ultra-fast (<0.3s) Swarm Worker and Social Webhook model.
+     * Maintain secondary fallback to NVIDIA NIM and tertiary fallback to Google Gemini Native (`gemini-2.5-flash`).
+  2. **Render Public Endpoint Hardening:**
+     * Enforce mandatory Bearer token / API key (`API_CHAT_TOKEN`) validation on all HTTP endpoints (`/api/chat`, `/api/crm`, `/api/crm/lead/update`, `/api/models/switch`, `/api/telemetry`, `/api/chat/status`), returning `401 Unauthorized` on unauthenticated requests.
+     * Confine `/api/image` to strict base directories (`artifacts/` and `temp/`) using `os.path.commonpath()` to eliminate arbitrary filesystem traversal risks.
+     * Implement HMAC-SHA256 signature verification (`X-Hub-Signature-256`) against `FACEBOOK_APP_SECRET` on `POST /webhook/facebook` to block forged inbound Meta events.
+  3. **Telegram Operator Console vs. Commercial Client Demarcation:**
+     * Restrict administrative commands (`/crm`, `/leads`, `/update_lead`, `/postnow`, `/clear`, `/model`, `/promote`, `/retire`) strictly to `TELEGRAM_USER_CHAT_ID`.
+     * Route unauthorized external users cleanly to the Anshu Computer & Tax Consultancy service qualification funnel without granting administrative control.
+  4. **Constitutional Governance Invariant Restoration:**
+     * Eliminate the detected action auto-approval override in `graph.py` (`task_executor_node`).
+     * Re-establish the immutable rule: Every Class B (external mutating) and Class C (destructive) action requires explicit human operator approval regardless of how the action intent was detected.
+     * Enforce fail-closed verification in `auditor.py` so that unexpected LLM timeouts or malformed audit payloads never silently pass unverified actions.
+  5. **Render Ephemeral Disk Resilience & Database Concurrency:**
+     * Correct `bootstrap.py` directory resolution (`ROOT = Path(__file__).resolve().parent`) and remove broken relative imports from `bot.py` so the service boots cleanly in the container root.
+     * Decouple schema creation (`_ensure_sqlite_schema`) from `get_db_connection()` so DDL statements run only once at startup, eliminating `database is locked` contention across concurrent worker threads.
+     * Increase SQLite busy timeout to 30 seconds.
+* **Consequences:**
+  * Complete hardening of the public Render cloud surface.
+  * Absolute enforcement of constitutional human supremacy across all mutation channels.
+  * Elimination of boot crashes, connection lockups, and unauthenticated data leaks.
+  * Formalized model matrix anchored on Groq open weights (`gpt-oss-120b` and `gpt-oss-20b`).
+
+---
+
+*BABU ADR Book Volume 7 — Updated September 2026*
+

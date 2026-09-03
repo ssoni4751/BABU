@@ -216,12 +216,6 @@
         "task_name": "Causal FB Marketing Post",
         "status": "SUCCESS",
         "details": "Message: Published successfully | Topic: Manual Post Hi",
-        "timestamp": "2026-08-22T09:46:40.659896+00:00"
-      },
-      {
-        "task_name": "Causal FB Marketing Post",
-        "status": "SUCCESS",
-        "details": "Message: Published successfully | Topic: Manual Post Hi",
         "timestamp": "2026-08-22T09:48:30.996015+00:00"
       },
       {
@@ -259,6 +253,24 @@
         "status": "SUCCESS",
         "details": "Message: Published successfully | Topic: Manual Post Hi",
         "timestamp": "2026-08-22T10:11:38.500182+00:00"
+      },
+      {
+        "task_name": "Causal FB Marketing Post",
+        "status": "SUCCESS",
+        "details": "Message: Published successfully | Topic: Manual Post Hi",
+        "timestamp": "2026-08-23T06:15:44.356570+00:00"
+      },
+      {
+        "task_name": "Causal FB Marketing Post",
+        "status": "SUCCESS",
+        "details": "Message: Published successfully | Topic: Manual Post Hi",
+        "timestamp": "2026-08-23T06:24:11.633698+00:00"
+      },
+      {
+        "task_name": "Causal FB Marketing Post",
+        "status": "SUCCESS",
+        "details": "Message: Published successfully | Topic: Manual Post Hi",
+        "timestamp": "2026-08-23T07:32:08.359677+00:00"
       }
     ]
   }

@@ -753,7 +753,7 @@ def build_llm(model_name: str, temp: float):
                 timeout=25.0
             )
         else:
-            fallback = "groq/compound-mini" if "8b" in target_model.lower() else "groq/compound"
+            fallback = "openai/gpt-oss-20b" if "8b" in target_model.lower() or "mini" in target_model.lower() else "openai/gpt-oss-120b"
             print(f"[LLM REDIRECT] NVIDIA & OpenRouter keys missing. Mapping '{target_model}' to Groq '{fallback}'.", flush=True)
             return ChatGroq(model=fallback, temperature=temp, api_key=groq_key)
 
@@ -774,7 +774,7 @@ def build_llm(model_name: str, temp: float):
                 timeout=25.0
             )
         else:
-            fallback = "groq/compound-mini"
+            fallback = "openai/gpt-oss-20b"
             print(f"[LLM REDIRECT] Both Gemini and OpenRouter keys missing. Mapping '{target_model}' to Groq '{fallback}'.", flush=True)
             return ChatGroq(model=fallback, temperature=temp, api_key=groq_key)
 
@@ -792,7 +792,7 @@ def build_llm(model_name: str, temp: float):
             timeout=25.0
         )
 
-    # 4. Default: Primary Groq Support
+    # 4. Default: Primary Groq Support (GPT-OSS 120B / 20B)
     else:
         return ChatGroq(model=target_model, temperature=temp, api_key=groq_key)
 
@@ -800,17 +800,18 @@ llm_pa   = build_llm(CURRENT_PA_MODEL,   0.2)
 llm_dept = build_llm(CURRENT_DEPT_MODEL, 0.7)
 
 # ---------------------------------------------------------------------------
-# Provider-level auto-failover for rate limits (Groq -> NVIDIA -> Gemini)
+# Provider-level auto-failover for rate limits (Groq API -> NVIDIA NIM -> Gemini)
+# Discontinued: llama-3.3-70b-versatile, llama-3.1-8b-instant
 # ---------------------------------------------------------------------------
 
 _FALLBACK_CHAIN = {
+    "openai/gpt-oss-120b": ["openai/gpt-oss-20b", "nvidia/meta/llama-3.3-70b-instruct", "gemini-2.5-flash"],
+    "openai/gpt-oss-20b": ["openai/gpt-oss-120b", "nvidia/meta/llama-3.1-8b-instruct", "gemini-2.5-flash"],
     "groq/compound": ["openai/gpt-oss-120b", "nvidia/meta/llama-3.3-70b-instruct", "gemini-2.5-flash"],
     "groq/compound-mini": ["openai/gpt-oss-20b", "nvidia/meta/llama-3.1-8b-instruct", "gemini-2.5-flash"],
-    "openai/gpt-oss-120b": ["groq/compound", "nvidia/meta/llama-3.3-70b-instruct", "gemini-2.5-flash"],
-    "openai/gpt-oss-20b": ["groq/compound-mini", "nvidia/meta/llama-3.1-8b-instruct", "gemini-2.5-flash"],
-    "nvidia/meta/llama-3.3-70b-instruct": ["groq/compound", "openai/gpt-oss-120b", "gemini-2.5-flash"],
-    "nvidia/meta/llama-3.1-8b-instruct": ["groq/compound-mini", "openai/gpt-oss-20b", "gemini-2.5-flash"],
-    "gemini-2.5-flash": ["groq/compound-mini", "groq/compound"],
+    "nvidia/meta/llama-3.3-70b-instruct": ["openai/gpt-oss-120b", "gemini-2.5-flash"],
+    "nvidia/meta/llama-3.1-8b-instruct": ["openai/gpt-oss-20b", "gemini-2.5-flash"],
+    "gemini-2.5-flash": ["openai/gpt-oss-20b", "openai/gpt-oss-120b"],
 }
 _RATE_LIMIT_SIGNALS = ("429", "rate limit", "rate_limit_exceeded", "too many requests", "tpd", "tpm")
 
@@ -4976,10 +4977,26 @@ CRM_HTML = """<!DOCTYPE html>
 
 class HealthHandler(BaseHTTPRequestHandler):
 
+    def _is_authenticated(self) -> bool:
+        """Verify API token for protected endpoints."""
+        token = os.environ.get("API_CHAT_TOKEN", "").strip()
+        if not token:
+            # When API_CHAT_TOKEN is unset, restrict access to loopback clients only
+            client_ip = self.client_address[0] if self.client_address else ""
+            return client_ip in ("127.0.0.1", "::1", "localhost")
+        auth_header = str(self.headers.get("Authorization", "")).strip()
+        api_key_header = str(self.headers.get("X-API-Key", "")).strip()
+        bearer = ""
+        if auth_header.lower().startswith("bearer "):
+            bearer = auth_header[7:].strip()
+        provided = api_key_header or bearer
+        import hmac
+        return bool(provided and hmac.compare_digest(provided, token))
+
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin",  "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key")
 
     def do_OPTIONS(self):
         self.send_response(200)
@@ -5018,6 +5035,14 @@ class HealthHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(body)
             elif path in ("/api/telemetry", "/api/telemetry/"):
+                if not self._is_authenticated():
+                    err = json.dumps({"error": "unauthorized", "message": "Valid API token required"}).encode("utf-8")
+                    self.send_response(401)
+                    self.send_header("Content-Type", "application/json")
+                    self._cors()
+                    self.end_headers()
+                    self.wfile.write(err)
+                    return
                 try:
                     data = get_telemetry_data(limit=1000)
                     body = json.dumps(data).encode("utf-8")
@@ -5034,6 +5059,14 @@ class HealthHandler(BaseHTTPRequestHandler):
                     self.end_headers()
                     self.wfile.write(err)
             elif path in ("/api/crm", "/api/crm/"):
+                if not self._is_authenticated():
+                    err = json.dumps({"error": "unauthorized", "message": "Valid API token required"}).encode("utf-8")
+                    self.send_response(401)
+                    self.send_header("Content-Type", "application/json")
+                    self._cors()
+                    self.end_headers()
+                    self.wfile.write(err)
+                    return
                 try:
                     try:
                         from .crm_service import get_crm_pipeline_data
@@ -5069,6 +5102,14 @@ class HealthHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(CHAT_HTML.encode())
             elif path == "/api/chat/status":
+                if not self._is_authenticated():
+                    err = json.dumps({"error": "unauthorized", "message": "Valid API token required"}).encode("utf-8")
+                    self.send_response(401)
+                    self.send_header("Content-Type", "application/json")
+                    self._cors()
+                    self.end_headers()
+                    self.wfile.write(err)
+                    return
                 query_params = parse_qs(parsed_path.query)
                 sid = query_params.get("session_id", ["web_anon"])[0]
                 
@@ -5142,19 +5183,37 @@ class HealthHandler(BaseHTTPRequestHandler):
             elif path == "/api/image":
                 query_params = parse_qs(parsed_path.query)
                 img_path = query_params.get("path", [""])[0]
-                if img_path and os.path.exists(img_path) and (img_path.lower().endswith(".jpg") or img_path.lower().endswith(".jpeg") or img_path.lower().endswith(".png")):
-                    self.send_response(200)
-                    if img_path.lower().endswith(".png"):
-                        self.send_header("Content-Type", "image/png")
+                if img_path:
+                    abs_img = os.path.abspath(img_path)
+                    current_dir = os.path.abspath(os.path.dirname(__file__))
+                    allowed_dirs = [
+                        os.path.join(current_dir, "artifacts"),
+                        os.path.join(current_dir, "temp"),
+                        os.path.join(current_dir, "memory"),
+                        current_dir,
+                    ]
+                    is_contained = any(
+                        abs_img == ad or abs_img.startswith(ad + os.sep)
+                        for ad in allowed_dirs
+                    )
+                    if is_contained and os.path.exists(abs_img) and abs_img.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
+                        self.send_response(200)
+                        if abs_img.lower().endswith(".png"):
+                            self.send_header("Content-Type", "image/png")
+                        elif abs_img.lower().endswith(".webp"):
+                            self.send_header("Content-Type", "image/webp")
+                        else:
+                            self.send_header("Content-Type", "image/jpeg")
+                        self._cors()
+                        self.end_headers()
+                        try:
+                            with open(abs_img, "rb") as f:
+                                self.wfile.write(f.read())
+                        except Exception as e:
+                            print(f"[HTTP SERVER ERROR] Failed to serve image {abs_img}: {e}", flush=True)
                     else:
-                        self.send_header("Content-Type", "image/jpeg")
-                    self._cors()
-                    self.end_headers()
-                    try:
-                        with open(img_path, "rb") as f:
-                            self.wfile.write(f.read())
-                    except Exception as e:
-                        print(f"[HTTP SERVER ERROR] Failed to serve image {img_path}: {e}", flush=True)
+                        self.send_response(403 if not is_contained else 404)
+                        self.end_headers()
                 else:
                     self.send_response(404)
                     self.end_headers()
@@ -5162,6 +5221,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 self.send_response(404)
                 self.end_headers()
         except (BrokenPipeError, ConnectionResetError) as e:
+
             print(f"[HTTP SERVER WARNING] Client disconnected during GET {self.path}: {e}", flush=True)
 
     def do_POST(self):
@@ -5169,6 +5229,19 @@ class HealthHandler(BaseHTTPRequestHandler):
             try:
                 length = int(self.headers.get("Content-Length", 0))
                 raw_body = self.rfile.read(length)
+
+                # Verify Meta webhook signature if app secret configured
+                app_secret = os.environ.get("FACEBOOK_APP_SECRET", "").strip()
+                hub_sig = self.headers.get("X-Hub-Signature-256", "").strip()
+                if app_secret:
+                    import hmac, hashlib
+                    expected_sig = "sha256=" + hmac.new(app_secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+                    if not hub_sig or not hmac.compare_digest(hub_sig, expected_sig):
+                        print("[FACEBOOK WEBHOOK ERROR] HMAC signature verification failed.", flush=True)
+                        self.send_response(403)
+                        self.end_headers()
+                        return
+
                 payload = json.loads(raw_body.decode("utf-8"))
                 
                 # Respond 200 OK instantly to Meta within 3s
@@ -5192,6 +5265,14 @@ class HealthHandler(BaseHTTPRequestHandler):
             return
 
         elif self.path == "/api/crm/lead/update":
+            if not self._is_authenticated():
+                err = json.dumps({"error": "unauthorized", "message": "Valid API token required"}).encode("utf-8")
+                self.send_response(401)
+                self.send_header("Content-Type", "application/json")
+                self._cors()
+                self.end_headers()
+                self.wfile.write(err)
+                return
             try:
                 length = int(self.headers.get("Content-Length", 0))
                 body   = json.loads(self.rfile.read(length))
@@ -5221,24 +5302,15 @@ class HealthHandler(BaseHTTPRequestHandler):
             return
 
         elif self.path == "/api/models/switch":
+            if not self._is_authenticated():
+                err = json.dumps({"error": "unauthorized", "message": "Valid API token required"}).encode("utf-8")
+                self.send_response(401)
+                self.send_header("Content-Type", "application/json")
+                self._cors()
+                self.end_headers()
+                self.wfile.write(err)
+                return
             try:
-                if API_CHAT_TOKEN:
-                    auth_header = str(self.headers.get("Authorization", "")).strip()
-                    api_key_header = str(self.headers.get("X-API-Key", "")).strip()
-                    bearer = ""
-                    if auth_header.lower().startswith("bearer "):
-                        bearer = auth_header[7:].strip()
-                    provided = api_key_header or bearer
-                    if provided != API_CHAT_TOKEN:
-                        err = json.dumps({"error": "unauthorized"}).encode()
-                        self.send_response(401)
-                        self.send_header("Content-Type", "application/json")
-                        self.send_header("Content-Length", str(len(err)))
-                        self._cors()
-                        self.end_headers()
-                        self.wfile.write(err)
-                        return
-
                 length = int(self.headers.get("Content-Length", 0))
                 body   = json.loads(self.rfile.read(length))
                 role   = str(body.get("role", "")).strip().lower()
@@ -5250,13 +5322,19 @@ class HealthHandler(BaseHTTPRequestHandler):
                 if role == "swarm":
                     CURRENT_DEPT_MODEL = model
                     llm_dept = build_llm(CURRENT_DEPT_MODEL, 0.7)
-                    print(f"[API MODEL SWITCH] Swarm/Workers model switched to {model}", flush=True)
-                elif role == "pa":
+                    print(f"[MODEL SWITCH API] Swarm model dynamically switched to: {CURRENT_DEPT_MODEL}", flush=True)
+                else:
                     CURRENT_PA_MODEL = model
                     llm_pa = build_llm(CURRENT_PA_MODEL, 0.2)
-                    print(f"[API MODEL SWITCH] Personal Assistant model switched to {model}", flush=True)
+                    print(f"[MODEL SWITCH API] PA model dynamically switched to: {CURRENT_PA_MODEL}", flush=True)
 
-                response = json.dumps({"status": "success", "role": role, "model": model}).encode()
+                response = json.dumps({
+                    "status": "success",
+                    "role": role,
+                    "model": model,
+                    "current_pa": CURRENT_PA_MODEL,
+                    "current_swarm": CURRENT_DEPT_MODEL
+                }).encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(response)))
@@ -5265,7 +5343,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 self.wfile.write(response)
             except Exception as e:
                 err = json.dumps({"error": str(e)}).encode()
-                self.send_response(500)
+                self.send_response(400)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(err)))
                 self._cors()
@@ -5278,23 +5356,17 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
+        if not self._is_authenticated():
+            err = json.dumps({"error": "unauthorized", "message": "Valid API token required"}).encode("utf-8")
+            self.send_response(401)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(err)))
+            self._cors()
+            self.end_headers()
+            self.wfile.write(err)
+            return
+
         try:
-            if API_CHAT_TOKEN:
-                auth_header = str(self.headers.get("Authorization", "")).strip()
-                api_key_header = str(self.headers.get("X-API-Key", "")).strip()
-                bearer = ""
-                if auth_header.lower().startswith("bearer "):
-                    bearer = auth_header[7:].strip()
-                provided = api_key_header or bearer
-                if provided != API_CHAT_TOKEN:
-                    err = json.dumps({"error": "unauthorized"}).encode()
-                    self.send_response(401)
-                    self.send_header("Content-Type", "application/json")
-                    self.send_header("Content-Length", str(len(err)))
-                    self._cors()
-                    self.end_headers()
-                    self.wfile.write(err)
-                    return
 
             length = int(self.headers.get("Content-Length", 0))
             body   = json.loads(self.rfile.read(length))
@@ -5998,6 +6070,9 @@ async def edit_callback_message(query, text: str, reply_markup=None):
 
 async def cmd_postnow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Force immediately generating and sending today's marketing post preview with language selection."""
+    if not is_telegram_operator(update):
+        await update.message.reply_text("🔒 Social media publishing restricted to the authorized operator.")
+        return
     chat_id = update.effective_chat.id
     persist_chat_id(chat_id)
     
@@ -6030,6 +6105,9 @@ async def cmd_postnow(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_promote(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Command to promote a workflow pattern to a trusted template (E[Temp])."""
+    if not is_telegram_operator(update):
+        await update.message.reply_text("🔒 Template promotion restricted to the authorized operator.")
+        return
     args = context.args
     if not args or len(args) < 2:
         await update.message.reply_text(
@@ -6172,6 +6250,9 @@ async def send_long_telegram_message(update: Update, text: str, reply_markup=Non
 # ------------------- Retire Template Command -------------------
 async def cmd_retire(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Command to retire a trusted template (set status to RETIRED)."""
+    if not is_telegram_operator(update):
+        await update.message.reply_text("🔒 Template retirement restricted to the authorized operator.")
+        return
     args = context.args
     if not args or len(args) < 1:
         await update.message.reply_text(
@@ -6724,6 +6805,15 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await run_babu(update, msg, session_id)
 
 
+def is_telegram_operator(update: Update) -> bool:
+    """Authorize administrative commands for the registered operator."""
+    op_id = os.environ.get("TELEGRAM_USER_CHAT_ID", "").strip()
+    if not op_id:
+        return True
+    user_id = str(update.effective_user.id if update.effective_user else (update.effective_chat.id if update.effective_chat else ""))
+    return user_id == op_id
+
+
 async def cmd_launch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = " ".join(context.args) if context.args else ""
     if not text:
@@ -6734,6 +6824,9 @@ async def cmd_launch(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_telegram_operator(update):
+        await update.message.reply_text("🔒 Administrative action restricted to the authorized operator.")
+        return
     session_id = tg_session(update)
     with _memory_lock:
         _histories[session_id].clear()
@@ -6865,6 +6958,9 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_telegram_operator(update):
+        await update.message.reply_text("🔒 Model configuration restricted to the authorized operator.")
+        return
     global llm_pa, llm_dept, CURRENT_PA_MODEL, CURRENT_DEPT_MODEL
 
     # Real-time environment check
@@ -6952,6 +7048,9 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_crm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Deliver an executive CRM sales & inquiry pipeline summary."""
+    if not is_telegram_operator(update):
+        await update.message.reply_text("🔒 CRM desk access restricted to the authorized operator.")
+        return
     try:
         try:
             from .crm_service import format_telegram_crm_digest
@@ -6965,6 +7064,9 @@ async def cmd_crm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_leads(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """View recent client leads, inquiries, and scheduled appointments."""
+    if not is_telegram_operator(update):
+        await update.message.reply_text("🔒 Client leads list restricted to the authorized operator.")
+        return
     try:
         try:
             from .crm_service import get_crm_pipeline_data
@@ -6992,6 +7094,9 @@ async def cmd_leads(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_add_lead(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Register a new lead manually via Telegram."""
+    if not is_telegram_operator(update):
+        await update.message.reply_text("🔒 Administrative lead entry restricted to the authorized operator.")
+        return
     args = context.args
     if not args or len(args) < 2:
         await update.message.reply_text("Usage: `/add_lead <Name> <Phone/Contact> [Service (ITR/GST/PF/General)] [Notes]`", parse_mode="Markdown")
@@ -7016,6 +7121,9 @@ async def cmd_add_lead(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_followups(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """View active scheduled appointments and pending follow-ups, or schedule a new one."""
+    if not is_telegram_operator(update):
+        await update.message.reply_text("🔒 Follow-ups management restricted to the authorized operator.")
+        return
     args = context.args
     try:
         try:
@@ -7396,5 +7504,8 @@ def cleanup_corrupt_failures():
 
 
 if __name__ == '__main__':
-    from .bootstrap import bootstrap_brain
+    try:
+        from .bootstrap import bootstrap_brain
+    except ImportError:
+        from bootstrap import bootstrap_brain
     bootstrap_brain()

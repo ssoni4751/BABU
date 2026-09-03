@@ -201,14 +201,77 @@
     }
   },
   "dynamic_memory_ledger": {
-    "chat_summaries": [],
+    "chat_summaries": [
+      {
+        "session_topic": "Test cognitive capabilities",
+        "key_takeaways": "User verified the hierarchical memory system.",
+        "action_items": [
+          "Proceed with Phase 3 integration"
+        ],
+        "timestamp": "2026-08-19T06:23:11.308916+00:00"
+      }
+    ],
     "work_summaries": [
       {
-        "task_name": "Daily FB Marketing Post",
-        "status": "FAILED",
-        "details": "Message: Facebook API Error: Invalid OAuth access token - Cannot parse access token | Graphic Prompt: A premium minimalist 3D corporate style marketing campaign poster background rep...",
-        "timestamp": "2026-08-19T06:24:00.054670+00:00"
+        "task_name": "Causal FB Marketing Post",
+        "status": "SUCCESS",
+        "details": "Message: Published successfully | Topic: Manual Post Hi",
+        "timestamp": "2026-08-22T09:48:30.996015+00:00"
+      },
+      {
+        "task_name": "Causal FB Marketing Post",
+        "status": "SUCCESS",
+        "details": "Message: Published successfully | Topic: Manual Post Hi",
+        "timestamp": "2026-08-22T09:57:11.940848+00:00"
+      },
+      {
+        "task_name": "Causal FB Marketing Post",
+        "status": "SUCCESS",
+        "details": "Message: Published successfully | Topic: Manual Post Hi",
+        "timestamp": "2026-08-22T09:58:45.155749+00:00"
+      },
+      {
+        "task_name": "Causal FB Marketing Post",
+        "status": "SUCCESS",
+        "details": "Message: Published successfully | Topic: Manual Post Hi",
+        "timestamp": "2026-08-22T10:04:07.155168+00:00"
+      },
+      {
+        "task_name": "Causal FB Marketing Post",
+        "status": "SUCCESS",
+        "details": "Message: Published successfully | Topic: Manual Post Hi",
+        "timestamp": "2026-08-22T10:06:13.996554+00:00"
+      },
+      {
+        "task_name": "Causal FB Marketing Post",
+        "status": "SUCCESS",
+        "details": "Message: Published successfully | Topic: Manual Post Hi",
+        "timestamp": "2026-08-22T10:08:36.911698+00:00"
+      },
+      {
+        "task_name": "Causal FB Marketing Post",
+        "status": "SUCCESS",
+        "details": "Message: Published successfully | Topic: Manual Post Hi",
+        "timestamp": "2026-08-22T10:11:38.500182+00:00"
+      },
+      {
+        "task_name": "Causal FB Marketing Post",
+        "status": "SUCCESS",
+        "details": "Message: Published successfully | Topic: Manual Post Hi",
+        "timestamp": "2026-08-23T06:15:44.356570+00:00"
+      },
+      {
+        "task_name": "Causal FB Marketing Post",
+        "status": "SUCCESS",
+        "details": "Message: Published successfully | Topic: Manual Post Hi",
+        "timestamp": "2026-08-23T06:24:11.633698+00:00"
+      },
+      {
+        "task_name": "Causal FB Marketing Post",
+        "status": "SUCCESS",
+        "details": "Message: Published successfully | Topic: Manual Post Hi",
+        "timestamp": "2026-08-23T07:32:08.359677+00:00"
       }
     ]
   }
-}
+}

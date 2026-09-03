@@ -65,27 +65,36 @@ class MockEmbeddings:
 
 
 _GEMINI_FAILED = False
+_GEMINI_FAILED_TIMESTAMP = 0.0
+_GEMINI_RETRY_COOLDOWN = 120.0  # Retry Gemini after 2 minutes if a transient failure occurs
 
 
 class ResilientEmbeddings:
-    """A wrapper embedding model that dynamically falls back across models and defaults to Mock."""
+    """A wrapper embedding model that dynamically falls back across models with cooldown retry."""
     def embed_query(self, text: str) -> list[float]:
-        global _GEMINI_FAILED
-        # 1. Try Gemini if it has not failed in this process run
-        if os.environ.get("GEMINI_API_KEY") and not _GEMINI_FAILED:
+        global _GEMINI_FAILED, _GEMINI_FAILED_TIMESTAMP
+        import time
+        now = time.time()
+        # 1. Try Gemini if available and cooldown has elapsed
+        if os.environ.get("GEMINI_API_KEY") and (not _GEMINI_FAILED or (now - _GEMINI_FAILED_TIMESTAMP > _GEMINI_RETRY_COOLDOWN)):
             try:
                 from langchain_google_genai import GoogleGenerativeAIEmbeddings
                 # Try primary model
                 try:
                     model = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001", output_dimensionality=768)
-                    return model.embed_query(text)
+                    res = model.embed_query(text)
+                    _GEMINI_FAILED = False
+                    return res
                 except Exception as gemini_err1:
                     print(f"[RAG] Gemini model gemini-embedding-001 failed: {gemini_err1}. Trying models/text-embedding-004...", flush=True)
                     model = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", output_dimensionality=768)
-                    return model.embed_query(text)
+                    res = model.embed_query(text)
+                    _GEMINI_FAILED = False
+                    return res
             except Exception as e:
-                print(f"[RAG ERROR] Gemini embedding initialization or generation failed: {e}. Falling back to MockEmbeddings for the rest of this process run.", flush=True)
+                print(f"[RAG ERROR] Gemini embedding initialization or generation failed: {e}. Cooling down for {_GEMINI_RETRY_COOLDOWN}s before next retry.", flush=True)
                 _GEMINI_FAILED = True
+                _GEMINI_FAILED_TIMESTAMP = now
 
         # 2. Fallback to Mock
         return MockEmbeddings().embed_query(text)

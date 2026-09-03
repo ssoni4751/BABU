@@ -19,7 +19,7 @@ BABU is a bounded, resilient, multi-agent Cognitive Operating System and Governe
 
 | Secret | Purpose | Required? |
 |---|---|---|
-| `GROQ_API_KEY` | Primary LLM Provider (Llama-3.3-70b-versatile, Llama-3.1-8b-instant) | Recommended |
+| `GROQ_API_KEY` | Primary LLM Provider (openai/gpt-oss-120b, openai/gpt-oss-20b via Groq API) | Required |
 | `TELEGRAM_BOT_TOKEN` | Telegram Bot Token for direct human-operator interaction | Required for Bot |
 | `GEMINI_API_KEY` | Secondary/Tertiary LLM & Embeddings fallback (`gemini-2.5-flash`, `text-embedding-004`) | Optional |
 | `OPENROUTER_API_KEY` | Multi-model failover provider | Optional |
@@ -32,13 +32,13 @@ BABU is a bounded, resilient, multi-agent Cognitive Operating System and Governe
 
 - **Runtime:** Python 3.11+ / Node.js (Vite + React)
 - **Bot Engine:** `python-telegram-bot`
-- **Orchestration:** LangGraph `StateGraph` with durable SQLite checkpointers
+- **Orchestration:** LangGraph `StateGraph` with durable SQLite/PostgreSQL checkpointers
 - **LLM Failover Swarm:**
-  - 🥇 Primary: Groq Cloud (`llama-3.3-70b-versatile`, `llama-3.1-8b-instant`)
+  - 🥇 Primary: Groq API (`openai/gpt-oss-120b` for PA, `openai/gpt-oss-20b` for Swarm Workers & Webhooks; legacy Llama models discontinued)
   - 🥈 Secondary: NVIDIA NIM API / OpenRouter
   - 🥉 Tertiary: Google Gemini Native (`gemini-2.5-flash`)
 - **Web Search:** DuckDuckGo (`ddgs` / `duckduckgo_search` — free, no key needed)
-- **Persistence & Ledgers:** SQLite (`execution_ledger`, `trusted_templates`, `pending_actions`, `search_cache`, `system_memory`)
+- **Persistence & Ledgers:** PostgreSQL (Supabase) + SQLite (`execution_ledger`, `trusted_templates`, `pending_actions`, `search_cache`, `system_memory`)
 - **Governance:** E0 Constitutional Rules (`e0/constitution.json`, `e0/policies.json`) + Bipartite Pre/Post Auditor
 
 ---

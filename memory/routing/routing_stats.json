@@ -1197,5 +1197,181 @@
     "has_action": false,
     "ttl_days": 10,
     "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-08-22T10:17:43.162937+00:00",
+    "last_used": "2026-08-22T10:17:43.162958+00:00",
+    "session_id": "tg_8832681666",
+    "query_preview": "hi",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-08-22T10:18:12.227353+00:00",
+    "last_used": "2026-08-22T10:18:12.227371+00:00",
+    "session_id": "tg_8832681666",
+    "query_preview": "fetch the latest post from faceook",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-08-22T12:55:00.752891+00:00",
+    "last_used": "2026-08-22T12:55:00.752932+00:00",
+    "session_id": "tg_8832681666",
+    "query_preview": "Send an email to Mr Rajat regarding lift maintenance on 30 august 2026 from 9to 12bat night'",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-08-22T12:56:54.893123+00:00",
+    "last_used": "2026-08-22T12:56:54.893137+00:00",
+    "session_id": "tg_8832681666",
+    "query_preview": "Made a correction mail id is : verajrajput222@gmail.com",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-08-22T12:57:49.250094+00:00",
+    "last_used": "2026-08-22T12:57:49.250115+00:00",
+    "session_id": "tg_8832681666",
+    "query_preview": "1",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-08-22T12:58:10.914334+00:00",
+    "last_used": "2026-08-22T12:58:10.914353+00:00",
+    "session_id": "tg_8832681666",
+    "query_preview": "0",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-08-22T12:58:30.628519+00:00",
+    "last_used": "2026-08-22T12:58:30.628542+00:00",
+    "session_id": "tg_8832681666",
+    "query_preview": "0",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-08-22T12:58:50.480165+00:00",
+    "last_used": "2026-08-22T12:58:50.480182+00:00",
+    "session_id": "tg_8832681666",
+    "query_preview": "Wo are you?",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-08-22T12:59:34.371860+00:00",
+    "last_used": "2026-08-22T12:59:34.371876+00:00",
+    "session_id": "tg_8832681666",
+    "query_preview": "Check Facebook comments",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-08-22T13:00:26.958787+00:00",
+    "last_used": "2026-08-22T13:00:26.958805+00:00",
+    "session_id": "tg_8832681666",
+    "query_preview": "Check Facebook comments",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-08-22T13:02:54.033061+00:00",
+    "last_used": "2026-08-22T13:02:54.033077+00:00",
+    "session_id": "tg_8832681666",
+    "query_preview": "0",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-08-22T13:24:19.304324+00:00",
+    "last_used": "2026-08-22T13:24:19.304346+00:00",
+    "session_id": "tg_8832681666",
+    "query_preview": "System health",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-08-22T13:26:09.720387+00:00",
+    "last_used": "2026-08-22T13:26:09.720404+00:00",
+    "session_id": "tg_8832681666",
+    "query_preview": "Check CRM has many leads do we have",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-08-23T04:58:58.830668+00:00",
+    "last_used": "2026-08-23T04:58:58.830686+00:00",
+    "session_id": "tg_8832681666",
+    "query_preview": "Crm",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-08-23T06:18:50.705256+00:00",
+    "last_used": "2026-08-23T06:18:50.705270+00:00",
+    "session_id": "tg_8832681666",
+    "query_preview": "hello",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
+  },
+  {
+    "timestamp": "2026-08-23T06:19:07.723040+00:00",
+    "last_used": "2026-08-23T06:19:07.723058+00:00",
+    "session_id": "tg_8832681666",
+    "query_preview": "check facebook comments",
+    "selected_gear": "DYNAMIC",
+    "reason": "routing_dispatch",
+    "has_action": false,
+    "ttl_days": 10,
+    "confidence": 1.0
   }
 ]

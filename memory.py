@@ -120,6 +120,10 @@ def send_immune_rule_email(new_rule: dict, all_rules: list) -> None:
         print(f"[IMMUNE SYSTEM EMAIL GATE] Skipping email alert for operational/infrastructure failure type: {failure_type}", flush=True)
         return
 
+    if os.environ.get("ENABLE_IMMUNE_EMAIL_ALERTS", "false").lower() != "true":
+        print("[IMMUNE SYSTEM EMAIL GATE] Immune email alerts disabled (set ENABLE_IMMUNE_EMAIL_ALERTS=true to enable).", flush=True)
+        return
+
     print("[IMMUNE SYSTEM EMAIL] Starting background email notification compile...", flush=True)
     try:
         try:

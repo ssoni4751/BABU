@@ -8,9 +8,11 @@ import json
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 
+IST = timezone(timedelta(hours=5, minutes=30), name="IST")
+
 def get_current_ist_datetime() -> datetime:
     """Return the current datetime localized to Indian Standard Time (IST / UTC+5:30)."""
-    return datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+    return datetime.now(timezone.utc).astimezone(IST)
 
 def get_indian_compliance_calendar(ref_dt: Optional[datetime] = None) -> Dict[str, Any]:
     """
