@@ -713,7 +713,7 @@ def planner_node(state: BabuState):
                     query=query,
                     history_text=history_text,
                     profile_text=profile_text,
-                    model_name=CURRENT_DEPT_MODEL,
+                    model_name=CURRENT_PA_MODEL,
                     goal_id=pre_goal_id,
                     is_correction=False,
                     last_goal_text=None,
@@ -747,7 +747,7 @@ def planner_node(state: BabuState):
                 query=query,
                 history_text=history_text,
                 profile_text=profile_text,
-                model_name=CURRENT_DEPT_MODEL,
+                model_name=CURRENT_PA_MODEL,
                 goal_id=pre_goal_id,
                 is_correction=is_correction,
                 last_goal_text=last_goal_text,
@@ -794,7 +794,7 @@ def planner_node(state: BabuState):
     else:
         has_actual_tokens = bool(getattr(graph, "planning_tokens", None))
         plan_tokens = getattr(graph, "planning_tokens", None) or {"prompt": 1800, "completion": 500, "total": 2300}
-        p_plan, c_plan = get_token_costs(CURRENT_DEPT_MODEL)
+        p_plan, c_plan = get_token_costs(CURRENT_PA_MODEL)
         plan_cost = (plan_tokens.get("prompt", 0) * p_plan) + (plan_tokens.get("completion", 0) * c_plan)
     
     log_execution_ledger_event(
@@ -811,7 +811,7 @@ def planner_node(state: BabuState):
             "planner_status": graph.planner_status,
             "tokens": plan_tokens,
             "cost": round(plan_cost, 6),
-            "model": CURRENT_DEPT_MODEL,
+            "model": CURRENT_PA_MODEL,
             "is_estimated": not has_actual_tokens,
             "event_start_time": plan_start_iso,
             "event_end_time": plan_end_iso,

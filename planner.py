@@ -1122,7 +1122,7 @@ def plan_goal(
     gear: Optional[str] = None,
     history_text: str = "",
     profile_text: str = "",
-    model_name: str = "groq/compound",
+    model_name: str = "openai/gpt-oss-120b",
     goal_id: Optional[str] = None,
     is_correction: bool = False,
     last_goal_text: Optional[str] = None,

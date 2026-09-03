@@ -129,11 +129,11 @@
 * **Status:** Accepted / Live in Production (Render Cloud Alignment)
 * **Context:** BABU operates as a 24/7 governed agentic control plane deployed on Render web services. A full system audit revealed key production risks: public exposure of unauthenticated `/api/crm` and `/api/chat` endpoints on `.onrender.com`, missing Meta HMAC webhook signature validation, an approval bypass bug in `graph.py` auto-approving pre-detected mutating actions, ephemeral container filesystem wipes, SQLite schema lock contention on every connection, a boot-path resolution bug in `bootstrap.py`, and the need to formally finalize the model matrix around Groq open weights (`openai/gpt-oss-120b` and `openai/gpt-oss-20b`) while retiring legacy Llama models.
 * **Decision:**
-  1. **Canonical Model Matrix Realignment:**
-     * Formally retire and discontinue `llama-3.3-70b-versatile` and `llama-3.1-8b-instant`.
-     * Anchor `openai/gpt-oss-120b` as the canonical high-fidelity Personal Assistant (PA) model.
-     * Anchor `openai/gpt-oss-20b` as the canonical ultra-fast (<0.3s) Swarm Worker and Social Webhook model.
-     * Maintain secondary fallback to NVIDIA NIM and tertiary fallback to Google Gemini Native (`gemini-2.5-flash`).
+  1. **Model Matrix Consolidation & Discontinuation of Legacy Llama:**
+      * Formally retire and remove `llama-3.3-70b-versatile` and `llama-3.1-8b-instant`.
+      * Anchor `openai/gpt-oss-120b` via Groq API as the canonical high-cognition model powering both the **Strategic Planner (Layer 4)** and **Personal Assistant (PA / Layer 5)**, ensuring strict JSON schema adherence, zero syntax drift, and deep causal reasoning.
+      * Anchor `openai/gpt-oss-20b` via Groq API as the canonical ultra-fast (<0.3s) Swarm Worker, Intent Router, and Social Webhook model.
+      * Maintain secondary fallback to NVIDIA NIM and tertiary fallback to Google Gemini Native (`gemini-2.5-flash`).
   2. **Render Public Endpoint Hardening:**
      * Enforce mandatory Bearer token / API key (`API_CHAT_TOKEN`) validation on all HTTP endpoints (`/api/chat`, `/api/crm`, `/api/crm/lead/update`, `/api/models/switch`, `/api/telemetry`, `/api/chat/status`), returning `401 Unauthorized` on unauthenticated requests.
      * Confine `/api/image` to strict base directories (`artifacts/` and `temp/`) using `os.path.commonpath()` to eliminate arbitrary filesystem traversal risks.

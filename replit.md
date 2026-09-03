@@ -34,7 +34,7 @@ BABU is a bounded, resilient, multi-agent Cognitive Operating System and Governe
 - **Bot Engine:** `python-telegram-bot`
 - **Orchestration:** LangGraph `StateGraph` with durable SQLite/PostgreSQL checkpointers
 - **LLM Failover Swarm:**
-  - 🥇 Primary: Groq API (`openai/gpt-oss-120b` for PA, `openai/gpt-oss-20b` for Swarm Workers & Webhooks; legacy Llama models discontinued)
+  - 🥇 Primary: Groq API (`openai/gpt-oss-120b` for Strategic Planner & PA, `openai/gpt-oss-20b` for Swarm Workers & Webhooks; legacy Llama models discontinued)
   - 🥈 Secondary: NVIDIA NIM API / OpenRouter
   - 🥉 Tertiary: Google Gemini Native (`gemini-2.5-flash`)
 - **Web Search:** DuckDuckGo (`ddgs` / `duckduckgo_search` — free, no key needed)

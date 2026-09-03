@@ -294,7 +294,7 @@ KNOWLEDGE_BASE = {
         "and Direct Google Workspace automation (email via Gmail, Calendar events, Sheets logging, and more)."
     ),
     "models": (
-        "The Personal Assistant (PA) uses openai/gpt-oss-120b (Groq API open weights, highest quality). "
+        "The Strategic Planner and Personal Assistant (PA) use openai/gpt-oss-120b (Groq API open weights, highest reasoning fidelity). "
         "Swarm workers and social webhooks use openai/gpt-oss-20b (Groq API open weights, ultra-fast <0.3s). "
         "Legacy Llama models (llama-3.3-70b-versatile and llama-3.1-8b-instant) are discontinued. "
         "All primary inference runs on Groq API with secondary failover to NVIDIA NIM and Google Gemini."
