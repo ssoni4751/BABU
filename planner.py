@@ -1055,7 +1055,13 @@ def compile_planner() -> str:
     """Load and compile the Layer A Institutional Brain context into memory."""
     global COMPILED_BRAIN_CONTEXT
     try:
-        brain_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "brain")
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        if os.path.isdir(os.path.join(current_dir, "brain")):
+            brain_dir = os.path.join(current_dir, "brain")
+        elif os.path.isdir(os.path.join(os.path.dirname(current_dir), "brain")):
+            brain_dir = os.path.join(os.path.dirname(current_dir), "brain")
+        else:
+            brain_dir = os.path.join(current_dir, "brain")
         with open(os.path.join(brain_dir, "constitution.md"), "r", encoding="utf-8") as f:
             const_text = f.read()
         with open(os.path.join(brain_dir, "organization.md"), "r", encoding="utf-8") as f:
