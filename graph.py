@@ -728,7 +728,7 @@ def planner_node(state: BabuState):
                 intent_packet=intent_packet.to_dict()
             )
         elif intent_packet.lookup and not (intent_packet.research or intent_packet.generate or intent_packet.execute or requires_workspace_access(query) or requires_web_search(query)) and not has_multiple_tasks_or_requests(query, intent_packet.to_dict()):
-            PRIVATE_QUERY_TYPES = ("BUSINESS_INFORMATION", "PERSONAL_INFORMATION", "SYSTEM_INFORMATION")
+            PRIVATE_QUERY_TYPES = ("BUSINESS_INFORMATION", "PERSONAL_INFORMATION", "SYSTEM_INFORMATION", "COMMUNICATION", "WORKSPACE")
             if intent_packet.query_category in PRIVATE_QUERY_TYPES:
                 print(f"[PLANNER NODE] Private query category '{intent_packet.query_category}' detected → Disabling fast-track simple lookup shortcut.", flush=True)
                 graph = plan_goal(

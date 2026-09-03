@@ -388,10 +388,13 @@ INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
     "- planning_required: true if HYBRID or multi-step workflow composition is needed; false for direct fast-track/lookup/single-action.\n"
     "\n"
     "QUERY CATEGORY DEFINITIONS:\n"
-    "- BUSINESS_INFORMATION: Set if query relates to user's business context, services, client records, customer claims (PF/GST). Any query asking for client names or counts is strictly BUSINESS_INFORMATION.\n"
-    "- PERSONAL_INFORMATION: Set if query relates to personal details, family, address, personal email/phone.\n"
-    "- SYSTEM_INFORMATION: Set if query relates to system itself (BABU), architecture, logs, ADRs.\n"
-    "- PUBLIC_INFORMATION: Set if query is general knowledge, public web search, tax laws, general facts.\n"
+    "- COMMUNICATION: Set if query relates to sending emails, searching Gmail, or direct messaging.\n"
+    "- WORKSPACE: Set if query relates to Google Workspace operations (Calendar meetings/events, Google Docs creation, Sheets logging, Drive).\n"
+    "- BUSINESS_INFORMATION: Set if query relates to user's business context (Anshu Computer & Tax Consultancy), client records, services, customer claims (PF/GST/ITR), or Facebook marketing.\n"
+    "- PERSONAL_INFORMATION: Set if query relates to personal details, family members, home address, personal phone/email.\n"
+    "- SYSTEM_INFORMATION: Set if query relates to system itself (BABU), architecture, logs, ADRs, health/uptime.\n"
+    "- CONVERSATION: Set if query is a greeting, casual chitchat, thank-you, or conversational pleasantry.\n"
+    "- PUBLIC_INFORMATION: Set strictly if query is an external public knowledge inquiry, web search (via Tavily/web), Wikipedia research, public news, general facts, or definitions.\n"
     "\n"
     "DEPARTMENT DEFINITIONS:\n"
     "- information: General web search, information retrieval, quick facts, local profile/memory search.\n"
@@ -419,7 +422,7 @@ INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
     '  "execution_mode": "READ_ONLY | APPROVAL_REQUIRED | AUTO_EXECUTE",\n'
     '  "confidence": 0.0 to 1.0,\n'
     '  "system_query": true | false,\n'
-    '  "query_category": "BUSINESS_INFORMATION | PERSONAL_INFORMATION | SYSTEM_INFORMATION | PUBLIC_INFORMATION"\n'
+    '  "query_category": "COMMUNICATION | WORKSPACE | BUSINESS_INFORMATION | PERSONAL_INFORMATION | SYSTEM_INFORMATION | CONVERSATION | PUBLIC_INFORMATION"\n'
     "}\n"
     "\n"
     "CRITICAL: Output ONLY valid raw JSON. No explanation, no markdown fences."
@@ -446,6 +449,7 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
             confidence=1.0,
             tokens={"prompt": 0, "completion": 0, "total": 0},
             model="rules_engine",
+            query_category="CONVERSATION",
             topology_source="INTERNAL",
             topology_mode="CHITCHAT",
             mutation_type="NONE",
@@ -502,6 +506,8 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
         target_domain = "SYSTEM" if is_sys else ("BUSINESS" if is_fb_action else "USER")
         if detected_action in ("send_email", "search_gmail"):
             detected_category = "COMMUNICATION"
+        elif detected_action in ("create_event", "create_doc", "upload_to_drive", "search_sheet"):
+            detected_category = "WORKSPACE"
         elif is_sys:
             detected_category = "SYSTEM_INFORMATION"
         elif is_fb_action:
@@ -509,7 +515,7 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
         elif _force_lookup:
             detected_category = "PERSONAL_INFORMATION"
         else:
-            detected_category = "DIRECT_ACTION"
+            detected_category = "WORKSPACE"
 
         packet = IntentPacket(
             allowed_departments=["information", "writing", "execution", "pa"],
@@ -543,7 +549,7 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
             confidence=0.9,
             tokens={"prompt": 0, "completion": 0, "total": 0},
             model="rules_engine",
-            query_category="PERSONAL_INFORMATION" if _force_lookup or "my" in t else "COMMUNICATION",
+            query_category="COMMUNICATION",
         )
 
     # 1c. Ambiguous / Vague directive gate -> trigger low-confidence clarification
@@ -556,7 +562,7 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
             confidence=0.4,
             tokens={"prompt": 0, "completion": 0, "total": 0},
             model="clarification_gate",
-            query_category="PUBLIC_INFORMATION",
+            query_category="CONVERSATION",
             planning_required=False
         )
 
@@ -660,14 +666,22 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
             packet.query_category = "SYSTEM_INFORMATION"
         elif any(k in lowered for k in ("anshu", "shubham", "swarnkar", "ash", "ssoni", "who am i", "my father", "my mother", "my brother", "my sibling", "my parents", "my cousin", "my background", "my journey", "my education", "my career", "my email", "my phone", "my number", "my address", "my location", "where i live", "tell me about me", "my profile", "my biography", "my bio", "about me", "know about me")):
             packet.query_category = "PERSONAL_INFORMATION"
+        elif any(k in lowered for k in ("email", "gmail", "mail", "inbox")) and any(k in lowered for k in ("send", "draft", "write", "check", "search", "read", "fetch", "reply", "to", "regarding")):
+            packet.query_category = "COMMUNICATION"
+        elif any(k in lowered for k in ("calendar", "meeting", "event", "schedule", "doc", "document", "sheet", "spreadsheet", "drive", "excel")):
+            packet.query_category = "WORKSPACE"
         elif any(k in lowered for k in ("facebook", "faceook", "fb", "instagram", "insta", "post", "posts", "comment", "comments", "lead", "leads", "appointment", "followup", "client", "clients", "customer", "customers", "invoice", "invoices", "payment", "payments", "transaction", "transactions", "sales", "earnings", "revenue", "profit", "profits", "ledger", "ledgers", "pf claim", "pf claims", "uan consolidation", "kyc correction", "joint declaration", "gst registration", "gstr-1", "gstr-3b")):
             is_general = any(g in lowered for g in ("what is", "how to", "definition", "explain", "tutorial", "general process")) and not any(f in lowered for f in ("facebook", "faceook", "fb", "post", "lead", "appointment"))
             if not is_general:
                 packet.query_category = "BUSINESS_INFORMATION"
             else:
                 packet.query_category = "PUBLIC_INFORMATION"
+        elif any(k in lowered for k in ("search", "who is", "what is", "when did", "where is", "how does", "news", "weather", "wikipedia", "tavily", "google", "history of", "explain", "current affairs")):
+            packet.query_category = "PUBLIC_INFORMATION"
+        elif getattr(packet, "query_category", "") in ("COMMUNICATION", "WORKSPACE", "BUSINESS_INFORMATION", "PERSONAL_INFORMATION", "SYSTEM_INFORMATION", "CONVERSATION", "PUBLIC_INFORMATION"):
+            pass
         else:
-            packet.query_category = getattr(packet, "query_category", "PUBLIC_INFORMATION")
+            packet.query_category = "PUBLIC_INFORMATION"
 
         print(f"[INTENT CLASSIFIER] Classified: allowed_depts={packet.allowed_departments}, allowed_actions={packet.allowed_actions}, mode={packet.execution_mode}, conf={packet.confidence}, sys_query={packet.system_query}, query_category={packet.query_category}", flush=True)
         return packet
@@ -692,14 +706,20 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
         lowered = query.lower()
         if is_sys or any(k in lowered for k in ("failures", "uptime", "upgrades", "upgrade", "adr", "tradeoff", "tradeoffs", "health dashboard")):
             packet.query_category = "SYSTEM_INFORMATION"
-        elif any(k in lowered for k in ("anshu", "shubham", "swarnkar", "ash", "ssoni", "who am i", "my father", "my mother", "my brother", "my sibling", "my parents", "my cousin", "my background", "my journey", "my education", "my career", "my email", "my phone", "my number", "my address", "my location", "where i live", "tell me about me", "my profile", "my biography", "my bio", "about me", "know about me")):
+        elif _force_lookup or any(k in lowered for k in ("anshu", "shubham", "swarnkar", "ash", "ssoni", "who am i", "my father", "my mother", "my brother", "my sibling", "my parents", "my cousin", "my background", "my journey", "my education", "my career", "my email", "my phone", "my number", "my address", "my location", "where i live", "tell me about me", "my profile", "my biography", "my bio", "about me", "know about me")):
             packet.query_category = "PERSONAL_INFORMATION"
+        elif any(k in lowered for k in ("email", "gmail", "mail", "inbox")):
+            packet.query_category = "COMMUNICATION"
+        elif any(k in lowered for k in ("calendar", "meeting", "event", "doc", "sheet", "drive")):
+            packet.query_category = "WORKSPACE"
         elif any(k in lowered for k in ("facebook", "faceook", "fb", "instagram", "insta", "post", "posts", "comment", "comments", "lead", "leads", "appointment", "followup", "client", "clients", "customer", "customers", "invoice", "invoices", "payment", "payments", "transaction", "transactions", "sales", "earnings", "revenue", "profit", "profits", "ledger", "ledgers", "pf claim", "pf claims", "uan consolidation", "kyc correction", "joint declaration", "gst registration", "gstr-1", "gstr-3b")):
             is_general = any(g in lowered for g in ("what is", "how to", "definition", "explain", "tutorial", "general process")) and not any(f in lowered for f in ("facebook", "faceook", "fb", "post", "lead", "appointment"))
             if not is_general:
                 packet.query_category = "BUSINESS_INFORMATION"
             else:
                 packet.query_category = "PUBLIC_INFORMATION"
+        else:
+            packet.query_category = "PUBLIC_INFORMATION"
         return packet
 
 # ---------------------------------------------------------------------------

@@ -718,9 +718,9 @@ def is_profile_relevant_query(query: str) -> bool:
     return any(kw in q for kw in keywords)
 
 def is_private_data_query(query: str, category: Optional[str] = None) -> bool:
-    if category in ("BUSINESS_INFORMATION", "PERSONAL_INFORMATION"):
+    if category in ("BUSINESS_INFORMATION", "PERSONAL_INFORMATION", "COMMUNICATION", "WORKSPACE"):
         return True
-    if category == "PUBLIC_INFORMATION":
+    if category in ("PUBLIC_INFORMATION", "CONVERSATION"):
         return False
     return is_profile_relevant_query(query)
 
