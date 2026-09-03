@@ -500,6 +500,17 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
         
         is_sys = is_system_aware_query(query)
         target_domain = "SYSTEM" if is_sys else ("BUSINESS" if is_fb_action else "USER")
+        if detected_action in ("send_email", "search_gmail"):
+            detected_category = "COMMUNICATION"
+        elif is_sys:
+            detected_category = "SYSTEM_INFORMATION"
+        elif is_fb_action:
+            detected_category = "BUSINESS_INFORMATION"
+        elif _force_lookup:
+            detected_category = "PERSONAL_INFORMATION"
+        else:
+            detected_category = "DIRECT_ACTION"
+
         packet = IntentPacket(
             allowed_departments=["information", "writing", "execution", "pa"],
             allowed_actions=[detected_action],
@@ -507,7 +518,7 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
             confidence=0.95,
             tokens={"prompt": 0, "completion": 0, "total": 0},
             model="rules_engine",
-            query_category="SYSTEM_INFORMATION" if is_sys else ("BUSINESS_INFORMATION" if is_fb_action else ("PERSONAL_INFORMATION" if _force_lookup else "PUBLIC_INFORMATION")),
+            query_category=detected_category,
             system_query=is_sys,
             topology_source="EXTERNAL",
             topology_mode="LOOKUP" if is_read_action else "ACTION",
@@ -532,7 +543,7 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
             confidence=0.9,
             tokens={"prompt": 0, "completion": 0, "total": 0},
             model="rules_engine",
-            query_category="PERSONAL_INFORMATION" if _force_lookup or "my" in t else "PUBLIC_INFORMATION",
+            query_category="PERSONAL_INFORMATION" if _force_lookup or "my" in t else "COMMUNICATION",
         )
 
     # 1c. Ambiguous / Vague directive gate -> trigger low-confidence clarification

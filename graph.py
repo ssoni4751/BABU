@@ -512,18 +512,40 @@ def planner_node(state: BabuState):
             
         try:
             graph_dict = json.loads(cached_graph)
-            graph_dict["goal_id"] = pre_goal_id
-            graph_dict["goal"] = query
-            graph = GoalGraph.from_dict(graph_dict)
-            graph.planner_status = "CACHE_MATCH"
-            print(f"[PLANNER NODE] Session cache hit! Reusing plan for query hash {query_hash} and goal class {goal_class}", flush=True)
-            
-            tracker = state.get("execution_tracker") or {}
-            tracker["planner_duration"] = 0.0
-            
-            routing_meta = state.get("routing_metadata") or {}
-            routing_meta["sql_context"] = sql_context
-            routing_meta["retrieved_rag"] = retrieved
+            cached_status = graph_dict.get("planner_status", "")
+            cached_tasks = graph_dict.get("tasks", [])
+            is_invalid_cache = (
+                cached_status in ("JSON_ERROR", "FALLBACK", "AMBIGUOUS_QUERY", "CONSTRAINT_CONFLICT", "VALIDATION_ERROR")
+                or any("could not be planned securely" in t.get("objective", "").lower() or "refuse" in t.get("objective", "").lower() for t in cached_tasks)
+            )
+            if is_invalid_cache:
+                print(f"[PLANNER CACHE] Discarding invalid/refusal cached plan for query hash {query_hash}. Purging from cache and re-planning.", flush=True)
+                cached_graph = None
+                try:
+                    pconn, p_is_pg = get_db_connection()
+                    pcur = pconn.cursor()
+                    if p_is_pg:
+                        pcur.execute("DELETE FROM planned_graphs_cache WHERE session_id = %s AND query_hash = %s", (session_id, query_hash))
+                    else:
+                        pcur.execute("DELETE FROM planned_graphs_cache WHERE session_id = ? AND query_hash = ?", (session_id, query_hash))
+                    pconn.commit()
+                    pcur.close()
+                    pconn.close()
+                except Exception as p_err:
+                    print(f"[PLANNER CACHE] Failed to purge bad cache row: {p_err}", flush=True)
+            else:
+                graph_dict["goal_id"] = pre_goal_id
+                graph_dict["goal"] = query
+                graph = GoalGraph.from_dict(graph_dict)
+                graph.planner_status = "CACHE_MATCH"
+                print(f"[PLANNER NODE] Session cache hit! Reusing plan for query hash {query_hash} and goal class {goal_class}", flush=True)
+                
+                tracker = state.get("execution_tracker") or {}
+                tracker["planner_duration"] = 0.0
+                
+                routing_meta = state.get("routing_metadata") or {}
+                routing_meta["sql_context"] = sql_context
+                routing_meta["retrieved_rag"] = retrieved
             
             # Calculate graph hash for trace metadata
             import hashlib
@@ -866,8 +888,15 @@ def planner_node(state: BabuState):
     routing_meta["sql_context"] = sql_context
     routing_meta["retrieved_rag"] = retrieved
 
-    # Save planned graph to cache
-    if graph and getattr(graph, "planner_status", "") != "CACHE_MATCH":
+    # Save planned graph to cache only for valid, successful multi-task graphs
+    is_error_status = getattr(graph, "planner_status", "") in (
+        "CACHE_MATCH", "JSON_ERROR", "FALLBACK", "AMBIGUOUS_QUERY", "CONSTRAINT_CONFLICT", "VALIDATION_ERROR"
+    )
+    is_refusal_plan = any(
+        "could not be planned securely" in t.objective.lower() or "refuse" in t.objective.lower()
+        for t in getattr(graph, "tasks", [])
+    )
+    if graph and not is_error_status and not is_refusal_plan:
         conn, is_pg = get_db_connection()
         try:
             cursor = conn.cursor()
@@ -1973,10 +2002,15 @@ def pa_node(state: BabuState):
             f" Use history for context, never repeat it verbatim."
             f"{google_ctx}{profile_ctx}"
         )
-        if not action_result:
-            manifesto += "\n\nCRITICAL: Do not claim any action was executed/sent/created in this turn unless [Automation Result] is explicitly present."
         if pa_rules:
             manifesto += "\n\n" + pa_rules
+
+    if not action_result:
+        manifesto += (
+            "\n\nCRITICAL ANTI-HALLUCINATION INSTRUCTION: No physical action or external automation was executed in this turn because [Automation Result] is NOT present. "
+            "You must NEVER claim, state, suggest, or imply that you sent an email, published a post, created an event, or modified any document. "
+            "If the user requested an action, do not pretend it has already been performed. Be completely truthful about what has or has not happened."
+        )
 
     if is_private:
         manifesto += (
