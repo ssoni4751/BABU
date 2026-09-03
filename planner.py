@@ -13,6 +13,7 @@ All plans produce a GoalGraph containing TaskDTO nodes with dependency edges.
 
 import json
 import os
+import re
 import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
@@ -700,6 +701,7 @@ PLANNER_SYSTEM_PROMPT: str = (
     "\n"
     "RULES:\n"
     "- Output ONLY valid JSON. No markdown, no explanation.\n"
+    "- CRITICAL SYNTAX RULE: Do NOT include trailing commas before closing braces '}' or brackets ']' (never write ',}' or ',]'). Ensure all quotes are properly escaped.\n"
     "- Consult Runtime Index before selecting information source. Under no circumstances should you plan external web search/research for identity, system state, telemetry, configuration, or health. Use only internal/local resources.\n"
     "- GOAL CORRECTIONS: If the user query is a correction, typo fix, or modification of a previous goal in the recent conversation history (e.g. 'I meant monitoring, not monetary' or 'correct the topic to X'), you must identify the corrected goal topic and plan the task DAG for the corrected goal, not the incorrect one.\n"
     "- INTENT CONSTRAINTS: The system has pre-classified the user's intent boundaries. You must strictly obey these constraints:\n"
@@ -768,18 +770,45 @@ PLANNER_SYSTEM_PROMPT: str = (
 # ---------------------------------------------------------------------------
 
 def _extract_json(text: str) -> dict:
-    """Extract a JSON object from LLM output, tolerating markdown fences."""
+    """Extract a JSON object from LLM output, tolerating markdown fences, surrounding text, and trailing commas."""
     cleaned = text.strip()
 
-    # Strip markdown code fences if present
-    if cleaned.startswith("```"):
-        # Remove opening fence (with optional language tag)
-        first_newline = cleaned.index("\n")
-        cleaned = cleaned[first_newline + 1:]
-    if cleaned.endswith("```"):
-        cleaned = cleaned[:-3]
+    # 1. Strip markdown code fences if present anywhere
+    if "```" in cleaned:
+        match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned, flags=re.IGNORECASE)
+        if match:
+            cleaned = match.group(1).strip()
+        else:
+            cleaned = re.sub(r"^```[a-zA-Z]*\n", "", cleaned)
+            cleaned = re.sub(r"\n```$", "", cleaned).strip()
 
-    cleaned = cleaned.strip()
+    # 2. Extract outermost JSON object if conversational text surrounds it
+    start_idx = cleaned.find("{")
+    end_idx = cleaned.rfind("}")
+    if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+        cleaned = cleaned[start_idx:end_idx + 1]
+
+    # 3. Direct attempt with strict json.loads
+    try:
+        return json.loads(cleaned)
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # 4. Repair common LLM syntax flaws (trailing commas, comments)
+    repaired = cleaned
+    # Remove single line comments // ...
+    repaired = re.sub(r'//.*', '', repaired)
+    # Remove multi-line comments /* ... */
+    repaired = re.sub(r'/\*.*?\*/', '', repaired, flags=re.DOTALL)
+    # Remove trailing commas before closing braces/brackets (e.g. [1, 2,] or {"a": 1,})
+    repaired = re.sub(r',\s*([\]}])', r'\1', repaired)
+
+    try:
+        return json.loads(repaired)
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # 5. Fallback to raw json.loads to raise original/informative exception
     return json.loads(cleaned)
 
 
