@@ -325,11 +325,11 @@ def get_db_connection():
         if db_url.startswith("postgres://") or db_url.startswith("postgresql://"):
             now = time.time()
             if not _PG_FAILED or (now - _PG_LAST_RETRY > _PG_RETRY_INTERVAL):
-                import psycopg2
-                url = db_url
-                if url.startswith("postgres://"):
-                    url = url.replace("postgres://", "postgresql://", 1)
                 try:
+                    import psycopg2
+                    url = db_url
+                    if url.startswith("postgres://"):
+                        url = url.replace("postgres://", "postgresql://", 1)
                     conn = psycopg2.connect(url, connect_timeout=5)
                     conn.set_client_encoding('UTF8')
                     _PG_FAILED = False
