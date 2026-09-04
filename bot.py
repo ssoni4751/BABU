@@ -6845,10 +6845,14 @@ async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn, is_pg = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM system_memory WHERE key IN ('failures', 'failures_test')")
+        if is_pg:
+            cursor.execute("DELETE FROM planned_graphs_cache WHERE session_id = %s", (session_id,))
+        else:
+            cursor.execute("DELETE FROM planned_graphs_cache WHERE session_id = ?", (session_id,))
         conn.commit()
         cursor.close()
         conn.close()
-        rules_status = "and historical immune rules cleared "
+        rules_status = "and historical immune rules & plan cache cleared "
     except Exception as db_err:
         print(f"[CLEAR ERROR] Database failures clear failed: {db_err}", flush=True)
         rules_status = "and rules clear attempted (with error) "
