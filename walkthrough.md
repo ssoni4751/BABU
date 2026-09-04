@@ -1,4 +1,4 @@
-﻿# Project BABU v2 — Full Session Walkthrough
+# Project BABU v2 — Full Session Walkthrough
 **Date:** June 21, 2026 | **Version:** 4.0.0 (V2 Cognitive OS)
 
 This document captures everything accomplished across the full upgrade session
@@ -267,3 +267,25 @@ This pass implemented the BABU v2 vision plan as an operational institution:
   packages so local Windows builds and Linux deployment locks can coexist.
 - Runtime-generated profile/routing JSON entries from tests were intentionally
   left out of the commit because they are operational state, not upgrade code.
+
+---
+
+## 13. Production Deployment & Action Parameter Integrity (September 4, 2026)
+
+### A. Dual-Directory Sync Resolution (`d:\Aria` vs `babu/`)
+- **Discovery**: Render was configured with Root Directory `babu/`, while local edits were being committed to the root directory due to a nested git folder (`babu/.git`) blinding the root repository.
+- **Resolution**: Removed nested git metadata, added ignore safeguard, and fully synchronized all core engine files (`planner.py`, `graph.py`, `bot.py`, `services.py`, `departments.py`, `google_service.py`, `auditor.py`) between root and `babu/`.
+
+### B. Action Parameter Integrity & Real Email Draft Transmission
+- **Root Cause of `(No research/analysis context found)`**:
+  1. In `task_executor_node`, the upfront pre-audit loop paused DAG execution immediately when encountering an execution task, preventing upstream `writing` tasks from ever executing.
+  2. Because the `writing` task never executed, `upstream_results` was empty.
+  3. `departments._resolve_params` replaced `[NEEDS_RESEARCH_CONTEXT]` with `"(No research/analysis context found)"`.
+  4. Although `pa_node` drafted a clean notice in Telegram, it was never synced into `_pending_actions[session_id]["params"]`.
+  5. When the user approved with `1`, the placeholder text was sent to Gmail.
+- **Fixes Deployed**:
+  1. **DAG Execution Ordering**: Upstream read-only tasks (`writing`, `research`) execute in topological order before mutating execution tasks pause for human operator approval.
+  2. **Clean Extraction**: `departments.py` now cleanly parses and separates `subject` and `body` from upstream writing results rather than dumping full text into both fields.
+  3. **Two-Way Draft Synchronization**: `pa_node` actively extracts drafted `**Subject:**` and `**Body:**` from its final chat response and updates `_pending_actions` and persistent DB storage.
+  4. **Safety Firewall**: `google_service.execute_google_action` immediately aborts and returns an error if any email body contains placeholder text (`no research`, `[needs_research_context]`), preventing blank or corrupt emails from ever being dispatched.
+
