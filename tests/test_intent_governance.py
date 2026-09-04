@@ -471,6 +471,32 @@ class TestIntentGovernance(unittest.TestCase):
         self.assertIn("Please note that the lift will undergo scheduled maintenance", resolved["body"])
         self.assertNotIn("**Subject:**", resolved["body"])
 
+    def test_15_class_a_facebook_read_actions_auto_approved(self):
+        """Verify that Class A lookup actions (read_facebook_posts, read_facebook_comments) are pre-approved and do not pause for authorization."""
+        from babu.auditor import get_service_class
+        from babu.planner import build_action_graph
+        
+        # 1. Verify service class classification
+        self.assertEqual(get_service_class("read_facebook_posts"), "A")
+        self.assertEqual(get_service_class("read_facebook_comments"), "A")
+        self.assertEqual(get_service_class("get_facebook_posts"), "A")
+        self.assertEqual(get_service_class("crm_query_leads"), "A")
+        self.assertEqual(get_service_class("search_gmail"), "A")
+        self.assertEqual(get_service_class("search_sheet"), "A")
+        self.assertEqual(get_service_class("post_to_facebook"), "B")
+        self.assertEqual(get_service_class("send_email"), "B")
+        self.assertEqual(get_service_class("delete_document"), "C")
+        
+        # 2. Verify build_action_graph initializes Class A actions with approved=True
+        graph = build_action_graph("fetch latest post from facebook page", {"action": "read_facebook_posts", "params": {}})
+        t1 = next(t for t in graph.tasks if t.task_id == "T1")
+        self.assertTrue(t1.context.get("approved"))
+        
+        # 3. Verify Class B actions are NOT pre-approved
+        graph_b = build_action_graph("post update to facebook page", {"action": "post_to_facebook", "params": {}})
+        t1_b = next(t for t in graph_b.tasks if t.task_id == "T1")
+        self.assertFalse(t1_b.context.get("approved"))
+
 if __name__ == "__main__":
     unittest.main()
 

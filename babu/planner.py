@@ -1700,6 +1700,11 @@ def build_action_graph(query: str, detected_action: dict, goal_id: Optional[str]
 
     action_name: str = detected_action.get("action", "unknown_action")
     params: Dict[str, Any] = detected_action.get("params", {})
+    try:
+        from .auditor import get_service_class
+    except ImportError:
+        from auditor import get_service_class
+    is_class_a = (get_service_class(action_name) == "A")
 
     tasks = [
         TaskDTO(
@@ -1709,7 +1714,7 @@ def build_action_graph(query: str, detected_action: dict, goal_id: Optional[str]
             depends_on=[],
             priority=1,
             state=TaskState.READY,
-            context={"action": action_name, "params": params},
+            context={"action": action_name, "params": params, "approved": is_class_a},
             token_budget=2000,
         ),
         TaskDTO(

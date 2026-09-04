@@ -95,18 +95,25 @@ def get_allowed_boundaries(intent_packet_dict: dict) -> tuple[set[str], set[str]
 
 def get_service_class(action: str) -> str:
     """Classify execution action into Service Class A, B, or C according to V2 Vision Draft."""
-    # Class A: Read-only services (Auto Approved)
-    class_a = {"search_sheet", "search_gmail", "search_image", "web_search", "wikipedia_search", "read_facebook_comments", "read_facebook_posts", "crm_query_leads", "system_status", "system_diagnostics", "memory_stats", "model_info"}
+    if not action:
+        return "A"
     # Class C: Destructive services (Preview -> Approval -> Confirmation -> Execute)
     class_c = {"delete_document", "delete_spreadsheet", "delete_event", "mass_update", "bulk_delete", "clear_memory", "crm_cancel_appointment"}
-    
-    if action in class_a:
-        return "A"
-    elif action in class_c:
+    if action in class_c or any(action.startswith(p) for p in ("delete_", "bulk_delete", "purge_", "drop_")):
         return "C"
-    else:
-        # Default all other external mutating actions to Class B (Preview -> Approval -> Execute)
-        return "B"
+        
+    # Class A: Read-only services (Auto Approved)
+    class_a = {
+        "search_sheet", "search_gmail", "search_image", "search_profile", "read_document", "list_events",
+        "web_search", "wikipedia_search", "read_facebook_comments", "read_facebook_posts", "get_facebook_posts",
+        "get_facebook_comments", "crm_query_leads", "get_crm_leads", "system_status", "system_diagnostics",
+        "memory_stats", "model_info"
+    }
+    if action in class_a or any(action.startswith(p) for p in ("search_", "read_", "get_", "list_", "fetch_")):
+        return "A"
+        
+    # Default all other external mutating actions to Class B (Preview -> Approval -> Execute)
+    return "B"
 
 
 class PreExecutionGatekeeper:

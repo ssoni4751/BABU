@@ -1133,19 +1133,21 @@ def task_executor_node(state: BabuState):
             action = task.context.get("action", "")
             try:
                 from .governance import get_constitution
+                from .auditor import get_service_class
             except ImportError:
                 from governance import get_constitution
+                from auditor import get_service_class
+            
+            service_cls = get_service_class(action)
             mandatory_approvals = get_constitution("mandatory_human_approval", [])
             
-            # Read-only search and fetch actions are pre-approved
-            if action in ("search_sheet", "search_gmail", "read_document", "list_events"):
+            # Read-only Class A actions or non-mandatory actions are pre-approved
+            if service_cls == "A" or (action not in mandatory_approvals and service_cls != "C"):
                 task.context["approved"] = True
-            elif action in mandatory_approvals:
+            elif service_cls in ("B", "C") or action in mandatory_approvals:
                 # Class B and Class C mutating actions ALWAYS require explicit operator approval
                 if not task.context.get("approved"):
                     task.context["approved"] = False
-            elif not task.context.get("approved"):
-                pass
                 
             # If this execution task has NO upstream unfinished dependencies, it is ready now.
             has_deps = bool(task.depends_on)
@@ -1166,10 +1168,13 @@ def task_executor_node(state: BabuState):
             action = task.context.get("action", "")
             try:
                 from .governance import get_constitution
+                from .auditor import get_service_class
             except ImportError:
                 from governance import get_constitution
+                from auditor import get_service_class
+            service_cls = get_service_class(action)
             mandatory_approvals = get_constitution("mandatory_human_approval", [])
-            if action in mandatory_approvals and not task.context.get("approved"):
+            if (service_cls in ("B", "C") or action in mandatory_approvals) and not task.context.get("approved"):
                 completed_results = engine.get_completed_results()
                 task.context["upstream_results"] = [
                     {

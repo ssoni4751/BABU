@@ -5043,7 +5043,7 @@ class HealthHandler(BaseHTTPRequestHandler):
             if path in ("/healthz", "/api/healthz"):
                 body = json.dumps({
                     "status": "ok", "bot": "BABU",
-                    "version": "v7-direct-dispatch",
+                    "version": "v7-class-a-auto-approve",
                     "features": ["memory", "web_search", "knowledge_base", "google_workspace"],
                     "google_configured": bool(is_google_configured()),
                 }).encode()
