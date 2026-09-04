@@ -704,7 +704,7 @@ class ExecutionHead(DepartmentHead):
     # ── placeholder resolution (mirrors bot.py resolve_action_params) ────
 
     @staticmethod
-    def _resolve_params(params: dict, research_text: str = "") -> dict:
+    def _resolve_params(params: dict, research_text: str = "", task_context: dict = None) -> dict:
         """Replace profile placeholders (``my_official_email``, etc.) and upstream findings."""
         import re
         profile = _load_profile()
@@ -798,8 +798,27 @@ class ExecutionHead(DepartmentHead):
             elif "[NEEDS_RESEARCH_CONTEXT]" in val_str:
                 if key in ("image_path", "file_path") and upstream_file_path:
                     resolved[key] = upstream_file_path
+                elif research_text and research_text.strip():
+                    if key == "subject":
+                        s_match = re.search(r'(?:\*\*Subject:\*\*|Subject:)\s*(.+?)(?:\n|$)', research_text, re.IGNORECASE)
+                        if s_match:
+                            resolved[key] = s_match.group(1).strip().strip("*").strip()
+                        else:
+                            first_line = research_text.strip().split("\n")[0].strip().strip("*").strip()
+                            resolved[key] = first_line[:80] if len(first_line) > 5 else "Notice from BABU"
+                    elif key in ("body", "content"):
+                        b_text = re.sub(r'^(?:\*\*Subject:\*\*|Subject:)[^\n]*\n*', '', research_text.strip(), flags=re.IGNORECASE).strip()
+                        resolved[key] = val_str.replace("[NEEDS_RESEARCH_CONTEXT]", b_text if b_text else research_text.strip())
+                    else:
+                        resolved[key] = val_str.replace("[NEEDS_RESEARCH_CONTEXT]", research_text.strip())
                 else:
-                    resolved[key] = val_str.replace("[NEEDS_RESEARCH_CONTEXT]", research_text.strip() if research_text else "(No research/analysis context found)")
+                    parent_goal = (task_context or {}).get("parent_goal", "") if isinstance(task_context, dict) else ""
+                    if key == "subject":
+                        resolved[key] = parent_goal[:60] if parent_goal else "Notice from BABU"
+                    elif key in ("body", "content", "caption"):
+                        resolved[key] = parent_goal if parent_goal else ""
+                    else:
+                        resolved[key] = val_str.replace("[NEEDS_RESEARCH_CONTEXT]", "").strip()
             elif key in ("body", "content") and research_text:
                 # Dynamically inject research findings if body/content is short or a placeholder,
                 # ensuring the actual drafted work is sent instead of a generic subject line/summary.

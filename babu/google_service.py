@@ -960,15 +960,31 @@ def execute_google_action(action: str, params: dict) -> tuple[bool, str]:
     """Directly route automation queries to official Google Workspace APIs."""
     if action == "send_email":
         to = params.get("to", "").strip()
-        subject = params.get("subject", "Automated Message from BABU")
-        body = params.get("body", "")
+        subject = params.get("subject", "Automated Message from BABU").strip()
+        body = params.get("body", "").strip()
         image_path = params.get("image_path", params.get("file_path", ""))
-        if not to or not body:
-            return False, "Missing recipient 'to' or message 'body' parameters."
+        
+        # Clean placeholders from subject
+        if not subject or "[needs_research_context]" in subject.lower() or "no research" in subject.lower():
+            subject = "Notice from BABU"
+
+        # Hard safety firewall: Block sending placeholder or refusal text as email body
+        is_placeholder_body = (
+            not body
+            or "[needs_research_context]" in body.lower()
+            or "no research" in body.lower()
+            or "(no research/analysis context found)" in body.lower()
+            or "information unavailable" in body.lower()
+        )
+        if is_placeholder_body:
+            return False, f"Email body contains unresolved placeholder text: '{body[:60]}'. Sending aborted to protect communication integrity."
+
+        if not to:
+            return False, "Missing recipient 'to' parameter."
             
         # Validate email format to catch unresolved placeholder strings early
         import re
-        is_placeholder = "placeholder" in to.lower() or "email" in to.lower() or "your_email" in to.lower() or "@example.com" in to
+        is_placeholder = "placeholder" in to.lower() or "your_email" in to.lower() or "@example.com" in to
         is_valid_pattern = bool(re.match(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", to))
         if is_placeholder or not is_valid_pattern:
             return False, f"Invalid recipient email address format: '{to}'. Please provide a valid email address."

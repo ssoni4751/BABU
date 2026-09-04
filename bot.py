@@ -1695,8 +1695,10 @@ def resolve_action_params(params: dict, research_text: str = "") -> dict:
         elif "[NEEDS_RESEARCH_CONTEXT]" in val_str:
             if k in ("image_path", "file_path") and upstream_file_path:
                 resolved_params[k] = upstream_file_path
+            elif research_text and research_text.strip():
+                resolved_params[k] = val_str.replace("[NEEDS_RESEARCH_CONTEXT]", research_text.strip())
             else:
-                resolved_params[k] = val_str.replace("[NEEDS_RESEARCH_CONTEXT]", research_text.strip() if research_text else "(No research context found)")
+                resolved_params[k] = val_str.replace("[NEEDS_RESEARCH_CONTEXT]", "").strip() or ("Notice from BABU" if k == "subject" else "")
         else:
             resolved_params[k] = v
 
@@ -1711,6 +1713,7 @@ def resolve_action_params(params: dict, research_text: str = "") -> dict:
 def update_cached_graph_approval(session_id: str, pending: dict) -> bool:
     import json
     import hashlib
+    import string
     try:
         from .services import get_db_connection
     except ImportError:
@@ -1720,12 +1723,15 @@ def update_cached_graph_approval(session_id: str, pending: dict) -> bool:
     task_id = pending.get("task_id")
     routing_metadata = pending.get("routing_metadata") or {}
     intent_packet_dict = routing_metadata.get("intent_packet") or {}
-    goal_class = intent_packet_dict.get("query_category", "PUBLIC_INFORMATION")
+    goal_class = intent_packet_dict.get("query_category", "COMMUNICATION")
     
     if not user_query or not task_id:
         return False
         
-    query_hash = hashlib.sha256(user_query.lower().strip().encode('utf-8')).hexdigest()
+    normalized = user_query.lower().strip()
+    normalized = "".join(c for c in normalized if c not in string.punctuation)
+    normalized = " ".join(normalized.split())
+    query_hash = hashlib.sha256(normalized.encode('utf-8')).hexdigest()
     
     conn, is_pg = get_db_connection()
     try:
@@ -6693,6 +6699,16 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     
                     draft_txt = pending.get("draft_text", pending.get("research_text", ""))
                     params = resolve_action_params(pending.get("params", {}), research_text=draft_txt)
+                    if action == "send_email":
+                        b_val = str(params.get("body", "")).strip()
+                        if not b_val or "[needs_research_context]" in b_val.lower() or "no research" in b_val.lower():
+                            if draft_txt and draft_txt.strip():
+                                params["body"] = draft_txt.strip()
+                            elif pending.get("user_query"):
+                                params["body"] = pending.get("user_query")
+                        s_val = str(params.get("subject", "")).strip()
+                        if not s_val or "[needs_research_context]" in s_val.lower() or "no research" in s_val.lower():
+                            params["subject"] = "Notice from BABU"
                     log_execution_ledger_event(
                         session_id=session_id,
                         goal_id=pending.get("goal_id", "default"),

@@ -1020,54 +1020,7 @@ def task_executor_node(state: BabuState):
     execution_log = state.get("execution_log") or []
     
     # ── Phase 1: Upfront Batch Pre-Audit and Approvals ──
-    pending_approval_task = None
-    for task in goal_graph.tasks:
-        # Pre-execution audit check
-        passed, reason = auditor.audit_pre(task)
-        if not passed:
-            print(f"[EXECUTOR] Upfront batch pre-audit FAILED for task '{task.task_id}': {reason}", flush=True)
-            engine.mark_failed(task.task_id, reason)
-            engine.goal.status = "FAILED"
-            log_execution_ledger_event(
-                session_id=session_id,
-                goal_id=goal_graph.goal_id,
-                task_id=task.task_id,
-                department=task.department,
-                event_type="AUDIT_PRE_FAIL",
-                state_before="RUNNING",
-                state_after="FAILED",
-                metadata={"reason": reason, "graph_hash": graph_hash}
-            )
-            return {
-                "goal_graph": engine.goal.to_dict(),
-                "execution_log": execution_log,
-                "final_brief": f"Execution failed at batch pre-audit stage for task {task.task_id}: {reason}"
-            }
-            
-        if task.department == "execution":
-            action = task.context.get("action", "")
-            try:
-                from .governance import get_constitution
-            except ImportError:
-                from governance import get_constitution
-            mandatory_approvals = get_constitution("mandatory_human_approval", [])
-            
-            # Read-only search and fetch actions are pre-approved
-            if action in ("search_sheet", "search_gmail", "read_document", "list_events"):
-                task.context["approved"] = True
-            elif action in mandatory_approvals:
-                # Class B and Class C mutating actions ALWAYS require explicit operator approval
-                if not task.context.get("approved"):
-                    task.context["approved"] = False
-            elif not task.context.get("approved"):
-                # If an action was detected but not in mandatory approvals, leave as-is or default
-                pass
-                
-            if not task.context.get("approved") and not pending_approval_task:
-                pending_approval_task = task
-
-    if pending_approval_task:
-        task = pending_approval_task
+    def create_pending_approval_response(task, completed_results=None):
         dept_head = get_department_head(task.department)
         action = task.context.get("action", "")
         params = task.context.get("params", {})
@@ -1078,14 +1031,18 @@ def task_executor_node(state: BabuState):
         for ur in upstream_list:
             if ur.get("result"):
                 upstream_texts.append(ur["result"])
+        if not upstream_texts and completed_results:
+            for tid, res in completed_results.items():
+                if tid in task.depends_on:
+                    upstream_texts.append(str(res))
         if not upstream_texts:
             for entry in execution_log:
                 if entry.get("result"):
                     upstream_texts.append(entry["result"])
         upstream_text = "\n\n".join(upstream_texts) if upstream_texts else ""
 
-        # Resolve placeholders using user profile and upstream research text
-        resolved_params = dept_head._resolve_params(params, upstream_text)
+        # Resolve placeholders using user profile, upstream research text, and task context
+        resolved_params = dept_head._resolve_params(params, upstream_text, task.context)
         
         # Save pending action for bot.py callback
         pending_action_data = {
@@ -1148,11 +1105,83 @@ def task_executor_node(state: BabuState):
             "tokens": {"prompt": 0, "completion": 0, "total": 0}
         }
 
+    pending_approval_task = None
+    for task in goal_graph.tasks:
+        # Pre-execution audit check
+        passed, reason = auditor.audit_pre(task)
+        if not passed:
+            print(f"[EXECUTOR] Upfront batch pre-audit FAILED for task '{task.task_id}': {reason}", flush=True)
+            engine.mark_failed(task.task_id, reason)
+            engine.goal.status = "FAILED"
+            log_execution_ledger_event(
+                session_id=session_id,
+                goal_id=goal_graph.goal_id,
+                task_id=task.task_id,
+                department=task.department,
+                event_type="AUDIT_PRE_FAIL",
+                state_before="RUNNING",
+                state_after="FAILED",
+                metadata={"reason": reason, "graph_hash": graph_hash}
+            )
+            return {
+                "goal_graph": engine.goal.to_dict(),
+                "execution_log": execution_log,
+                "final_brief": f"Execution failed at batch pre-audit stage for task {task.task_id}: {reason}"
+            }
+            
+        if task.department == "execution":
+            action = task.context.get("action", "")
+            try:
+                from .governance import get_constitution
+            except ImportError:
+                from governance import get_constitution
+            mandatory_approvals = get_constitution("mandatory_human_approval", [])
+            
+            # Read-only search and fetch actions are pre-approved
+            if action in ("search_sheet", "search_gmail", "read_document", "list_events"):
+                task.context["approved"] = True
+            elif action in mandatory_approvals:
+                # Class B and Class C mutating actions ALWAYS require explicit operator approval
+                if not task.context.get("approved"):
+                    task.context["approved"] = False
+            elif not task.context.get("approved"):
+                pass
+                
+            # If this execution task has NO upstream unfinished dependencies, it is ready now.
+            has_deps = bool(task.depends_on)
+            if not task.context.get("approved") and not has_deps and not pending_approval_task:
+                pending_approval_task = task
+
+    if pending_approval_task:
+        return create_pending_approval_response(pending_approval_task)
+
     while True:
         ready_tasks = engine.get_ready_tasks()
         task = ready_tasks[0] if ready_tasks else None
         if not task:
             break
+
+        # Check if this ready task is an unapproved execution action
+        if task.department == "execution":
+            action = task.context.get("action", "")
+            try:
+                from .governance import get_constitution
+            except ImportError:
+                from governance import get_constitution
+            mandatory_approvals = get_constitution("mandatory_human_approval", [])
+            if action in mandatory_approvals and not task.context.get("approved"):
+                completed_results = engine.get_completed_results()
+                task.context["upstream_results"] = [
+                    {
+                        "task_id": tid,
+                        "result": get_department_head(engine._task_map[tid].department).compress_result_for_downstream(res),
+                        "department": engine._task_map[tid].department,
+                        "objective": engine._task_map[tid].objective
+                    }
+                    for tid, res in completed_results.items()
+                    if tid in task.depends_on
+                ]
+                return create_pending_approval_response(task, completed_results=completed_results)
             
         print(f"[EXECUTOR] Dispatching task '{task.task_id}' [{task.department.upper()}]: {task.objective[:80]}", flush=True)
         engine.mark_running(task.task_id)
@@ -2102,6 +2131,67 @@ def pa_node(state: BabuState):
             match = re.search(r'(\[IMAGE\]\s*url=[^\s\n]+(?:\s+caption=[^\n]+)?)', action_result)
             if match:
                 response.content += "\n\n" + match.group(1)
+
+    # ── Two-Way Draft Synchronization ──
+    # If the user-facing PA synthesized or edited an email draft in the chat,
+    # sync the extracted subject & body into the active pending action so that
+    # what the user approved visually is 100% guaranteed to be what gets executed!
+    try:
+        try:
+            from .bot import _pending_actions, _pending_actions_lock
+            from .services import db_save_pending_action
+        except ImportError:
+            from bot import _pending_actions, _pending_actions_lock
+            from services import db_save_pending_action
+
+        with _pending_actions_lock:
+            pending = _pending_actions.get(session_id)
+            if pending and pending.get("action") == "send_email":
+                p_params = pending.get("params", {})
+                raw_text = response.content
+                
+                # Check / Extract Subject
+                curr_subj = p_params.get("subject", "")
+                needs_subj = (
+                    not curr_subj
+                    or "[needs_research_context]" in curr_subj.lower()
+                    or "no research" in curr_subj.lower()
+                    or curr_subj in ("Automated Message from BABU", "Notice from BABU")
+                )
+                if needs_subj:
+                    s_m = re.search(r'\*\*Subject:\*\*\s*(.+?)(?:\n|$)', raw_text, re.IGNORECASE)
+                    if not s_m:
+                        s_m = re.search(r'Subject:\s*(.+?)(?:\n|$)', raw_text, re.IGNORECASE)
+                    if s_m:
+                        p_params["subject"] = s_m.group(1).strip().strip("*").strip()
+                
+                # Check / Extract Body
+                curr_body = p_params.get("body", "")
+                needs_body = (
+                    not curr_body
+                    or "[needs_research_context]" in curr_body.lower()
+                    or "no research" in curr_body.lower()
+                    or len(curr_body.strip()) < 15
+                )
+                if needs_body:
+                    b_m = re.search(r'\*\*Body:\*\*\s*\n*([\s\S]+?)(?=\n\n\s*(?:If everything looks good|Reply|\*\*If|\Z))', raw_text, re.IGNORECASE)
+                    if not b_m:
+                        b_m = re.search(r'Body:\s*\n*([\s\S]+?)(?=\n\n\s*(?:If everything looks good|Reply|\*\*If|\Z))', raw_text, re.IGNORECASE)
+                    if b_m:
+                        extracted_body = b_m.group(1).strip()
+                        # Ensure sign-off is included
+                        sig_m = re.search(r'((?:Best regards|Sincerely|Thanks|Warm regards|Regards)[^\n]*\n*[^\n]*)', raw_text, re.IGNORECASE)
+                        if sig_m and sig_m.group(1) not in extracted_body:
+                            extracted_body += "\n\n" + sig_m.group(1).strip()
+                        p_params["body"] = extracted_body
+                    elif pending.get("draft_text"):
+                        p_params["body"] = pending["draft_text"]
+                
+                pending["params"] = p_params
+                _pending_actions[session_id] = pending
+                db_save_pending_action(session_id, pending)
+    except Exception as sync_err:
+        print(f"[PA NODE] Warning: Failed to sync draft with pending action: {sync_err}", flush=True)
                 
     tracker = state.get("execution_tracker", {})
     tracker["pa_duration"] = pa_latency_sec
