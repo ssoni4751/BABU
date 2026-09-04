@@ -489,27 +489,36 @@ def planner_node(state: BabuState):
     goal_class = intent_packet.query_category
     cached_graph = None
 
-    conn, is_pg = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        if is_pg:
-            cursor.execute(
-                "SELECT goal_graph_json FROM planned_graphs_cache WHERE session_id = %s AND query_hash = %s AND goal_class = %s",
-                (session_id, query_hash, goal_class)
-            )
-        else:
-            cursor.execute(
-                "SELECT goal_graph_json FROM planned_graphs_cache WHERE session_id = ? AND query_hash = ? AND goal_class = ?",
-                (session_id, query_hash, goal_class)
-            )
-        row = cursor.fetchone()
-        if row:
-            cached_graph = row[0]
-        cursor.close()
-    except Exception as e:
-        print(f"[PLANNER CACHE] Error looking up plan cache: {e}", flush=True)
-    finally:
-        conn.close()
+    is_action_query = (
+        goal_class in ("COMMUNICATION", "WORKSPACE")
+        or bool(intent_packet.allowed_actions)
+        or any(k in query.lower() for k in ("email", "mail", "gmail", "calendar", "event", "schedule", "doc", "sheet", "drive", "post", "facebook"))
+    )
+
+    if not is_action_query:
+        conn, is_pg = get_db_connection()
+        try:
+            cursor = conn.cursor()
+            if is_pg:
+                cursor.execute(
+                    "SELECT goal_graph_json FROM planned_graphs_cache WHERE session_id = %s AND query_hash = %s AND goal_class = %s",
+                    (session_id, query_hash, goal_class)
+                )
+            else:
+                cursor.execute(
+                    "SELECT goal_graph_json FROM planned_graphs_cache WHERE session_id = ? AND query_hash = ? AND goal_class = ?",
+                    (session_id, query_hash, goal_class)
+                )
+            row = cursor.fetchone()
+            if row:
+                cached_graph = row[0]
+            cursor.close()
+        except Exception as e:
+            print(f"[PLANNER CACHE] Error looking up plan cache: {e}", flush=True)
+        finally:
+            conn.close()
+    else:
+        print(f"[PLANNER CACHE] Bypassing plan cache for action/communication goal: '{query[:50]}'", flush=True)
 
     if cached_graph:
         try:
