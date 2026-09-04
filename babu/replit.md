@@ -41,6 +41,7 @@ BABU is a bounded, resilient, multi-agent Cognitive Operating System and Governe
 - **Intent Taxonomy:** 7-domain typed taxonomy (`COMMUNICATION`, `WORKSPACE`, `BUSINESS_INFORMATION`, `PERSONAL_INFORMATION`, `SYSTEM_INFORMATION`, `CONVERSATION`, `PUBLIC_INFORMATION`)
 - **Persistence & Ledgers:** PostgreSQL (Supabase) + SQLite (`execution_ledger`, `trusted_templates`, `pending_actions`, `search_cache`, `system_memory`)
 - **Governance:** E0 Constitutional Rules (`e0/constitution.json`, `e0/policies.json`) + Bipartite Pre/Post Auditor
+- **Action Dispatch (ADR-104):** Direct single/double-confirmation dispatch on approval without planner re-invocation, preserving upstream drafted contexts and RFC parameter formatting.
 
 ---
 

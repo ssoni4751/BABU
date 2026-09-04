@@ -191,5 +191,31 @@
 
 ---
 
+## ADR-104: Direct Action Dispatch on Operator Approval, Elimination of Re-Planning Loops, and Parameter Integrity Verification
+* **Status:** Accepted / Live in Production
+* **Context:** When an operator authorized a pending action (e.g., sending an email, posting to Facebook, creating an event, deleting a document) by replying with `1` / `approve` / `confirm` or clicking an inline Telegram button, the system previously contained legacy code attempting to update `planned_graphs_cache` and calling `invoke_babu(user_query)`. This introduced severe defects:
+  1. Re-invoking `invoke_babu(user_query)` restarted the entire LangGraph workflow from `router_node` -> `planner_node`. Because action and communication queries explicitly bypass the plan cache for safety (`is_action_query`), the 120B model was re-prompted to generate a brand new DAG from scratch. In this newly generated DAG, the execution task had `approved = False`, causing the system to pause for approval again and trap the operator in an infinite approval loop without ever sending the email or executing the action.
+  2. If upstream drafting tasks had created a formatted message (with `**Subject:**` and `**Body:**`), re-planning caused loss or corruption of the drafted context, or in earlier versions injected fallback placeholder strings like `[needs_research_context]` or `(no research/analysis context found)`.
+* **Decision:**
+  1. **Direct Action Dispatch on Operator Approval:**
+     * Completely eliminate `update_cached_graph_approval` and `invoke_babu(user_query)` from all approval channels in `bot.py` (Telegram text approval, Telegram Class C confirmation, Telegram inline callback query, and Web chat API).
+     * Upon operator approval, `bot.py` immediately pops the pending action from memory and database, resolves the drafted parameters, and directly executes `execute_google_action(action, params)`.
+  2. **Upstream Draft Preservation & Topological Ordering:**
+     * In `graph.py`, ensure upstream read-only research and drafting tasks (e.g. `writing`, `analysis`, `research`) execute in topological order before pausing for mutating execution tasks, guaranteeing the draft is fully populated.
+     * In `pa_node`, parse `**Subject:**` and `**Body:**` using regular expressions and synchronize them into `_pending_actions[session_id]["params"]` and persistent storage.
+  3. **Deterministic Parameter Resolution (`resolve_action_params`):**
+     * Ensure `resolve_action_params` in both `departments.py` and `bot.py` cleanly separates the subject line from the email body using regular expressions, preventing cross-contamination where the entire draft is placed into the subject or the subject line is duplicated into the body.
+  4. **Safety Firewall at Dispatch Boundary:**
+     * In `google_service.py:execute_google_action`, enforce a hard safety firewall that rejects execution if `body` contains unresolved placeholder tokens (e.g., `[needs_research_context]`, `(no research/analysis context found)`, `information unavailable`) or if recipient email fails RFC format validation.
+  5. **Audit Ledger Lifecycle Tracking:**
+     * Log `APPROVAL_GRANTED`, followed by `TASK_COMPLETED` or `TASK_FAILED` events directly into the execution ledger in `services.py`.
+* **Consequences:**
+  * Zero-latency, immediate dispatch of approved external workspace and communication actions.
+  * Complete elimination of redundant 120B model re-planning cycles on approval.
+  * Guaranteed parameter integrity: clean subject lines and complete body text without placeholders.
+  * Strict compliance with constitutional governance invariants (Understanding $\neq$ Authorization $\neq$ Execution).
+
+---
+
 *BABU ADR Book Volume 7 — Updated September 2026*
 
