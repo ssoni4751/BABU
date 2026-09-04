@@ -1622,6 +1622,7 @@ LAUNCH_ROUND_2 = [
 
 def resolve_action_params(params: dict, research_text: str = "") -> dict:
     """Resolve profile placeholders and optional research placeholders."""
+    import re
     profile = get_current_profile()
     details = profile.get("personal_details", {}) if profile else {}
     address_str = details.get("residential_address", {}).get("address", "") if isinstance(details.get("residential_address"), dict) else details.get("residential_address", "")
@@ -1630,7 +1631,6 @@ def resolve_action_params(params: dict, research_text: str = "") -> dict:
     def _extract_existing_file_path(text: str) -> Optional[str]:
         if not text:
             return None
-        import re
         import os
         # Check for bracketed document attachment pattern first
         m = re.search(r'\[Document Attached:\s*([^\]]+)\]', text)
@@ -1696,7 +1696,18 @@ def resolve_action_params(params: dict, research_text: str = "") -> dict:
             if k in ("image_path", "file_path") and upstream_file_path:
                 resolved_params[k] = upstream_file_path
             elif research_text and research_text.strip():
-                resolved_params[k] = val_str.replace("[NEEDS_RESEARCH_CONTEXT]", research_text.strip())
+                if k == "subject":
+                    s_match = re.search(r'(?:\*\*Subject:\*\*|Subject:)\s*(.+?)(?:\n|$)', research_text, re.IGNORECASE)
+                    if s_match:
+                        resolved_params[k] = s_match.group(1).strip().strip("*").strip()
+                    else:
+                        first_line = research_text.strip().split("\n")[0].strip().strip("*").strip()
+                        resolved_params[k] = first_line[:80] if len(first_line) > 5 else "Notice from BABU"
+                elif k in ("body", "content"):
+                    b_text = re.sub(r'^(?:\*\*Subject:\*\*|Subject:)[^\n]*\n*', '', research_text.strip(), flags=re.IGNORECASE).strip()
+                    resolved_params[k] = val_str.replace("[NEEDS_RESEARCH_CONTEXT]", b_text if b_text else research_text.strip())
+                else:
+                    resolved_params[k] = val_str.replace("[NEEDS_RESEARCH_CONTEXT]", research_text.strip())
             else:
                 resolved_params[k] = val_str.replace("[NEEDS_RESEARCH_CONTEXT]", "").strip() or ("Notice from BABU" if k == "subject" else "")
         else:
@@ -5517,43 +5528,56 @@ class HealthHandler(BaseHTTPRequestHandler):
                         pending = _pending_actions.pop(sid, None)
                     if pending:
                         db_delete_pending_action(sid)
-                        user_query = pending.get("user_query")
-                        if user_query:
-                            ok = update_cached_graph_approval(sid, pending)
-                            if ok:
-                                log_execution_ledger_event(
-                                    session_id=sid,
-                                    goal_id=pending.get("goal_id", "default"),
-                                    task_id=pending.get("task_id"),
-                                    department="execution",
-                                    event_type="APPROVAL_GRANTED",
-                                    state_before="WAITING",
-                                    state_after="RUNNING",
-                                    metadata={"by": "web_text", "action": action}
-                                )
-                                reply, gear_res, tokens = invoke_babu(user_query, sid, goal_id=pending.get("goal_id"))
-                            else:
-                                reply = "Failed to update cached goal graph approval."
-                        else:
-                            params = resolve_action_params(pending.get("params", {}), research_text="")
+                        draft_txt = pending.get("draft_text", pending.get("research_text", ""))
+                        params = resolve_action_params(pending.get("params", {}), research_text=draft_txt)
+                        if action == "send_email":
+                            b_val = str(params.get("body", "")).strip()
+                            if not b_val or "[needs_research_context]" in b_val.lower() or "no research" in b_val.lower():
+                                if draft_txt and draft_txt.strip():
+                                    params["body"] = draft_txt.strip()
+                                elif pending.get("user_query"):
+                                    params["body"] = pending.get("user_query")
+                            s_val = str(params.get("subject", "")).strip()
+                            if not s_val or "[needs_research_context]" in s_val.lower() or "no research" in s_val.lower():
+                                params["subject"] = "Notice from BABU"
+                        log_execution_ledger_event(
+                            session_id=sid,
+                            goal_id=pending.get("goal_id", "default"),
+                            task_id=pending.get("task_id"),
+                            department="execution",
+                            event_type="APPROVAL_GRANTED",
+                            state_before="WAITING",
+                            state_after="RUNNING",
+                            metadata={"by": "web_text", "action": action, "params": params}
+                        )
+                        ok, result_msg = execute_google_action(action, params)
+                        if ok:
                             log_execution_ledger_event(
                                 session_id=sid,
                                 goal_id=pending.get("goal_id", "default"),
                                 task_id=pending.get("task_id"),
                                 department="execution",
-                                event_type="APPROVAL_GRANTED",
-                                state_before="WAITING",
-                                state_after="RUNNING",
-                                metadata={"by": "web_text", "action": action, "params": params}
+                                event_type="TASK_COMPLETED",
+                                state_before="RUNNING",
+                                state_after="COMPLETED",
+                                metadata={"result": result_msg}
                             )
-                            ok, result_msg = execute_google_action(action, params)
-                            if ok:
-                                reply = f"Action executed successfully.\n\n{result_msg}"
-                            else:
-                                with _pending_actions_lock:
-                                    _pending_actions[sid] = pending
-                                db_save_pending_action(sid, pending)
-                                reply = f"Action execution failed.\n\n{result_msg}\n\nYou can type '2' / 'confirm' again to retry, or '0' / 'cancel' to discard." if is_class_c else f"Action execution failed.\n\n{result_msg}\n\nYou can type '1' / 'approve' again to retry, or '0' / 'cancel' to discard."
+                            reply = f"Action executed successfully.\n\n{result_msg}"
+                        else:
+                            log_execution_ledger_event(
+                                session_id=sid,
+                                goal_id=pending.get("goal_id", "default"),
+                                task_id=pending.get("task_id"),
+                                department="execution",
+                                event_type="TASK_FAILED",
+                                state_before="RUNNING",
+                                state_after="FAILED",
+                                metadata={"error": result_msg}
+                            )
+                            with _pending_actions_lock:
+                                _pending_actions[sid] = pending
+                            db_save_pending_action(sid, pending)
+                            reply = f"Action execution failed.\n\n{result_msg}\n\nYou can type '2' / 'confirm' again to retry, or '0' / 'cancel' to discard." if is_class_c else f"Action execution failed.\n\n{result_msg}\n\nYou can type '1' / 'approve' again to retry, or '0' / 'cancel' to discard."
                 
                 # Check pending status
                 with _pending_actions_lock:
@@ -6620,25 +6644,18 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         pending = _pending_actions.pop(session_id, None)
                     if pending:
                         db_delete_pending_action(session_id)
-                        user_query = pending.get("user_query")
-                        if user_query:
-                            ok = update_cached_graph_approval(session_id, pending)
-                            if ok:
-                                log_execution_ledger_event(
-                                    session_id=session_id,
-                                    goal_id=pending.get("goal_id", "default"),
-                                    task_id=pending.get("task_id"),
-                                    department="execution",
-                                    event_type="APPROVAL_GRANTED",
-                                    state_before="WAITING",
-                                    state_after="RUNNING",
-                                    metadata={"by": "telegram_text_confirm", "action": action}
-                                )
-                                reply, gear_res, tokens = await asyncio.to_thread(invoke_babu, user_query, session_id, goal_id=pending.get("goal_id"))
-                                await update.message.reply_text(reply)
-                                return
-                        
-                        params = resolve_action_params(pending.get("params", {}), research_text="")
+                        draft_txt = pending.get("draft_text", pending.get("research_text", ""))
+                        params = resolve_action_params(pending.get("params", {}), research_text=draft_txt)
+                        if action == "send_email":
+                            b_val = str(params.get("body", "")).strip()
+                            if not b_val or "[needs_research_context]" in b_val.lower() or "no research" in b_val.lower():
+                                if draft_txt and draft_txt.strip():
+                                    params["body"] = draft_txt.strip()
+                                elif pending.get("user_query"):
+                                    params["body"] = pending.get("user_query")
+                            s_val = str(params.get("subject", "")).strip()
+                            if not s_val or "[needs_research_context]" in s_val.lower() or "no research" in s_val.lower():
+                                params["subject"] = "Notice from BABU"
                         log_execution_ledger_event(
                             session_id=session_id,
                             goal_id=pending.get("goal_id", "default"),
@@ -6651,8 +6668,28 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         )
                         ok, result_msg = await asyncio.to_thread(execute_google_action, action, params)
                         if ok:
+                            log_execution_ledger_event(
+                                session_id=session_id,
+                                goal_id=pending.get("goal_id", "default"),
+                                task_id=pending.get("task_id"),
+                                department="execution",
+                                event_type="TASK_COMPLETED",
+                                state_before="RUNNING",
+                                state_after="COMPLETED",
+                                metadata={"result": result_msg}
+                            )
                             await update.message.reply_text(f"Action executed successfully.\n\n{result_msg}")
                         else:
+                            log_execution_ledger_event(
+                                session_id=session_id,
+                                goal_id=pending.get("goal_id", "default"),
+                                task_id=pending.get("task_id"),
+                                department="execution",
+                                event_type="TASK_FAILED",
+                                state_before="RUNNING",
+                                state_after="FAILED",
+                                metadata={"error": result_msg}
+                            )
                             with _pending_actions_lock:
                                 _pending_actions[session_id] = pending
                             db_save_pending_action(session_id, pending)
@@ -6679,24 +6716,6 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     pending = _pending_actions.pop(session_id, None)
                 if pending:
                     db_delete_pending_action(session_id)
-                    user_query = pending.get("user_query")
-                    if user_query:
-                        ok = update_cached_graph_approval(session_id, pending)
-                        if ok:
-                            log_execution_ledger_event(
-                                session_id=session_id,
-                                goal_id=pending.get("goal_id", "default"),
-                                task_id=pending.get("task_id"),
-                                department="execution",
-                                event_type="APPROVAL_GRANTED",
-                                state_before="WAITING",
-                                state_after="RUNNING",
-                                metadata={"by": "telegram_text", "action": action}
-                            )
-                            reply, gear_res, tokens = await asyncio.to_thread(invoke_babu, user_query, session_id, goal_id=pending.get("goal_id"))
-                            await update.message.reply_text(reply)
-                            return
-                    
                     draft_txt = pending.get("draft_text", pending.get("research_text", ""))
                     params = resolve_action_params(pending.get("params", {}), research_text=draft_txt)
                     if action == "send_email":
@@ -6721,8 +6740,28 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                     ok, result_msg = await asyncio.to_thread(execute_google_action, action, params)
                     if ok:
+                        log_execution_ledger_event(
+                            session_id=session_id,
+                            goal_id=pending.get("goal_id", "default"),
+                            task_id=pending.get("task_id"),
+                            department="execution",
+                            event_type="TASK_COMPLETED",
+                            state_before="RUNNING",
+                            state_after="COMPLETED",
+                            metadata={"result": result_msg}
+                        )
                         await update.message.reply_text(f"Action executed successfully.\n\n{result_msg}")
                     else:
+                        log_execution_ledger_event(
+                            session_id=session_id,
+                            goal_id=pending.get("goal_id", "default"),
+                            task_id=pending.get("task_id"),
+                            department="execution",
+                            event_type="TASK_FAILED",
+                            state_before="RUNNING",
+                            state_after="FAILED",
+                            metadata={"error": result_msg}
+                        )
                         with _pending_actions_lock:
                             _pending_actions[session_id] = pending
                         db_save_pending_action(session_id, pending)
@@ -7286,29 +7325,18 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pending = _pending_actions.pop(session_id, None)
             if pending:
                 db_delete_pending_action(session_id)
-                user_query = pending.get("user_query")
-                if user_query:
-                    ok = update_cached_graph_approval(session_id, pending)
-                    if ok:
-                        log_execution_ledger_event(
-                            session_id=session_id,
-                            goal_id=pending.get("goal_id", "default"),
-                            task_id=pending.get("task_id"),
-                            department="execution",
-                            event_type="APPROVAL_GRANTED",
-                            state_before="WAITING",
-                            state_after="RUNNING",
-                            metadata={"by": "telegram_callback", "action": action}
-                        )
-                        reply, gear_res, tokens = await asyncio.to_thread(invoke_babu, user_query, session_id, goal_id=pending.get("goal_id"))
-                        await query.edit_message_text(reply)
-                        return
-                    else:
-                        await query.edit_message_text("Failed to update cached goal graph approval.")
-                        return
-
                 draft_txt = pending.get("draft_text", pending.get("research_text", ""))
                 params = resolve_action_params(pending.get("params", {}), research_text=draft_txt)
+                if action == "send_email":
+                    b_val = str(params.get("body", "")).strip()
+                    if not b_val or "[needs_research_context]" in b_val.lower() or "no research" in b_val.lower():
+                        if draft_txt and draft_txt.strip():
+                            params["body"] = draft_txt.strip()
+                        elif pending.get("user_query"):
+                            params["body"] = pending.get("user_query")
+                    s_val = str(params.get("subject", "")).strip()
+                    if not s_val or "[needs_research_context]" in s_val.lower() or "no research" in s_val.lower():
+                        params["subject"] = "Notice from BABU"
                 
                 log_execution_ledger_event(
                     session_id=session_id,
@@ -7323,9 +7351,29 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 ok, result_msg = await asyncio.to_thread(execute_google_action, action, params)
                 if ok:
+                    log_execution_ledger_event(
+                        session_id=session_id,
+                        goal_id=pending.get("goal_id", "default"),
+                        task_id=pending.get("task_id"),
+                        department="execution",
+                        event_type="TASK_COMPLETED",
+                        state_before="RUNNING",
+                        state_after="COMPLETED",
+                        metadata={"result": result_msg}
+                    )
                     status = "Action executed successfully."
                     await query.edit_message_text(f"{status}\n\n{result_msg}")
                 else:
+                    log_execution_ledger_event(
+                        session_id=session_id,
+                        goal_id=pending.get("goal_id", "default"),
+                        task_id=pending.get("task_id"),
+                        department="execution",
+                        event_type="TASK_FAILED",
+                        state_before="RUNNING",
+                        state_after="FAILED",
+                        metadata={"error": result_msg}
+                    )
                     with _pending_actions_lock:
                         _pending_actions[session_id] = pending
                     db_save_pending_action(session_id, pending)

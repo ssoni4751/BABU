@@ -448,6 +448,29 @@ class TestIntentGovernance(unittest.TestCase):
         with _pending_actions_lock:
             _pending_actions.pop(session_id, None)
 
+    def test_14_approval_direct_execution_params_resolution(self):
+        """Verify that on approval ('1'), action parameters are resolved directly with subject and body separated, without invoking the planner."""
+        from babu.bot import _is_approval_message, resolve_action_params
+        
+        # 1. Verify approval keywords
+        self.assertTrue(_is_approval_message("1"))
+        self.assertTrue(_is_approval_message("approve"))
+        self.assertTrue(_is_approval_message("yes"))
+        
+        # 2. Verify resolve_action_params cleanly separates subject and body from upstream research
+        upstream_draft = "**Subject:** Lift Maintenance Notice - 5th Sept\n\nDear Mr. Rajat,\nPlease note that the lift will undergo scheduled maintenance from 9 PM to 12 AM.\n\nRegards,\nTeam"
+        params = {
+            "to": "Verajrajput222@gmail.com",
+            "subject": "[NEEDS_RESEARCH_CONTEXT]",
+            "body": "[NEEDS_RESEARCH_CONTEXT]"
+        }
+        resolved = resolve_action_params(params, research_text=upstream_draft)
+        
+        self.assertEqual(resolved["to"], "Verajrajput222@gmail.com")
+        self.assertEqual(resolved["subject"], "Lift Maintenance Notice - 5th Sept")
+        self.assertIn("Please note that the lift will undergo scheduled maintenance", resolved["body"])
+        self.assertNotIn("**Subject:**", resolved["body"])
+
 if __name__ == "__main__":
     unittest.main()
 
