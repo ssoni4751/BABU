@@ -13,6 +13,7 @@ All plans produce a GoalGraph containing TaskDTO nodes with dependency edges.
 
 import json
 import os
+import re
 import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
@@ -387,10 +388,13 @@ INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
     "- planning_required: true if HYBRID or multi-step workflow composition is needed; false for direct fast-track/lookup/single-action.\n"
     "\n"
     "QUERY CATEGORY DEFINITIONS:\n"
-    "- BUSINESS_INFORMATION: Set if query relates to user's business context, services, client records, customer claims (PF/GST). Any query asking for client names or counts is strictly BUSINESS_INFORMATION.\n"
-    "- PERSONAL_INFORMATION: Set if query relates to personal details, family, address, personal email/phone.\n"
-    "- SYSTEM_INFORMATION: Set if query relates to system itself (BABU), architecture, logs, ADRs.\n"
-    "- PUBLIC_INFORMATION: Set if query is general knowledge, public web search, tax laws, general facts.\n"
+    "- COMMUNICATION: Set if query relates to sending emails, searching Gmail, or direct messaging.\n"
+    "- WORKSPACE: Set if query relates to Google Workspace operations (Calendar meetings/events, Google Docs creation, Sheets logging, Drive).\n"
+    "- BUSINESS_INFORMATION: Set if query relates to user's business context (Anshu Computer & Tax Consultancy), client records, services, customer claims (PF/GST/ITR), or Facebook marketing.\n"
+    "- PERSONAL_INFORMATION: Set if query relates to personal details, family members, home address, personal phone/email.\n"
+    "- SYSTEM_INFORMATION: Set if query relates to system itself (BABU), architecture, logs, ADRs, health/uptime.\n"
+    "- CONVERSATION: Set if query is a greeting, casual chitchat, thank-you, or conversational pleasantry.\n"
+    "- PUBLIC_INFORMATION: Set strictly if query is an external public knowledge inquiry, web search (via Tavily/web), Wikipedia research, public news, general facts, or definitions.\n"
     "\n"
     "DEPARTMENT DEFINITIONS:\n"
     "- information: General web search, information retrieval, quick facts, local profile/memory search.\n"
@@ -418,7 +422,7 @@ INTENT_CLASSIFIER_SYSTEM_PROMPT: str = (
     '  "execution_mode": "READ_ONLY | APPROVAL_REQUIRED | AUTO_EXECUTE",\n'
     '  "confidence": 0.0 to 1.0,\n'
     '  "system_query": true | false,\n'
-    '  "query_category": "BUSINESS_INFORMATION | PERSONAL_INFORMATION | SYSTEM_INFORMATION | PUBLIC_INFORMATION"\n'
+    '  "query_category": "COMMUNICATION | WORKSPACE | BUSINESS_INFORMATION | PERSONAL_INFORMATION | SYSTEM_INFORMATION | CONVERSATION | PUBLIC_INFORMATION"\n'
     "}\n"
     "\n"
     "CRITICAL: Output ONLY valid raw JSON. No explanation, no markdown fences."
@@ -445,6 +449,7 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
             confidence=1.0,
             tokens={"prompt": 0, "completion": 0, "total": 0},
             model="rules_engine",
+            query_category="CONVERSATION",
             topology_source="INTERNAL",
             topology_mode="CHITCHAT",
             mutation_type="NONE",
@@ -499,6 +504,19 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
         
         is_sys = is_system_aware_query(query)
         target_domain = "SYSTEM" if is_sys else ("BUSINESS" if is_fb_action else "USER")
+        if detected_action in ("send_email", "search_gmail"):
+            detected_category = "COMMUNICATION"
+        elif detected_action in ("create_event", "create_doc", "upload_to_drive", "search_sheet"):
+            detected_category = "WORKSPACE"
+        elif is_sys:
+            detected_category = "SYSTEM_INFORMATION"
+        elif is_fb_action:
+            detected_category = "BUSINESS_INFORMATION"
+        elif _force_lookup:
+            detected_category = "PERSONAL_INFORMATION"
+        else:
+            detected_category = "WORKSPACE"
+
         packet = IntentPacket(
             allowed_departments=["information", "writing", "execution", "pa"],
             allowed_actions=[detected_action],
@@ -506,7 +524,7 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
             confidence=0.95,
             tokens={"prompt": 0, "completion": 0, "total": 0},
             model="rules_engine",
-            query_category="SYSTEM_INFORMATION" if is_sys else ("BUSINESS_INFORMATION" if is_fb_action else ("PERSONAL_INFORMATION" if _force_lookup else "PUBLIC_INFORMATION")),
+            query_category=detected_category,
             system_query=is_sys,
             topology_source="EXTERNAL",
             topology_mode="LOOKUP" if is_read_action else "ACTION",
@@ -531,7 +549,7 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
             confidence=0.9,
             tokens={"prompt": 0, "completion": 0, "total": 0},
             model="rules_engine",
-            query_category="PERSONAL_INFORMATION" if _force_lookup or "my" in t else "PUBLIC_INFORMATION",
+            query_category="COMMUNICATION",
         )
 
     # 1c. Ambiguous / Vague directive gate -> trigger low-confidence clarification
@@ -544,7 +562,7 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
             confidence=0.4,
             tokens={"prompt": 0, "completion": 0, "total": 0},
             model="clarification_gate",
-            query_category="PUBLIC_INFORMATION",
+            query_category="CONVERSATION",
             planning_required=False
         )
 
@@ -648,14 +666,22 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
             packet.query_category = "SYSTEM_INFORMATION"
         elif any(k in lowered for k in ("anshu", "shubham", "swarnkar", "ash", "ssoni", "who am i", "my father", "my mother", "my brother", "my sibling", "my parents", "my cousin", "my background", "my journey", "my education", "my career", "my email", "my phone", "my number", "my address", "my location", "where i live", "tell me about me", "my profile", "my biography", "my bio", "about me", "know about me")):
             packet.query_category = "PERSONAL_INFORMATION"
+        elif any(k in lowered for k in ("email", "gmail", "mail", "inbox")) and any(k in lowered for k in ("send", "draft", "write", "check", "search", "read", "fetch", "reply", "to", "regarding")):
+            packet.query_category = "COMMUNICATION"
+        elif any(k in lowered for k in ("calendar", "meeting", "event", "schedule", "doc", "document", "sheet", "spreadsheet", "drive", "excel")):
+            packet.query_category = "WORKSPACE"
         elif any(k in lowered for k in ("facebook", "faceook", "fb", "instagram", "insta", "post", "posts", "comment", "comments", "lead", "leads", "appointment", "followup", "client", "clients", "customer", "customers", "invoice", "invoices", "payment", "payments", "transaction", "transactions", "sales", "earnings", "revenue", "profit", "profits", "ledger", "ledgers", "pf claim", "pf claims", "uan consolidation", "kyc correction", "joint declaration", "gst registration", "gstr-1", "gstr-3b")):
             is_general = any(g in lowered for g in ("what is", "how to", "definition", "explain", "tutorial", "general process")) and not any(f in lowered for f in ("facebook", "faceook", "fb", "post", "lead", "appointment"))
             if not is_general:
                 packet.query_category = "BUSINESS_INFORMATION"
             else:
                 packet.query_category = "PUBLIC_INFORMATION"
+        elif any(k in lowered for k in ("search", "who is", "what is", "when did", "where is", "how does", "news", "weather", "wikipedia", "tavily", "google", "history of", "explain", "current affairs")):
+            packet.query_category = "PUBLIC_INFORMATION"
+        elif getattr(packet, "query_category", "") in ("COMMUNICATION", "WORKSPACE", "BUSINESS_INFORMATION", "PERSONAL_INFORMATION", "SYSTEM_INFORMATION", "CONVERSATION", "PUBLIC_INFORMATION"):
+            pass
         else:
-            packet.query_category = getattr(packet, "query_category", "PUBLIC_INFORMATION")
+            packet.query_category = "PUBLIC_INFORMATION"
 
         print(f"[INTENT CLASSIFIER] Classified: allowed_depts={packet.allowed_departments}, allowed_actions={packet.allowed_actions}, mode={packet.execution_mode}, conf={packet.confidence}, sys_query={packet.system_query}, query_category={packet.query_category}", flush=True)
         return packet
@@ -680,14 +706,20 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
         lowered = query.lower()
         if is_sys or any(k in lowered for k in ("failures", "uptime", "upgrades", "upgrade", "adr", "tradeoff", "tradeoffs", "health dashboard")):
             packet.query_category = "SYSTEM_INFORMATION"
-        elif any(k in lowered for k in ("anshu", "shubham", "swarnkar", "ash", "ssoni", "who am i", "my father", "my mother", "my brother", "my sibling", "my parents", "my cousin", "my background", "my journey", "my education", "my career", "my email", "my phone", "my number", "my address", "my location", "where i live", "tell me about me", "my profile", "my biography", "my bio", "about me", "know about me")):
+        elif _force_lookup or any(k in lowered for k in ("anshu", "shubham", "swarnkar", "ash", "ssoni", "who am i", "my father", "my mother", "my brother", "my sibling", "my parents", "my cousin", "my background", "my journey", "my education", "my career", "my email", "my phone", "my number", "my address", "my location", "where i live", "tell me about me", "my profile", "my biography", "my bio", "about me", "know about me")):
             packet.query_category = "PERSONAL_INFORMATION"
+        elif any(k in lowered for k in ("email", "gmail", "mail", "inbox")):
+            packet.query_category = "COMMUNICATION"
+        elif any(k in lowered for k in ("calendar", "meeting", "event", "doc", "sheet", "drive")):
+            packet.query_category = "WORKSPACE"
         elif any(k in lowered for k in ("facebook", "faceook", "fb", "instagram", "insta", "post", "posts", "comment", "comments", "lead", "leads", "appointment", "followup", "client", "clients", "customer", "customers", "invoice", "invoices", "payment", "payments", "transaction", "transactions", "sales", "earnings", "revenue", "profit", "profits", "ledger", "ledgers", "pf claim", "pf claims", "uan consolidation", "kyc correction", "joint declaration", "gst registration", "gstr-1", "gstr-3b")):
             is_general = any(g in lowered for g in ("what is", "how to", "definition", "explain", "tutorial", "general process")) and not any(f in lowered for f in ("facebook", "faceook", "fb", "post", "lead", "appointment"))
             if not is_general:
                 packet.query_category = "BUSINESS_INFORMATION"
             else:
                 packet.query_category = "PUBLIC_INFORMATION"
+        else:
+            packet.query_category = "PUBLIC_INFORMATION"
         return packet
 
 # ---------------------------------------------------------------------------
@@ -700,6 +732,7 @@ PLANNER_SYSTEM_PROMPT: str = (
     "\n"
     "RULES:\n"
     "- Output ONLY valid JSON. No markdown, no explanation.\n"
+    "- CRITICAL SYNTAX RULE: Do NOT include trailing commas before closing braces '}' or brackets ']' (never write ',}' or ',]'). Ensure all quotes are properly escaped.\n"
     "- Consult Runtime Index before selecting information source. Under no circumstances should you plan external web search/research for identity, system state, telemetry, configuration, or health. Use only internal/local resources.\n"
     "- GOAL CORRECTIONS: If the user query is a correction, typo fix, or modification of a previous goal in the recent conversation history (e.g. 'I meant monitoring, not monetary' or 'correct the topic to X'), you must identify the corrected goal topic and plan the task DAG for the corrected goal, not the incorrect one.\n"
     "- INTENT CONSTRAINTS: The system has pre-classified the user's intent boundaries. You must strictly obey these constraints:\n"
@@ -767,19 +800,122 @@ PLANNER_SYSTEM_PROMPT: str = (
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _close_truncated_json(text: str) -> str:
+    """Safely close unclosed brackets, braces, and quotes if LLM output was truncated."""
+    s = text.strip()
+    # Remove hanging key/colon at the end e.g. ',"depends_on": ' or ',"depends_on":'
+    s = re.sub(r',\s*"[^"]*"\s*:\s*$', '', s)
+    s = re.sub(r'{\s*"[^"]*"\s*:\s*$', '{', s)
+    s = re.sub(r',\s*$', '', s)
+
+    in_string = False
+    escape = False
+    open_stack = []
+    for char in s:
+        if escape:
+            escape = False
+            continue
+        if char == '\\':
+            escape = True
+            continue
+        if char == '"':
+            in_string = not in_string
+            continue
+        if not in_string:
+            if char in '{[':
+                open_stack.append(char)
+            elif char == '}' and open_stack and open_stack[-1] == '{':
+                open_stack.pop()
+            elif char == ']' and open_stack and open_stack[-1] == '[':
+                open_stack.pop()
+
+    if in_string:
+        s += '"'
+
+    for opener in reversed(open_stack):
+        if opener == '{':
+            s += '}'
+        elif opener == '[':
+            s += ']'
+
+    return s
+
+
 def _extract_json(text: str) -> dict:
-    """Extract a JSON object from LLM output, tolerating markdown fences."""
+    """Extract a JSON object from LLM output, tolerating markdown fences, surrounding text, trailing commas, single quotes, and truncations."""
+    import ast
     cleaned = text.strip()
 
-    # Strip markdown code fences if present
-    if cleaned.startswith("```"):
-        # Remove opening fence (with optional language tag)
-        first_newline = cleaned.index("\n")
-        cleaned = cleaned[first_newline + 1:]
-    if cleaned.endswith("```"):
-        cleaned = cleaned[:-3]
+    # 1. Strip markdown code fences if present anywhere
+    if "```" in cleaned:
+        match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned, flags=re.IGNORECASE)
+        if match:
+            cleaned = match.group(1).strip()
+        else:
+            cleaned = re.sub(r"^```[a-zA-Z]*\n", "", cleaned)
+            cleaned = re.sub(r"\n```$", "", cleaned).strip()
 
-    cleaned = cleaned.strip()
+    # 2. Extract outermost JSON object if conversational text surrounds it
+    start_idx = cleaned.find("{")
+    end_idx = cleaned.rfind("}")
+    if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+        cleaned = cleaned[start_idx:end_idx + 1]
+
+    # Attempt 1: Direct attempt with strict json.loads
+    try:
+        return json.loads(cleaned)
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # Attempt 2: Repair comments and trailing commas
+    repaired = cleaned
+    repaired = re.sub(r'//.*', '', repaired)
+    repaired = re.sub(r'/\*.*?\*/', '', repaired, flags=re.DOTALL)
+    for _ in range(3):
+        repaired = re.sub(r',\s*([\]}])', r'\1', repaired)
+
+    try:
+        return json.loads(repaired)
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # Attempt 3: ast.literal_eval for Python dictionary syntax (single quotes, True/False/None)
+    try:
+        val = ast.literal_eval(repaired)
+        if isinstance(val, dict):
+            return val
+    except Exception:
+        pass
+
+    # Attempt 4: Fix unquoted property names e.g. { task_id: "T1" }
+    unquoted_repaired = re.sub(r'(?<=[{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'"\1":', repaired)
+    for _ in range(3):
+        unquoted_repaired = re.sub(r',\s*([\]}])', r'\1', unquoted_repaired)
+    try:
+        return json.loads(unquoted_repaired)
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # Attempt 5: Replace single-quoted strings with double-quoted strings
+    sq_repaired = re.sub(r"'([^'\\]*(?:\\.[^'\\]*)*)'", r'"\1"', repaired)
+    sq_repaired = re.sub(r'\bTrue\b', 'true', sq_repaired)
+    sq_repaired = re.sub(r'\bFalse\b', 'false', sq_repaired)
+    sq_repaired = re.sub(r'\bNone\b', 'null', sq_repaired)
+    for _ in range(3):
+        sq_repaired = re.sub(r',\s*([\]}])', r'\1', sq_repaired)
+    try:
+        return json.loads(sq_repaired)
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # Attempt 6: Truncated JSON recovery
+    try:
+        closed = _close_truncated_json(repaired)
+        return json.loads(closed)
+    except Exception:
+        pass
+
+    # Fallback to raw json.loads to raise original/informative exception
     return json.loads(cleaned)
 
 
@@ -1055,7 +1191,13 @@ def compile_planner() -> str:
     """Load and compile the Layer A Institutional Brain context into memory."""
     global COMPILED_BRAIN_CONTEXT
     try:
-        brain_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "brain")
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        if os.path.isdir(os.path.join(current_dir, "brain")):
+            brain_dir = os.path.join(current_dir, "brain")
+        elif os.path.isdir(os.path.join(os.path.dirname(current_dir), "brain")):
+            brain_dir = os.path.join(os.path.dirname(current_dir), "brain")
+        else:
+            brain_dir = os.path.join(current_dir, "brain")
         with open(os.path.join(brain_dir, "constitution.md"), "r", encoding="utf-8") as f:
             const_text = f.read()
         with open(os.path.join(brain_dir, "organization.md"), "r", encoding="utf-8") as f:
@@ -1087,7 +1229,7 @@ def plan_goal(
     gear: Optional[str] = None,
     history_text: str = "",
     profile_text: str = "",
-    model_name: str = "groq/compound",
+    model_name: str = "openai/gpt-oss-120b",
     goal_id: Optional[str] = None,
     is_correction: bool = False,
     last_goal_text: Optional[str] = None,

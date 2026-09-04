@@ -230,14 +230,14 @@ Governed Control Plane Architecture, Meta Bidirectional Loop, Multi-Provider Fai
 
 ## BABU_ADR_Book_v7.md
 Coverage:
-ADR-091 → ADR-098
+ADR-091 → ADR-100
 
 Domains:
-Topology-Aware Query Classification, Capability Demand Packet, Orchestration Bypass, Conversational State Inheritance, Telemetry Observability, Decoupled Commercial CRM Plane, Bidirectional Social Webhook Memory, Swarm Model Calibration
+Topology-Aware Query Classification, Capability Demand Packet, Orchestration Bypass, Conversational State Inheritance, Telemetry Observability, Decoupled Commercial CRM Plane, Bidirectional Social Webhook Memory, Swarm Model Calibration, Deterministic Conversational Sales Funnel, IST Datetime Slot Parsing, Database-Level Concurrency Isolation
 
 ## BABU_VISION_PLAN_2026.md
 Domains:
-Governed Agentic Control Platform, 7-Layer Architecture, Meta Bidirectional Loop, Multi-Provider Intelligence, Business Profile Grounding
+Governed Agentic Control Platform, 7-Layer Architecture, Meta Bidirectional Loop, Multi-Provider Intelligence, Business Profile Grounding, Deterministic CRM Funnel, Concurrency Isolation
 
 ## BABU_Manifesto_2026.md
 Coverage:

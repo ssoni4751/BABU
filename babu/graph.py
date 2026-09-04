@@ -435,6 +435,13 @@ def planner_node(state: BabuState):
         except ImportError:
             from planner import IntentPacket
         intent_packet = IntentPacket.from_dict(intent_packet_dict)
+        q_low = query.lower()
+        if any(k in q_low for k in ("email", "gmail", "mail")) and any(k in q_low for k in ("send", "draft", "write", "search", "check", "regarding", "notice")):
+            if intent_packet.query_category != "COMMUNICATION":
+                intent_packet.query_category = "COMMUNICATION"
+        elif any(k in q_low for k in ("calendar", "meeting", "event", "schedule", "doc", "document", "sheet", "spreadsheet", "drive")):
+            if intent_packet.query_category != "WORKSPACE":
+                intent_packet.query_category = "WORKSPACE"
         print(f"[PLANNER NODE] Reusing pre-classified intent packet (category: {intent_packet.query_category})", flush=True)
     else:
         intent_packet = classify_intent(query, history_text, model_name=CURRENT_PA_MODEL)
@@ -482,27 +489,36 @@ def planner_node(state: BabuState):
     goal_class = intent_packet.query_category
     cached_graph = None
 
-    conn, is_pg = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        if is_pg:
-            cursor.execute(
-                "SELECT goal_graph_json FROM planned_graphs_cache WHERE session_id = %s AND query_hash = %s AND goal_class = %s",
-                (session_id, query_hash, goal_class)
-            )
-        else:
-            cursor.execute(
-                "SELECT goal_graph_json FROM planned_graphs_cache WHERE session_id = ? AND query_hash = ? AND goal_class = ?",
-                (session_id, query_hash, goal_class)
-            )
-        row = cursor.fetchone()
-        if row:
-            cached_graph = row[0]
-        cursor.close()
-    except Exception as e:
-        print(f"[PLANNER CACHE] Error looking up plan cache: {e}", flush=True)
-    finally:
-        conn.close()
+    is_action_query = (
+        goal_class in ("COMMUNICATION", "WORKSPACE")
+        or bool(intent_packet.allowed_actions)
+        or any(k in query.lower() for k in ("email", "mail", "gmail", "calendar", "event", "schedule", "doc", "sheet", "drive", "post", "facebook"))
+    )
+
+    if not is_action_query:
+        conn, is_pg = get_db_connection()
+        try:
+            cursor = conn.cursor()
+            if is_pg:
+                cursor.execute(
+                    "SELECT goal_graph_json FROM planned_graphs_cache WHERE session_id = %s AND query_hash = %s AND goal_class = %s",
+                    (session_id, query_hash, goal_class)
+                )
+            else:
+                cursor.execute(
+                    "SELECT goal_graph_json FROM planned_graphs_cache WHERE session_id = ? AND query_hash = ? AND goal_class = ?",
+                    (session_id, query_hash, goal_class)
+                )
+            row = cursor.fetchone()
+            if row:
+                cached_graph = row[0]
+            cursor.close()
+        except Exception as e:
+            print(f"[PLANNER CACHE] Error looking up plan cache: {e}", flush=True)
+        finally:
+            conn.close()
+    else:
+        print(f"[PLANNER CACHE] Bypassing plan cache for action/communication goal: '{query[:50]}'", flush=True)
 
     if cached_graph:
         try:
@@ -512,18 +528,40 @@ def planner_node(state: BabuState):
             
         try:
             graph_dict = json.loads(cached_graph)
-            graph_dict["goal_id"] = pre_goal_id
-            graph_dict["goal"] = query
-            graph = GoalGraph.from_dict(graph_dict)
-            graph.planner_status = "CACHE_MATCH"
-            print(f"[PLANNER NODE] Session cache hit! Reusing plan for query hash {query_hash} and goal class {goal_class}", flush=True)
-            
-            tracker = state.get("execution_tracker") or {}
-            tracker["planner_duration"] = 0.0
-            
-            routing_meta = state.get("routing_metadata") or {}
-            routing_meta["sql_context"] = sql_context
-            routing_meta["retrieved_rag"] = retrieved
+            cached_status = graph_dict.get("planner_status", "")
+            cached_tasks = graph_dict.get("tasks", [])
+            is_invalid_cache = (
+                cached_status in ("JSON_ERROR", "FALLBACK", "AMBIGUOUS_QUERY", "CONSTRAINT_CONFLICT", "VALIDATION_ERROR")
+                or any("could not be planned securely" in t.get("objective", "").lower() or "refuse" in t.get("objective", "").lower() for t in cached_tasks)
+            )
+            if is_invalid_cache:
+                print(f"[PLANNER CACHE] Discarding invalid/refusal cached plan for query hash {query_hash}. Purging from cache and re-planning.", flush=True)
+                cached_graph = None
+                try:
+                    pconn, p_is_pg = get_db_connection()
+                    pcur = pconn.cursor()
+                    if p_is_pg:
+                        pcur.execute("DELETE FROM planned_graphs_cache WHERE session_id = %s AND query_hash = %s", (session_id, query_hash))
+                    else:
+                        pcur.execute("DELETE FROM planned_graphs_cache WHERE session_id = ? AND query_hash = ?", (session_id, query_hash))
+                    pconn.commit()
+                    pcur.close()
+                    pconn.close()
+                except Exception as p_err:
+                    print(f"[PLANNER CACHE] Failed to purge bad cache row: {p_err}", flush=True)
+            else:
+                graph_dict["goal_id"] = pre_goal_id
+                graph_dict["goal"] = query
+                graph = GoalGraph.from_dict(graph_dict)
+                graph.planner_status = "CACHE_MATCH"
+                print(f"[PLANNER NODE] Session cache hit! Reusing plan for query hash {query_hash} and goal class {goal_class}", flush=True)
+                
+                tracker = state.get("execution_tracker") or {}
+                tracker["planner_duration"] = 0.0
+                
+                routing_meta = state.get("routing_metadata") or {}
+                routing_meta["sql_context"] = sql_context
+                routing_meta["retrieved_rag"] = retrieved
             
             # Calculate graph hash for trace metadata
             import hashlib
@@ -706,14 +744,14 @@ def planner_node(state: BabuState):
                 intent_packet=intent_packet.to_dict()
             )
         elif intent_packet.lookup and not (intent_packet.research or intent_packet.generate or intent_packet.execute or requires_workspace_access(query) or requires_web_search(query)) and not has_multiple_tasks_or_requests(query, intent_packet.to_dict()):
-            PRIVATE_QUERY_TYPES = ("BUSINESS_INFORMATION", "PERSONAL_INFORMATION", "SYSTEM_INFORMATION")
+            PRIVATE_QUERY_TYPES = ("BUSINESS_INFORMATION", "PERSONAL_INFORMATION", "SYSTEM_INFORMATION", "COMMUNICATION", "WORKSPACE")
             if intent_packet.query_category in PRIVATE_QUERY_TYPES:
                 print(f"[PLANNER NODE] Private query category '{intent_packet.query_category}' detected → Disabling fast-track simple lookup shortcut.", flush=True)
                 graph = plan_goal(
                     query=query,
                     history_text=history_text,
                     profile_text=profile_text,
-                    model_name=CURRENT_DEPT_MODEL,
+                    model_name=CURRENT_PA_MODEL,
                     goal_id=pre_goal_id,
                     is_correction=False,
                     last_goal_text=None,
@@ -747,7 +785,7 @@ def planner_node(state: BabuState):
                 query=query,
                 history_text=history_text,
                 profile_text=profile_text,
-                model_name=CURRENT_DEPT_MODEL,
+                model_name=CURRENT_PA_MODEL,
                 goal_id=pre_goal_id,
                 is_correction=is_correction,
                 last_goal_text=last_goal_text,
@@ -794,7 +832,7 @@ def planner_node(state: BabuState):
     else:
         has_actual_tokens = bool(getattr(graph, "planning_tokens", None))
         plan_tokens = getattr(graph, "planning_tokens", None) or {"prompt": 1800, "completion": 500, "total": 2300}
-        p_plan, c_plan = get_token_costs(CURRENT_DEPT_MODEL)
+        p_plan, c_plan = get_token_costs(CURRENT_PA_MODEL)
         plan_cost = (plan_tokens.get("prompt", 0) * p_plan) + (plan_tokens.get("completion", 0) * c_plan)
     
     log_execution_ledger_event(
@@ -811,7 +849,7 @@ def planner_node(state: BabuState):
             "planner_status": graph.planner_status,
             "tokens": plan_tokens,
             "cost": round(plan_cost, 6),
-            "model": CURRENT_DEPT_MODEL,
+            "model": CURRENT_PA_MODEL,
             "is_estimated": not has_actual_tokens,
             "event_start_time": plan_start_iso,
             "event_end_time": plan_end_iso,
@@ -866,8 +904,15 @@ def planner_node(state: BabuState):
     routing_meta["sql_context"] = sql_context
     routing_meta["retrieved_rag"] = retrieved
 
-    # Save planned graph to cache
-    if graph and getattr(graph, "planner_status", "") != "CACHE_MATCH":
+    # Save planned graph to cache only for valid, successful multi-task graphs
+    is_error_status = getattr(graph, "planner_status", "") in (
+        "CACHE_MATCH", "JSON_ERROR", "FALLBACK", "AMBIGUOUS_QUERY", "CONSTRAINT_CONFLICT", "VALIDATION_ERROR"
+    )
+    is_refusal_plan = any(
+        "could not be planned securely" in t.objective.lower() or "refuse" in t.objective.lower()
+        for t in getattr(graph, "tasks", [])
+    )
+    if graph and not is_error_status and not is_refusal_plan:
         conn, is_pg = get_db_connection()
         try:
             cursor = conn.cursor()
@@ -1007,13 +1052,16 @@ def task_executor_node(state: BabuState):
                 from governance import get_constitution
             mandatory_approvals = get_constitution("mandatory_human_approval", [])
             
-            if detected_action and detected_action.get("action") == action:
+            # Read-only search and fetch actions are pre-approved
+            if action in ("search_sheet", "search_gmail", "read_document", "list_events"):
                 task.context["approved"] = True
             elif action in mandatory_approvals:
+                # Class B and Class C mutating actions ALWAYS require explicit operator approval
                 if not task.context.get("approved"):
                     task.context["approved"] = False
-            elif action in ("search_sheet", "search_gmail"):
-                task.context["approved"] = True
+            elif not task.context.get("approved"):
+                # If an action was detected but not in mandatory approvals, leave as-is or default
+                pass
                 
             if not task.context.get("approved") and not pending_approval_task:
                 pending_approval_task = task
@@ -1970,10 +2018,15 @@ def pa_node(state: BabuState):
             f" Use history for context, never repeat it verbatim."
             f"{google_ctx}{profile_ctx}"
         )
-        if not action_result:
-            manifesto += "\n\nCRITICAL: Do not claim any action was executed/sent/created in this turn unless [Automation Result] is explicitly present."
         if pa_rules:
             manifesto += "\n\n" + pa_rules
+
+    if not action_result:
+        manifesto += (
+            "\n\nCRITICAL ANTI-HALLUCINATION INSTRUCTION: No physical action or external automation was executed in this turn because [Automation Result] is NOT present. "
+            "You must NEVER claim, state, suggest, or imply that you sent an email, published a post, created an event, or modified any document. "
+            "If the user requested an action, do not pretend it has already been performed. Be completely truthful about what has or has not happened."
+        )
 
     if is_private:
         manifesto += (
@@ -2012,7 +2065,7 @@ def pa_node(state: BabuState):
     except Exception as e:
         err_msg = str(e)
         if "413" in err_msg or "too large" in err_msg.lower() or "limit exceeded" in err_msg.lower():
-            used_model = "nvidia/meta/llama-3.3-70b-instruct" if CURRENT_PA_MODEL.startswith("nvidia/") else "llama-3.3-70b-versatile"
+            used_model = "nvidia/meta/llama-3.3-70b-instruct" if CURRENT_PA_MODEL.startswith("nvidia/") else "gemini-2.5-flash"
             print(f"[PA NODE WARNING] Model {CURRENT_PA_MODEL} failed with 413/limit exceeded. Falling back to bigger model {used_model}. Error: {err_msg}", flush=True)
             llm_pa = build_llm(used_model, 0.2)
             response = llm_pa.invoke([SystemMessage(content=manifesto), HumanMessage(content="\n\n".join(parts))])

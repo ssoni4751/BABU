@@ -294,9 +294,10 @@ KNOWLEDGE_BASE = {
         "and Direct Google Workspace automation (email via Gmail, Calendar events, Sheets logging, and more)."
     ),
     "models": (
-        "Router and research agents use llama-3.1-8b-instant (fast). "
-        "The Personal Assistant (PA) uses llama-3.3-70b-versatile (highest quality). "
-        "All inference runs on Groq free tier."
+        "The Strategic Planner and Personal Assistant (PA) use openai/gpt-oss-120b (Groq API open weights, highest reasoning fidelity). "
+        "Swarm workers and social webhooks use openai/gpt-oss-20b (Groq API open weights, ultra-fast <0.3s). "
+        "Legacy Llama models (llama-3.3-70b-versatile and llama-3.1-8b-instant) are discontinued. "
+        "All primary inference runs on Groq API with secondary failover to NVIDIA NIM and Google Gemini."
     ),
 }
 
@@ -305,6 +306,17 @@ _profile_lock = threading.Lock()
 _PG_FAILED = False
 _PG_LAST_RETRY = 0
 _PG_RETRY_INTERVAL = 300  # Try reconnecting to PostgreSQL at most once every 5 minutes if it failed
+_SQLITE_SCHEMA_INITIALIZED = False
+_schema_lock = threading.Lock()
+
+def _ensure_sqlite_schema_once(conn):
+    """Run schema creation once per process to eliminate lock contention on every query."""
+    global _SQLITE_SCHEMA_INITIALIZED
+    if not _SQLITE_SCHEMA_INITIALIZED:
+        with _schema_lock:
+            if not _SQLITE_SCHEMA_INITIALIZED:
+                _ensure_sqlite_schema(conn)
+                _SQLITE_SCHEMA_INITIALIZED = True
 
 def get_db_connection():
     global _PG_FAILED, _PG_LAST_RETRY
@@ -313,12 +325,12 @@ def get_db_connection():
         if db_url.startswith("postgres://") or db_url.startswith("postgresql://"):
             now = time.time()
             if not _PG_FAILED or (now - _PG_LAST_RETRY > _PG_RETRY_INTERVAL):
-                import psycopg2
-                url = db_url
-                if url.startswith("postgres://"):
-                    url = url.replace("postgres://", "postgresql://", 1)
                 try:
-                    conn = psycopg2.connect(url, connect_timeout=2)
+                    import psycopg2
+                    url = db_url
+                    if url.startswith("postgres://"):
+                        url = url.replace("postgres://", "postgresql://", 1)
+                    conn = psycopg2.connect(url, connect_timeout=5)
                     conn.set_client_encoding('UTF8')
                     _PG_FAILED = False
                     return conn, True
@@ -332,11 +344,11 @@ def get_db_connection():
             dir_name = os.path.dirname(path)
             if dir_name:
                 os.makedirs(dir_name, exist_ok=True)
-            conn = sqlite3.connect(path)
-            _ensure_sqlite_schema(conn)
+            conn = sqlite3.connect(path, timeout=30.0)
+            _ensure_sqlite_schema_once(conn)
             return conn, False
-    conn = sqlite3.connect(DB_PATH)
-    _ensure_sqlite_schema(conn)
+    conn = sqlite3.connect(DB_PATH, timeout=30.0)
+    _ensure_sqlite_schema_once(conn)
     return conn, False
 
 def log_temporal_event(
@@ -706,9 +718,9 @@ def is_profile_relevant_query(query: str) -> bool:
     return any(kw in q for kw in keywords)
 
 def is_private_data_query(query: str, category: Optional[str] = None) -> bool:
-    if category in ("BUSINESS_INFORMATION", "PERSONAL_INFORMATION"):
+    if category in ("BUSINESS_INFORMATION", "PERSONAL_INFORMATION", "COMMUNICATION", "WORKSPACE"):
         return True
-    if category == "PUBLIC_INFORMATION":
+    if category in ("PUBLIC_INFORMATION", "CONVERSATION"):
         return False
     return is_profile_relevant_query(query)
 
@@ -1002,11 +1014,12 @@ def clean_search_query(query: str) -> str:
     if t.startswith("/") or t.startswith("!"):
         t = re.sub(r'^(?:/[a-zA-Z0-9_]+|![a-zA-Z0-9_]+)\s*', '', t)
         
-    # 2. Strip direct conversational leading verb triggers
-    t = re.sub(r'(?i)^\b(?:launch|sprint|walk|postnow|post|publish|run|execute|search|find|lookup|check|websearch|wikipedia)\b\s*', '', t)
+    # 2. Strip direct conversational leading verb triggers (without destroying query words like 'post office', 'check bounce', etc.)
+    t = re.sub(r'(?i)^\b(?:launch|sprint|walk|postnow|websearch|wikipedia)\b\s*', '', t)
+    t = re.sub(r'(?i)^\b(?:search\s+(?:for|online\s+for)?|find\s+out\s+about|look\s+up)\b\s*', '', t)
     
     # 3. Strip conversational query suffixes/boilerplate
-    t = re.sub(r'(?i)\b(?:please|plz|kindly|could you|can you|tell me|show me|about|details of|details for|status of)\b\s*', '', t)
+    t = re.sub(r'(?i)\b(?:please|plz|kindly|could you|can you|tell me|show me|details of|details for|status of)\b\s*', '', t)
     
     cleaned = t.strip()
     

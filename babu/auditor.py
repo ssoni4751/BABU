@@ -423,9 +423,18 @@ class PostExecutionValidator:
                         print(f"[AUDITOR:POST] Task '{task.task_id}' FAILED post-audit checklist verification: {reason}", flush=True)
                         return False, reason
                 else:
-                    print("[AUDITOR:POST] Warning: Auditor LLM returned non-JSON output. Skipping semantic block.", flush=True)
+                    print("[AUDITOR:POST] Warning: Auditor LLM returned non-JSON output. Flagging uncertainty.", flush=True)
+                    task.context.setdefault("audit_metrics", {})
+                    task.context["audit_metrics"]["uncertainty_flag"] = True
+                    task.context["audit_metrics"]["risk_assessment"] = "Auditor returned non-JSON output"
             except Exception as e:
                 print(f"[AUDITOR:POST] Semantic audit invocation failed: {e}. Defaulting to deterministic check.", flush=True)
+                task.context.setdefault("audit_metrics", {})
+                task.context["audit_metrics"]["uncertainty_flag"] = True
+                task.context["audit_metrics"]["risk_assessment"] = f"Semantic audit error: {e}"
+                if getattr(task, "department", "") == "execution":
+                    print(f"[AUDITOR:POST] Safety block: Refusing fail-open for mutating execution task '{task.task_id}'.", flush=True)
+                    return False, f"Post-execution audit safety block: auditor invocation failed for execution task ({e})"
 
         # Ensure audit_metrics exist
         if "audit_metrics" not in task.context:

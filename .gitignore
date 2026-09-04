@@ -99,4 +99,5 @@ babu_backup.zip
 *.tar.gz
 *.tgz
 last_preview_date.txt
+babu/.git_bak/
 

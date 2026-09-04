@@ -6,7 +6,14 @@ import os
 import threading
 import time
 
-ROOT = Path(__file__).resolve().parent.parent
+_CURRENT_PATH = Path(__file__).resolve()
+if (_CURRENT_PATH.parent / "brain").is_dir():
+    ROOT = _CURRENT_PATH.parent
+elif (_CURRENT_PATH.parent.parent / "brain").is_dir():
+    ROOT = _CURRENT_PATH.parent.parent
+else:
+    ROOT = _CURRENT_PATH.parent
+
 BRAIN_DIR = ROOT / "brain"
 
 
@@ -40,7 +47,10 @@ def initialize_institution(*, initialize_storage: bool = True) -> BootstrapState
     state.documents["root_index"] = _load_required(BRAIN_DIR / "ROOT_INDEX.md")
     _complete(state, "Phase 1: Load ROOT_INDEX")
 
-    from .governance import E0_A_Rules
+    try:
+        from .governance import E0_A_Rules
+    except ImportError:
+        from governance import E0_A_Rules
     if not E0_A_Rules.get("human_approval_required"):
         raise RuntimeError("Critical Boot Failure: human approval authority is disabled")
     _complete(state, "Phase 2: Load Governance")
@@ -50,7 +60,10 @@ def initialize_institution(*, initialize_storage: bool = True) -> BootstrapState
     _complete(state, "Phase 3: Load Configuration")
 
     if initialize_storage:
-        from . import bot as bot_module
+        try:
+            from . import bot as bot_module
+        except ImportError:
+            import bot as bot_module
         if bot_module.DATABASE_URL and bot_module.DATABASE_URL.startswith(("postgres://", "postgresql://")):
             bot_module.init_postgres_db()
         bot_module.init_durable_checkpoint_db()
@@ -61,9 +74,15 @@ def initialize_institution(*, initialize_storage: bool = True) -> BootstrapState
         state.documents[name] = _load_required(BRAIN_DIR / name)
     _complete(state, "Phase 5: Load Brain")
 
-    from .awareness import AwarenessEngine, inspect_services
     try:
-        from .google_service import is_google_configured
+        from .awareness import AwarenessEngine, inspect_services
+    except ImportError:
+        from awareness import AwarenessEngine, inspect_services
+    try:
+        try:
+            from .google_service import is_google_configured
+        except ImportError:
+            from google_service import is_google_configured
         google_ready = is_google_configured()
     except Exception:
         google_ready = False
@@ -74,7 +93,10 @@ def initialize_institution(*, initialize_storage: bool = True) -> BootstrapState
     )
     _complete(state, "Phase 6: Initialize Awareness")
 
-    from .planner import compile_planner
+    try:
+        from .planner import compile_planner
+    except ImportError:
+        from planner import compile_planner
     state.planner_context = compile_planner() or ""
     _complete(state, "Phase 7: Compile Planner")
     return state
@@ -89,7 +111,10 @@ def open_transports(state: BootstrapState) -> None:
         raise RuntimeError("Transport gate denied: institutional bootstrap is incomplete")
 
     from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler, MessageHandler, filters
-    from . import bot as bot_module
+    try:
+        from . import bot as bot_module
+    except ImportError:
+        import bot as bot_module
 
     health_thread = threading.Thread(target=bot_module.start_health_server, name="web_dashboard_health_server", daemon=True)
     health_thread.start()

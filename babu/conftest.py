@@ -14,8 +14,3 @@ collect_ignore = [
     "test_telegram_simulator.py",
     "test_telemetry.py",
 ]
-
-def pytest_collect_file(file_path, parent):
-    if file_path.suffix == ".py":
-        print(f"COLLECTED FILE: {file_path}", flush=True)
-

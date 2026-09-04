@@ -26,11 +26,15 @@ SCOPES = [
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 if os.path.exists(os.path.join(CURRENT_DIR, "credentials.json")):
     BASE_DIR = CURRENT_DIR
+elif os.path.exists(os.path.join(CURRENT_DIR, "babu", "credentials.json")):
+    BASE_DIR = os.path.join(CURRENT_DIR, "babu")
 else:
     BASE_DIR = os.path.dirname(CURRENT_DIR)
 
 CREDENTIALS_PATH = os.path.join(BASE_DIR, "credentials.json")
 TOKEN_PATH = os.path.join(BASE_DIR, "token.json")
+if not os.path.exists(TOKEN_PATH) and os.path.exists(os.path.join(CURRENT_DIR, "token.json")):
+    TOKEN_PATH = os.path.join(CURRENT_DIR, "token.json")
 
 # Restore credentials/token from environment variables if not present on disk
 if not os.path.exists(CREDENTIALS_PATH) and os.environ.get("GOOGLE_CREDENTIALS_JSON"):
