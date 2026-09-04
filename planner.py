@@ -800,8 +800,50 @@ PLANNER_SYSTEM_PROMPT: str = (
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _close_truncated_json(text: str) -> str:
+    """Safely close unclosed brackets, braces, and quotes if LLM output was truncated."""
+    s = text.strip()
+    # Remove hanging key/colon at the end e.g. ',"depends_on": ' or ',"depends_on":'
+    s = re.sub(r',\s*"[^"]*"\s*:\s*$', '', s)
+    s = re.sub(r'{\s*"[^"]*"\s*:\s*$', '{', s)
+    s = re.sub(r',\s*$', '', s)
+
+    in_string = False
+    escape = False
+    open_stack = []
+    for char in s:
+        if escape:
+            escape = False
+            continue
+        if char == '\\':
+            escape = True
+            continue
+        if char == '"':
+            in_string = not in_string
+            continue
+        if not in_string:
+            if char in '{[':
+                open_stack.append(char)
+            elif char == '}' and open_stack and open_stack[-1] == '{':
+                open_stack.pop()
+            elif char == ']' and open_stack and open_stack[-1] == '[':
+                open_stack.pop()
+
+    if in_string:
+        s += '"'
+
+    for opener in reversed(open_stack):
+        if opener == '{':
+            s += '}'
+        elif opener == '[':
+            s += ']'
+
+    return s
+
+
 def _extract_json(text: str) -> dict:
-    """Extract a JSON object from LLM output, tolerating markdown fences, surrounding text, and trailing commas."""
+    """Extract a JSON object from LLM output, tolerating markdown fences, surrounding text, trailing commas, single quotes, and truncations."""
+    import ast
     cleaned = text.strip()
 
     # 1. Strip markdown code fences if present anywhere
@@ -819,27 +861,61 @@ def _extract_json(text: str) -> dict:
     if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
         cleaned = cleaned[start_idx:end_idx + 1]
 
-    # 3. Direct attempt with strict json.loads
+    # Attempt 1: Direct attempt with strict json.loads
     try:
         return json.loads(cleaned)
     except (json.JSONDecodeError, ValueError):
         pass
 
-    # 4. Repair common LLM syntax flaws (trailing commas, comments)
+    # Attempt 2: Repair comments and trailing commas
     repaired = cleaned
-    # Remove single line comments // ...
     repaired = re.sub(r'//.*', '', repaired)
-    # Remove multi-line comments /* ... */
     repaired = re.sub(r'/\*.*?\*/', '', repaired, flags=re.DOTALL)
-    # Remove trailing commas before closing braces/brackets (e.g. [1, 2,] or {"a": 1,})
-    repaired = re.sub(r',\s*([\]}])', r'\1', repaired)
+    for _ in range(3):
+        repaired = re.sub(r',\s*([\]}])', r'\1', repaired)
 
     try:
         return json.loads(repaired)
     except (json.JSONDecodeError, ValueError):
         pass
 
-    # 5. Fallback to raw json.loads to raise original/informative exception
+    # Attempt 3: ast.literal_eval for Python dictionary syntax (single quotes, True/False/None)
+    try:
+        val = ast.literal_eval(repaired)
+        if isinstance(val, dict):
+            return val
+    except Exception:
+        pass
+
+    # Attempt 4: Fix unquoted property names e.g. { task_id: "T1" }
+    unquoted_repaired = re.sub(r'(?<=[{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'"\1":', repaired)
+    for _ in range(3):
+        unquoted_repaired = re.sub(r',\s*([\]}])', r'\1', unquoted_repaired)
+    try:
+        return json.loads(unquoted_repaired)
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # Attempt 5: Replace single-quoted strings with double-quoted strings
+    sq_repaired = re.sub(r"'([^'\\]*(?:\\.[^'\\]*)*)'", r'"\1"', repaired)
+    sq_repaired = re.sub(r'\bTrue\b', 'true', sq_repaired)
+    sq_repaired = re.sub(r'\bFalse\b', 'false', sq_repaired)
+    sq_repaired = re.sub(r'\bNone\b', 'null', sq_repaired)
+    for _ in range(3):
+        sq_repaired = re.sub(r',\s*([\]}])', r'\1', sq_repaired)
+    try:
+        return json.loads(sq_repaired)
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # Attempt 6: Truncated JSON recovery
+    try:
+        closed = _close_truncated_json(repaired)
+        return json.loads(closed)
+    except Exception:
+        pass
+
+    # Fallback to raw json.loads to raise original/informative exception
     return json.loads(cleaned)
 
 

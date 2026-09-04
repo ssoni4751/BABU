@@ -435,6 +435,13 @@ def planner_node(state: BabuState):
         except ImportError:
             from planner import IntentPacket
         intent_packet = IntentPacket.from_dict(intent_packet_dict)
+        q_low = query.lower()
+        if any(k in q_low for k in ("email", "gmail", "mail")) and any(k in q_low for k in ("send", "draft", "write", "search", "check", "regarding", "notice")):
+            if intent_packet.query_category != "COMMUNICATION":
+                intent_packet.query_category = "COMMUNICATION"
+        elif any(k in q_low for k in ("calendar", "meeting", "event", "schedule", "doc", "document", "sheet", "spreadsheet", "drive")):
+            if intent_packet.query_category != "WORKSPACE":
+                intent_packet.query_category = "WORKSPACE"
         print(f"[PLANNER NODE] Reusing pre-classified intent packet (category: {intent_packet.query_category})", flush=True)
     else:
         intent_packet = classify_intent(query, history_text, model_name=CURRENT_PA_MODEL)
