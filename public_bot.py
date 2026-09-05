@@ -158,13 +158,6 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     
     await update.message.reply_text(welcome_text, parse_mode="Markdown", reply_markup=SERVICE_SELECTION_KEYBOARD)
-    
-    send_owner_client_alert(
-        "New Client Started Public Bot",
-        user.full_name or name,
-        user.username or "",
-        "User invoked /start and opened front-desk menu."
-    )
 
 
 async def cmd_services(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -241,13 +234,13 @@ async def on_public_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         if not has_phone:
             await query.message.reply_text(
-                f"✅ **सेवा श्रेणी सुरक्षित कर ली गई है:** {title}\n\n"
+                f"नमस्ते {client_name} जी! ✅ **आपकी सेवा श्रेणी सुरक्षित कर ली गई है:** {title}\n\n"
                 f"👉 **अगला चरण:** परामर्श व अपॉइंटमेंट दर्ज करने हेतु कृपया अपना **10 अंकों का मोबाइल नंबर** (Mobile Number) यहाँ लिखकर भेजें:",
                 parse_mode="Markdown"
             )
         else:
             await query.message.reply_text(
-                f"✅ **सेवा श्रेणी सुरक्षित कर ली गई है:** {title}\n"
+                f"नमस्ते {client_name} जी! ✅ **आपकी सेवा श्रेणी सुरक्षित कर ली गई है:** {title}\n"
                 f"📞 **दर्ज मोबाइल नंबर:** `{lead['contact_info']}`\n\n"
                 f"📅 **अपॉइंटमेंट बुकिंग:**\n"
                 f"कृपया कार्यालय आने के लिए अपना पसंदीदा **दिन और समय** बताएं।\n"
@@ -467,7 +460,7 @@ async def on_public_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # User just sent their contact number! Prompt for appointment day and time, and wait!
             svc_name = SERVICE_TITLES.get(current_service, current_service)
             reply = (
-                f"✅ **मोबाइल नंबर सुरक्षित कर लिया गया है:** `{existing_phone}`\n"
+                f"धन्यवाद {client_name} जी! ✅ **आपका मोबाइल नंबर सुरक्षित कर लिया गया है:** `{existing_phone}`\n"
                 f"💼 **सेवा श्रेणी:** **{svc_name}**\n\n"
                 f"📅 **परामर्श अपॉइंटमेंट बुकिंग:**\n"
                 f"कृपया कार्यालय आने के लिए अपना पसंदीदा **दिन और समय** बताएं।\n"
@@ -483,6 +476,7 @@ async def on_public_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         svc_name = SERVICE_TITLES.get(current_service, current_service)
         ai_reply = generate_public_ai_reply(text, client_name, current_service)
         reply = (
+            f"नमस्ते {client_name} जी!\n\n"
             f"{ai_reply}\n\n"
             f"──────────────────────────────\n"
             f"💼 **चयनित सेवा:** {svc_name}\n\n"
@@ -523,7 +517,7 @@ async def on_public_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif reason == "DATE_ONLY_NEED_TIME":
             display_date = dt_res.get("display_date", "उक्त तिथि")
             reply = (
-                f"📅 आपने **{display_date}** का दिन चुना है।\n\n"
+                f"📅 {client_name} जी, आपने **{display_date}** का दिन चुना है।\n\n"
                 f"👉 कृपया बताएं आप **किस समय** आना चाहते हैं?\n"
                 f"(कार्यालय समय: सुबह 11:00 बजे से शाम 6:00 बजे के बीच, जैसे *दोपहर 2:00 बजे* या *शाम 4 PM*)"
             )
@@ -534,6 +528,7 @@ async def on_public_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Client did not provide a specific date/time expression; answer query and prompt for appointment
             ai_reply = generate_public_ai_reply(text, client_name, current_service)
             reply = (
+                f"नमस्ते {client_name} जी!\n\n"
                 f"{ai_reply}\n\n"
                 f"──────────────────────────────\n"
                 f"💼 **सेवा:** {svc_name}\n"
@@ -551,7 +546,7 @@ async def on_public_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not avail_ok:
         alt_str = ", ".join(alt_slots) if alt_slots else "सुबह 11:00 से शाम 6:00 बजे के बीच कोई अन्य समय"
         reply = (
-            f"⚠️ **क्षमा करें, {dt_res['display_date']} को {dt_res['display_time']} का स्लॉट पहले से व्यस्त (आरक्षित) है।**\n\n"
+            f"⚠️ {client_name} जी, क्षमा करें, {dt_res['display_date']} को {dt_res['display_time']} का स्लॉट पहले से व्यस्त (आरक्षित) है।\n\n"
             f"उपलब्ध समय विकल्प:\n• {alt_str}\n\n"
             f"कृपया बताएं, क्या आप इनमें से किसी समय आना चाहेंगे?"
         )
@@ -571,7 +566,7 @@ async def on_public_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if commit_res.get("status") == "SUCCESS":
         doc_checklist = REQUIRED_DOCS_BY_SERVICE.get(current_service, REQUIRED_DOCS_BY_SERVICE["General"])
         reply = (
-            f"🎉 **आपकी अपॉइंटमेंट सफलतापूर्वक बुक हो गई है!**\n\n"
+            f"🎉 **{client_name} जी, आपकी अपॉइंटमेंट सफलतापूर्वक बुक हो गई है!**\n\n"
             f"👤 **ग्राहक का नाम:** {client_name}\n"
             f"💼 **सेवा:** {svc_name}\n"
             f"🗓️ **दिनांक:** {dt_res['display_date']}\n"
@@ -583,19 +578,11 @@ async def on_public_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await update.message.reply_text(reply, parse_mode="Markdown")
         ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=existing_phone, source_ref=sender_id, notes=f"Booked: {dt_res['iso_timestamp']}")
-        
-        send_owner_client_alert(
-            "New Appointment Confirmed",
-            client_name,
-            username,
-            f"Service: {current_service}\nDate/Time: {dt_res['display_date']} at {dt_res['display_time']}\nPhone: {existing_phone}",
-            phone=existing_phone
-        )
         return
     elif commit_res.get("status") == "SLOT_CONFLICT":
         alt_str = ", ".join(commit_res.get("alternatives", [])) or "11:00 AM, 03:00 PM"
         reply = (
-            f"⚠️ **क्षमा करें, यह समय अभी-अभी किसी अन्य ग्राहक द्वारा बुक कर लिया गया है।**\n\n"
+            f"⚠️ {client_name} जी, क्षमा करें, यह समय अभी-अभी किसी अन्य ग्राहक द्वारा बुक कर लिया गया है।\n\n"
             f"वैकल्पिक उपलब्ध स्लॉट्स:\n• {alt_str}\n\n"
             f"कृपया इनमें से कोई समय बताएं।"
         )

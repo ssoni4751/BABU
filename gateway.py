@@ -133,7 +133,7 @@ def get_dynamic_self_identity() -> str:
         
         identity_text = (
             f"=== 👤 IDENTITY INDEX ===\n"
-            f"**Name:** Project BABU (Behavioral Autonomous Bureaucratic Utility)\n"
+            f"**Name:** Pragya (Project BABU Cognitive OS)\n"
             f"**Version:** 4.0.0 (V2 Cognitive OS)\n"
             f"**Purpose:** A governed, stratified 9-layer Cognitive Operating System — built to automate research, analysis, writing, and Google Workspace execution with constitutional authority, human-supreme governance, and zero-hallucination auditing.\n\n"
             f"**Capabilities:**\n"
@@ -156,7 +156,7 @@ def get_dynamic_self_identity() -> str:
         return identity_text
     except Exception as e:
         print(f"[DYNAMIC IDENTITY ERROR] {e}", flush=True)
-        return "I am **Project BABU**, a governed multi-agent assistant. (Identity details currently unavailable)."
+        return "I am **Pragya** (Project BABU Cognitive OS), a governed multi-agent assistant. (Identity details currently unavailable)."
 
 def is_system_aware_query(query: str) -> bool:
     """Determine if a query is related to BABU's codebase, architecture, templates, governance, or self-identity."""
@@ -221,7 +221,7 @@ def get_babu_self_context(session_id: str = "default") -> str:
     k0_ctx = retrieve_k0_memory(session_id)
     
     self_ctx = (
-        f"You are Project BABU (Behavioral Autonomous Bureaucratic Utility), Version 4.0.0 (V2 Cognitive OS).\n"
+        f"You are Pragya (Project BABU Cognitive OS), Version 4.0.0 (V2 Cognitive OS).\n"
         f"Date of Birth: May 27, 2026.\n"
         f"System Age: {age_str}.\n"
         f"Operating Environment: Python {sys.version.split()[0]} on Windows.\n"
@@ -693,7 +693,7 @@ def get_system_health_dashboard() -> str:
         f"**System Health Status**\n"
         f"- Overall Health: {failures_status_str}\n\n"
         f"**Identity**\n"
-        f"- Name: Project BABU\n"
+        f"- Name: Pragya (Project BABU)\n"
         f"- Version: 3.5.0\n"
         f"- System Age: {age_str}\n"
         f"- Current Process Uptime: {uptime_str}\n\n"
