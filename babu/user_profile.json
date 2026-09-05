@@ -50,14 +50,22 @@
         "GSTR-3B",
         "GST Compliance"
       ],
-      "csc_e_governance_services": [
+      "general_services": [
+        "MSME Udyam Registration",
+        "Jeevan Pramaan (Digital Life Certificate)",
+        "Passport Online Application",
+        "PAN Card Services",
+        "Sevayojan Portal",
         "Digital Citizen Services",
-        "Jeevan Pramaan",
-        "Government Registrations",
-        "Online Applications",
-        "Document Services"
+        "Government Registrations & Online Applications"
       ]
     },
+    "services_not_provided": [
+      "Aadhaar Card Services (NO Aadhaar Card Update, NO Biometric/Fingerprint Update, NO Address/Mobile link correction on Aadhaar)",
+      "Ration Card Services",
+      "Driving License Services (NO DL apply, NO DL renewal)",
+      "Birth / Death Certificate Issuance"
+    ],
     "target_customers": [
       "Salaried Employees",
       "Small Business Owners",
@@ -67,9 +75,14 @@
       "MSMEs"
     ],
     "business_positioning": {
-      "primary": "Tax and Compliance Consultancy",
-      "secondary": "CSC E-Governance Services",
-      "specialization": "PF Consultancy and Compliance Resolution"
+      "primary_specialization": "PF Consultancy and Compliance Resolution",
+      "main_categories": [
+        "PF (Primary Specialization)",
+        "Tax (Income Tax / ITR)",
+        "GST (Registration & Compliance)",
+        "General (All other offered services differing from PF, Tax, and GST)"
+      ],
+      "avoid_positioning_as": "Only a CSC Centre"
     },
     "brand_principles": [
       "Accuracy First",
@@ -102,7 +115,7 @@
       },
       {
         "question": "What services do you offer?",
-        "answer": "We specialize in: 1) PF Consultancy (PF Claim Settlement, UAN Consolidation, KYC Correction, Name/DOB Correction, Joint Declaration, Ex-Employer Cases), 2) Tax Services (Income Tax Return - ITR Filing, Tax Computation, Notice Assistance), 3) GST Services (New GST Registration, GSTR-1, GSTR-3B Monthly Filing), and 4) CSC Digital Services (Digital Citizen Services, Jeevan Pramaan, Pension & Govt Registrations)."
+        "answer": "Our services are structured into 4 main categories: 1) PF Consultancy (Primary Specialization: PF Claim Settlement Forms 19/10C/31, UAN Consolidation, KYC Correction, Name/DOB Correction, Joint Declaration, Ex-Employer Cases), 2) Tax Services (Income Tax Return - ITR Filing, Tax Computation, Notice Assistance), 3) GST Services (New GST Registration, GSTR-1, GSTR-3B Monthly Filing), and 4) General Services (All other offered services differing from PF, Tax, and GST: MSME Udyam, Jeevan Pramaan Life Certificate, Passport Online, PAN Card, Sevayojan)."
       },
       {
         "question": "What documents are required for PF Withdrawal or Correction?",
@@ -111,6 +124,10 @@
       {
         "question": "What documents are required for ITR Filing?",
         "answer": "For Income Tax Return filing, please bring Form 16 (if salaried), Bank Statements for the financial year, Aadhaar Card, PAN Card, and investment proof documents."
+      },
+      {
+        "question": "Do you provide Aadhaar card update or correction services?",
+        "answer": "No. We strictly DO NOT provide any Aadhaar Card services (no update, no biometric, no enrollment). Aadhaar Card is only required as an identity proof document for clients getting PF, Tax, GST, or PAN services done."
       }
     ]
   },
@@ -274,4 +291,4 @@
       }
     ]
   }
-}
+}

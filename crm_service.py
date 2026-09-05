@@ -36,10 +36,10 @@ IST = timezone(timedelta(hours=5, minutes=30))
 # ----------------------------------------------------------------------
 
 SUPPORTED_SERVICE_CATALOG: Dict[str, str] = {
-    "PF": "PF / EPFO Services (Advance Claim, Transfer, UAN Consolidation, KYC Correction, Joint Declaration, Settlement)",
-    "ITR": "Income Tax Return (ITR-1, 2, 4 Filing, Tax Planning, Refund Status)",
-    "GST": "GST Services (Registration, GSTR-1, GSTR-3B Monthly Filing, LUT, Notice Assistance)",
-    "General": "Digital & E-Governance (MSME Udyam Registration, Life Certificate / Jeevan Pramaan, Passport Application, Sevayojan Registration, PAN Card)"
+    "PF": "PF Consultancy & Compliance Resolution (Primary Specialization: PF Claim Settlement Forms 19/10C/31, UAN Consolidation, KYC/DOB/Name Correction, Joint Declaration, Ex-Employer Cases)",
+    "Tax": "Tax Consultancy & Income Tax Return (ITR-1, 2, 4 Filing, Tax Computation, AIS/TIS Review, Refund Status & Notice Assistance)",
+    "GST": "GST Services & Compliance (New Registration, Monthly/Quarterly GSTR-1 & GSTR-3B Filings, LUT, Annual Return GSTR-9)",
+    "General": "General Services (All other offered services differing from PF, Tax, and GST: MSME Udyam Registration, Jeevan Pramaan Digital Life Certificate, Passport Online, PAN Card, Sevayojan, and other digital citizen services)"
 }
 
 UNSUPPORTED_SERVICE_KEYWORDS: List[str] = [
@@ -50,83 +50,115 @@ UNSUPPORTED_SERVICE_KEYWORDS: List[str] = [
 
 
 def get_selective_knowledge_slice(service_category: str) -> str:
-    """Return only service-relevant business facts and document requirements."""
+    """Return verified, authoritative business facts matching user_profile.json."""
     general_header = (
         "Business: Anshu Computer & Tax Consultancy\n"
+        "Consultant: Shubham Swarnkar (शुभम स्वर्णकार जी / Anshu)\n"
+        "Tagline: PF, Tax & Compliance Solutions\n"
         "Office Address: Kaushal Market, Rath Road, Orai, Uttar Pradesh, India\n"
         "Working Hours: Monday to Saturday from 11:00 AM to 6:00 PM (Sunday Closed)\n"
         "WhatsApp / Call: +91 7217646673\n"
+        "Website: https://anshu-computer-and-tax-consultants.onrender.com\n"
     )
     
-    svc = (service_category or "General").upper()
+    svc = (service_category or "Overview").upper().strip()
     
     if "UNSUPPORTED" in svc or "OUT_OF_SCOPE" in svc:
         return (
             f"{general_header}\n"
             "SERVICE NOTICE (OUT OF SCOPE):\n"
-            "We DO NOT provide Aadhaar Card Correction / Biometric Update, Ration Card, or Driving License services.\n"
-            "Authorized Services We Provide:\n"
-            "1. 🏢 PF / EPFO Services (Advance Claim, Transfer, UAN Consolidation, KYC Correction, Joint Declaration, Settlement)\n"
-            "2. 📑 Income Tax Return (ITR-1, 2, 4 Filing, Tax Planning, Refund Status)\n"
-            "3. 💼 GST Services (Registration, GSTR-1, GSTR-3B Monthly Filing, LUT, Notice Assistance)\n"
-            "4. 🌐 Digital & E-Governance (MSME Udyam Registration, Life Certificate / Jeevan Pramaan, Passport Application, Sevayojan Registration, PAN Card)\n"
-            "Appointment Policy: In-office appointments can ONLY be booked for our 4 authorized services above."
+            "We DO NOT provide Aadhaar Card Correction / Biometric Update, Ration Card, or Driving License services.\n\n"
+            "Our 4 Authorized Service Categories:\n"
+            "1. 🏢 PF Consultancy (Primary Specialization: PF Claim Settlement, UAN Consolidation, KYC/Name/DOB Correction, Joint Declaration, Ex-Employer Cases)\n"
+            "2. 📑 Tax Services (ITR-1, 2, 4 Filing, Tax Computation, AIS/TIS Review, Refund Status, Notice Assistance)\n"
+            "3. 📊 GST Services (New Registration, Monthly GSTR-1 & GSTR-3B Filings, LUT, Notice Assistance)\n"
+            "4. 🌐 General Services (All other offered services differing from PF, Tax, and GST: MSME Udyam Registration, Life Certificate / Jeevan Pramaan, Passport, PAN Card, Sevayojan)\n"
+            "Appointment Policy: In-office appointments can ONLY be booked for our 4 authorized service categories above."
         )
-    elif "PF" in svc:
+    elif "PF" in svc or "EPF" in svc or "UAN" in svc:
         return (
             f"{general_header}\n"
-            "Service: PF Consultancy & Dispute Resolution\n"
-            "Scope: PF Claim Settlement (Form 19, 10C, 31 Advance), UAN Consolidation, KYC/Name/DOB Correction, Joint Declaration, Ex-Employer disputes.\n"
-            "Required Documents for PF:\n"
-            "1. Aadhaar Card (linked with registered mobile for OTP)\n"
+            "Category: PF Consultancy & Compliance Resolution (Primary Specialization)\n"
+            "Scope:\n"
+            "• PF Claim Settlement (Form 19 Final Settlement, Form 10C Pension Withdrawal, Form 31 Advance for illness/house/marriage)\n"
+            "• UAN Consolidation & Transfer across multiple Member IDs\n"
+            "• KYC Correction (Bank account, PAN, Aadhaar link, father name, date of birth / joining / exit correction)\n"
+            "• Joint Declaration Form Attestation & assistance with non-cooperating ex-employers\n"
+            "• EPFO Grievance Registration & Follow-up\n\n"
+            "Required Documents for PF Services:\n"
+            "1. Aadhaar Card (linked with registered mobile number for OTP)\n"
             "2. PAN Card\n"
-            "3. Bank Passbook or Cancelled Cheque (with clear account & IFSC)\n"
-            "4. UAN Number\n"
+            "3. Bank Passbook or Cancelled Cheque (with clearly printed Name, Account No & IFSC)\n"
+            "4. UAN Number & Password (or Member ID)\n"
             "Pricing/Guidance: Highly affordable transparent charges based on case complexity."
         )
-    elif "ITR" in svc or "TAX" in svc or "INCOME" in svc:
+    elif "TAX" in svc or "ITR" in svc or "INCOME" in svc:
         return (
             f"{general_header}\n"
-            "Service: Income Tax Return (ITR) Filing & Tax Advisory\n"
-            "Scope: Salaried/Business ITR Filing (ITR-1, 2, 4), Tax Computation, AIS/TIS Review, Tax Notice Assistance.\n"
-            "Required Documents for ITR:\n"
-            "1. Form 16 (for salaried individuals)\n"
-            "2. Bank Statements for the Financial Year\n"
+            "Category: Tax Services & Advisory (Income Tax Return - ITR)\n"
+            "Scope:\n"
+            "• Salaried Individuals (ITR-1 Sahaj) & Pensioners\n"
+            "• Business / Professionals / Presumptive Taxation (ITR-4 Sugam)\n"
+            "• Capital Gains, Shares, Mutual Funds & Property (ITR-2)\n"
+            "• AIS / TIS Verification & Tax Computation\n"
+            "• Income Tax Refund Status Tracking & Defective Notice Resolution\n\n"
+            "Required Documents for Tax Services:\n"
+            "1. Form 16 / Salary Slips (if salaried)\n"
+            "2. Bank Statements for the full Financial Year\n"
             "3. PAN Card & Aadhaar Card\n"
-            "4. Investment & Tax-saving proofs (80C, 80D, etc.)\n"
+            "4. Investment Proofs (LIC, PPF, Tuition fees, Health insurance 80D, Home loan interest, etc.)\n"
             "Pricing/Guidance: Fast same-day computation and verified e-verification."
         )
     elif "GST" in svc:
         return (
             f"{general_header}\n"
-            "Service: GST Registration & Monthly Compliance\n"
-            "Scope: New GST Registration, Monthly GSTR-1 & GSTR-3B Filings, Annual Returns, GST Notice Assistance.\n"
-            "Required Documents for GST:\n"
-            "1. PAN Card & Aadhaar Card of Proprietor/Partners\n"
-            "2. Electricity Bill / Rent Agreement for Business Address\n"
-            "3. Bank Account Details / Cancelled Cheque\n"
-            "4. Passport-size Photo"
+            "Category: GST Services & Compliance\n"
+            "Scope:\n"
+            "• New GST Registration (Proprietorship, Partnership, Private Limited)\n"
+            "• Monthly & Quarterly Return Filing (GSTR-1, GSTR-3B)\n"
+            "• Composition Scheme, LUT Filing for Exporters\n"
+            "• Annual Return (GSTR-9) & GST Notice Clarifications\n\n"
+            "Required Documents for GST Services:\n"
+            "1. PAN Card & Aadhaar Card of Owner/Proprietor\n"
+            "2. Business Electricity Bill / Rent Agreement / NOC\n"
+            "3. Bank Account Proof / Cancelled Cheque\n"
+            "4. Passport-size Photo & Business Trade Name"
         )
-    elif "GENERAL" in svc or "DIGITAL" in svc or "MSME" in svc or "CSC" in svc or "UDYAM" in svc or "PASSPORT" in svc:
+    elif svc in ("GENERAL_SPECIFIC", "GENERAL_SERVICES", "GENERAL", "DIGITAL", "MSME", "CSC", "UDYAM", "PASSPORT", "JEEVAN", "PAN") and svc not in ("OVERVIEW", "ALL", "DEFAULT", "GREETING"):
         return (
             f"{general_header}\n"
-            "Service: General Digital & E-Governance Services\n"
+            "Category: General Services (All other offered services differing from PF, Tax, and GST)\n"
             "Scope:\n"
-            "1. MSME Udyam Registration (for business loans & benefits)\n"
-            "2. Jeevan Pramaan (Digital Life Certificate for Pensioners)\n"
-            "3. Passport Online Application & Appointment\n"
-            "4. Sevayojan (Employment Portal) Registration & PAN Card\n"
-            "Required Documents: Aadhaar Card (with mobile linked), PAN Card, relevant scheme documents."
+            "1. MSME Udyam Registration (for government business schemes, subsidy & bank loan benefits)\n"
+            "2. Jeevan Pramaan (Biometric/Iris Digital Life Certificate for Central & State Pensioners)\n"
+            "3. Passport Online Application & PSK Appointment Booking\n"
+            "4. Sevayojan Employment Exchange Portal Registration\n"
+            "5. PAN Card (New Application, Minor PAN, Correction & Instant e-PAN)\n"
+            "6. Other Digital & E-Governance Citizen Online Applications\n\n"
+            "Required Documents: Aadhaar Card (with mobile linked), PAN Card, relevant scheme/applicant details.\n"
+            "Note: Aadhaar Card correction/biometrics, Ration Card, and Driving License are strictly NOT provided."
         )
     else:
+        # Default / Greeting / Overview: Complete 4-category business catalog
         return (
             f"{general_header}\n"
-            "Authorized Service Catalog:\n"
-            "1. 🏢 PF / EPFO Services (Advance Claim, KYC, Joint Declaration, Settlement)\n"
-            "2. 📑 Income Tax Filing (ITR-1, 2, 4, Refund, Tax Planning)\n"
-            "3. 💼 GST Registration & Monthly Filing (GSTR-1, GSTR-3B)\n"
-            "4. 🌐 Digital & E-Governance (MSME Udyam, Life Certificate, Passport, Sevayojan, PAN Card)\n"
-            "Office Timings: 11:00 AM to 6:00 PM (Monday to Saturday) at Kaushal Market, Rath Road, Orai."
+            "Our 4 Main Service Categories:\n\n"
+            "1. 🏢 PF Consultancy & Compliance Resolution (Primary Specialization):\n"
+            "   • PF Advance (Form 31), Final Settlement (Form 19), Pension (Form 10C)\n"
+            "   • UAN Consolidation, Transfer, KYC / Name / DOB / Father Name Correction\n"
+            "   • Joint Declaration Form assistance & Ex-Employer dispute cases\n\n"
+            "2. 📑 Tax Consultancy & Advisory (Income Tax Return - ITR):\n"
+            "   • Salaried (ITR-1), Business (ITR-4), Capital Gains (ITR-2)\n"
+            "   • Tax Computation, AIS/TIS Review, Refund Tracking & Notice Assistance\n\n"
+            "3. 📊 GST Services & Compliance:\n"
+            "   • New GST Registration, Monthly/Quarterly Return Filing (GSTR-1, GSTR-3B)\n"
+            "   • Annual Returns (GSTR-9), LUT Filing, Notice Resolution\n\n"
+            "4. 🌐 General Services (All other offered services differing from PF, Tax, and GST):\n"
+            "   • MSME Udyam Registration, Jeevan Pramaan (Digital Life Certificate for Pensioners)\n"
+            "   • Passport Online Application & Appointment Booking\n"
+            "   • Sevayojan Registration, New / Correction PAN Card & other online applications\n\n"
+            "Office Timings: Monday to Saturday, 11:00 AM to 6:00 PM (Sunday Closed) at Kaushal Market, Rath Road, Orai.\n"
+            "Note: We DO NOT provide Aadhaar Card correction/biometrics, Ration Card, or Driving License services."
         )
 
 
@@ -649,19 +681,29 @@ def extract_lead_intent_and_service(text: str) -> Dict[str, Any]:
         "voter card correction", "voter id correction", "voter id update", "birth certificate", "death certificate"
     ))
     
-    # 1. Service Category
+    # 1. 4 Main Categories: PF (Primary), Tax, GST, General (other offered services)
     if is_unsupported:
         service = "Unsupported"
+    elif any(k in t_lower for k in (
+        "pf", "epf", "epfo", "uan", "pension", "provident", "19", "10c", "31",
+        "joint declaration", "claim", "passbook", "ex-employer", "pf related", "pf service"
+    )):
+        service = "PF"
+    elif any(k in t_lower for k in (
+        "tax", "itr", "income tax", "tax return", "form 16", "26as", "ais", "tis",
+        "tax audit", "tax notice", "tax computation", "tax planning"
+    )):
+        service = "Tax"
     elif any(k in t_lower for k in ("gst", "gstr", "eway", "e-way", "tax invoice", "lut")):
         service = "GST"
-    elif any(k in t_lower for k in ("itr", "income tax", "tax return", "form 16", "26as", "ais", "tis", "tax audit")):
-        service = "ITR"
-    elif any(k in t_lower for k in ("pf", "epf", "epfo", "uan", "pension", "provident", "19", "10c", "31", "joint declaration", "claim", "passbook")):
-        service = "PF"
-    elif any(k in t_lower for k in ("udyam", "msme", "jeevan pramaan", "life certificate", "passport", "sevayojan", "pan", "pan card")):
+    elif any(k in t_lower for k in (
+        "udyam", "msme", "jeevan pramaan", "life certificate", "passport",
+        "sevayojan", "pan card", "new pan", "pan apply", "general service", "other service", "csc"
+    )):
         service = "General"
     else:
-        service = "General"
+        # Default / Greeting / Unclassified query -> Overview of all 4 categories
+        service = "Overview"
 
     # 2. Appointment Intent & Urgency
     is_appointment = any(k in t_lower for k in ("appointment", "book", "milna", "visit", "aana", "timing", "kab", "office", "consult", "kal", "parso")) and not is_unsupported
@@ -728,7 +770,7 @@ def ingest_lead(
             lead_id = existing[0]
             curr_status = existing[2]
             # Advance status from NEW to SERVICE_IDENTIFIED if service is matched
-            new_status = "SERVICE_IDENTIFIED" if (curr_status == "NEW" and service_cat != "General") else curr_status
+            new_status = "SERVICE_IDENTIFIED" if (curr_status == "NEW" and service_cat not in ("Overview", "Unclassified")) else curr_status
             
             if is_pg:
                 cursor.execute("""
@@ -736,24 +778,24 @@ def ingest_lead(
                     SET updated_at = CURRENT_TIMESTAMP,
                         status = %s,
                         urgency_score = GREATEST(urgency_score, %s),
-                        service_category = CASE WHEN service_category = 'General' THEN %s ELSE service_category END
+                        service_category = CASE WHEN %s NOT IN ('Overview', 'Unclassified') THEN %s ELSE service_category END
                     WHERE lead_id = %s
-                """, (new_status, urgency, service_cat, lead_id))
+                """, (new_status, urgency, service_cat, service_cat, lead_id))
             else:
                 cursor.execute("""
                     UPDATE babu_leads 
                     SET updated_at = CURRENT_TIMESTAMP,
                         status = ?,
                         urgency_score = MAX(urgency_score, ?),
-                        service_category = CASE WHEN service_category = 'General' THEN ? ELSE service_category END
+                        service_category = CASE WHEN ? NOT IN ('Overview', 'Unclassified') THEN ? ELSE service_category END
                     WHERE lead_id = ?
-                """, (new_status, urgency, service_cat, lead_id))
+                """, (new_status, urgency, service_cat, service_cat, lead_id))
         else:
             is_new = True
             date_str = datetime.now().strftime("%Y%m%d")
             rand_suffix = f"{random.randint(1000, 9999)}"
             lead_id = f"LEAD-{date_str}-{rand_suffix}"
-            initial_status = "SERVICE_IDENTIFIED" if service_cat != "General" else "NEW"
+            initial_status = "SERVICE_IDENTIFIED" if service_cat not in ("Overview", "Unclassified") else "NEW"
 
             if is_pg:
                 cursor.execute("""
