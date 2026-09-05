@@ -5043,9 +5043,10 @@ class HealthHandler(BaseHTTPRequestHandler):
             if path in ("/healthz", "/api/healthz"):
                 body = json.dumps({
                     "status": "ok", "bot": "BABU",
-                    "version": "v7-class-a-auto-approve",
-                    "features": ["memory", "web_search", "knowledge_base", "google_workspace"],
+                    "version": "v8-dual-bot-architecture",
+                    "features": ["memory", "web_search", "knowledge_base", "google_workspace", "public_client_desk"],
                     "google_configured": bool(is_google_configured()),
+                    "public_bot_configured": bool(os.environ.get("TELEGRAM_PUBLIC_BOT_TOKEN")),
                 }).encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
@@ -6500,9 +6501,30 @@ def extract_text_from_document(file_path: str, max_chars: int = 15000) -> str:
     return "[Non-text document format. No content extracted to save tokens.]"
 
 
+def is_telegram_operator(update: Update) -> bool:
+    """Authorize administrative commands for the registered operator."""
+    op_id = os.environ.get("TELEGRAM_USER_CHAT_ID", "").strip()
+    if not op_id:
+        return True
+    user_id = str(update.effective_user.id if update.effective_user else (update.effective_chat.id if update.effective_chat else ""))
+    return user_id == op_id
+
+
 async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global LAST_TELEGRAM_SUCCESS_TIME
     LAST_TELEGRAM_SUCCESS_TIME = time.time()
+
+    if not is_telegram_operator(update):
+        pub_bot = os.environ.get("PUBLIC_BOT_USERNAME", "Anshu4751_bot").strip("@")
+        await update.message.reply_text(
+            f"🔒 *Access Restricted*\n\n"
+            f"This is the private executive assistant for *Shubham Swarnkar*.\n\n"
+            f"For tax, PF, GST, or business consultancy services, please visit our official client desk:\n"
+            f"👉 @{pub_bot}",
+            parse_mode="Markdown"
+        )
+        return
+
     chat_id = update.effective_chat.id
     if WAITING_FOR_TOPIC.get(chat_id):
         topic = update.message.text.strip() if update.message.text else ""
@@ -6861,16 +6883,10 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await run_babu(update, msg, session_id)
 
 
-def is_telegram_operator(update: Update) -> bool:
-    """Authorize administrative commands for the registered operator."""
-    op_id = os.environ.get("TELEGRAM_USER_CHAT_ID", "").strip()
-    if not op_id:
-        return True
-    user_id = str(update.effective_user.id if update.effective_user else (update.effective_chat.id if update.effective_chat else ""))
-    return user_id == op_id
-
-
 async def cmd_launch(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_telegram_operator(update):
+        await update.message.reply_text("🔒 Administrative action restricted to the authorized operator.")
+        return
     text = " ".join(context.args) if context.args else ""
     if not text:
         await update.message.reply_text("Usage: /launch <complex question>")
@@ -6919,6 +6935,9 @@ async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_goals(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show current active pending goals or actions and provide control buttons."""
+    if not is_telegram_operator(update):
+        await update.message.reply_text("🔒 Administrative action restricted to the authorized operator.")
+        return
     chat_id = update.effective_chat.id
     session_id = tg_session(update)
     
@@ -7243,6 +7262,9 @@ async def cmd_followups(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_update_lead(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Update lead funnel status (e.g. /update_lead <lead_id> <CONVERTED/CONTACTED/LOST> [notes])."""
+    if not is_telegram_operator(update):
+        await update.message.reply_text("🔒 Administrative action restricted to the authorized operator.")
+        return
     args = context.args
     if not args or len(args) < 2:
         await update.message.reply_text(
@@ -7277,6 +7299,9 @@ async def cmd_update_lead(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle callback button clicks (Approve, Change Topic, Cancel) for social post reviews."""
     query = update.callback_query
+    if not is_telegram_operator(update):
+        await query.answer("🔒 Restricted to the authorized operator.", show_alert=True)
+        return
     await query.answer()
     
     try:

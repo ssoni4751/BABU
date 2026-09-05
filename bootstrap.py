@@ -118,6 +118,19 @@ def open_transports(state: BootstrapState) -> None:
 
     health_thread = threading.Thread(target=bot_module.start_health_server, name="web_dashboard_health_server", daemon=True)
     health_thread.start()
+
+    # Launch Public Client Desk Bot (@Anshu4751_bot) in background daemon thread
+    try:
+        try:
+            from .public_bot import start_public_bot_thread
+        except ImportError:
+            from public_bot import start_public_bot_thread
+        public_thread = start_public_bot_thread()
+        if public_thread:
+            print("[BOOTSTRAP] Public Client Desk Bot thread started successfully (@Anshu4751_bot).", flush=True)
+    except Exception as pub_err:
+        print(f"[BOOTSTRAP WARNING] Could not start public bot thread: {pub_err}", flush=True)
+
     bot = ApplicationBuilder().token(bot_module.TELEGRAM_TOKEN).build()
     bot_module.tg_application = bot
     bot_module.start_social_scheduler(bot)
