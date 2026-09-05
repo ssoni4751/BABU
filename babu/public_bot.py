@@ -456,12 +456,20 @@ def run_public_bot_polling():
         return
 
     print(f"[PUBLIC BOT] Starting Public Client Desk Bot polling (@Anshu4751_bot)...", flush=True)
+    
+    # Ensure worker thread has its own dedicated asyncio event loop
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
     while True:
         try:
             app = build_public_bot()
             if not app:
                 break
-            app.run_polling(drop_pending_updates=True)
+            # IMPORTANT FOR LINUX / RENDER:
+            # stop_signals must be () when running in a worker thread.
+            # On Linux/Unix, set_wakeup_fd and signal handlers can only be registered on the main thread.
+            app.run_polling(drop_pending_updates=True, stop_signals=(), close_loop=False)
             break
         except Exception as e:
             print(f"[PUBLIC BOT ERROR] Polling crashed: {e}. Retrying in 15s...", flush=True)
