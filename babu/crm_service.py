@@ -447,6 +447,11 @@ def commit_crm_appointment(
             cursor.execute("SELECT name, channel, contact_info, service_category FROM babu_leads WHERE lead_id = ?", (lead_id,))
             lead_row = cursor.fetchone()
 
+        lead_name = lead_row[0] if lead_row and lead_row[0] else "Client"
+        channel = lead_row[1] if lead_row and lead_row[1] else "CRM"
+        contact_info = lead_row[2] if lead_row and lead_row[2] else "Direct"
+        service = lead_row[3] if lead_row and lead_row[3] else "Consultation"
+
         # 3. Insert into babu_followups
         draft_msg = f"Confirmed appointment for {purpose} at Kaushal Market, Orai on {scheduled_stamp}."
         if is_pg:
@@ -470,12 +475,54 @@ def commit_crm_appointment(
         
         print(f"[CRM TRANSACTION SUCCESS] Booked appointment {followup_id} for lead {lead_id} at {scheduled_stamp}", flush=True)
 
-        # 4. Dispatch Telegram Alert to Owner (strictly AFTER DB commit)
-        lead_name = lead_row[0] if lead_row else "Client"
-        channel = lead_row[1] if lead_row else "Facebook"
-        contact_info = lead_row[2] if lead_row and lead_row[2] else "Not provided"
-        service = lead_row[3] if lead_row else "Tax/PF Consultation"
+        # 4. Record into Babu Central Cognitive Plane (Timeline, K0 Memory & Ledger)
+        try:
+            conn_babu, is_pg_babu = get_db_connection()
+            if conn_babu:
+                cur_babu = conn_babu.cursor()
+                session_id = f"crm_{channel.lower().replace(' ', '_')}_{lead_id}"
+                goal_id = f"CRM-APPT-{int(time.time())}"
+                summary_text = f"Confirmed appointment for {lead_name} ({service}) on {date_str} at {time_str}"
+                meta_json = json.dumps({
+                    "lead_id": lead_id,
+                    "lead_name": lead_name,
+                    "service": service,
+                    "scheduled_datetime": scheduled_stamp,
+                    "contact_info": contact_info,
+                    "channel": channel,
+                    "notes": notes
+                })
+                # 1. babu_temporal_timeline
+                if is_pg_babu:
+                    cur_babu.execute("""
+                        INSERT INTO babu_temporal_timeline (event_category, summary, outcome, cause, effect, resolution, impact_score, confidence, metadata)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, ("APPOINTMENT_BOOKED", summary_text, "SUCCESS", f"Customer requested appointment on {channel}", f"Booked in-office slot {scheduled_stamp}", "Confirmed", 1.0, 1.0, meta_json))
+                else:
+                    cur_babu.execute("""
+                        INSERT INTO babu_temporal_timeline (event_category, summary, outcome, cause, effect, resolution, impact_score, confidence, metadata)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, ("APPOINTMENT_BOOKED", summary_text, "SUCCESS", f"Customer requested appointment on {channel}", f"Booked in-office slot {scheduled_stamp}", "Confirmed", 1.0, 1.0, meta_json))
 
+                # 2. execution_ledger
+                if is_pg_babu:
+                    cur_babu.execute("""
+                        INSERT INTO execution_ledger (session_id, goal_id, task_id, department, event_type, metadata)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                    """, (session_id, goal_id, f"T-APPT-{followup_id}", "crm", "APPOINTMENT_COMMITTED", meta_json))
+                else:
+                    cur_babu.execute("""
+                        INSERT INTO execution_ledger (session_id, goal_id, task_id, department, event_type, metadata)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (session_id, goal_id, f"T-APPT-{followup_id}", "crm", "APPOINTMENT_COMMITTED", meta_json))
+
+                conn_babu.commit()
+                cur_babu.close()
+                conn_babu.close()
+        except Exception as babu_err:
+            print(f"[BABU TIMELINE LOG WARNING] {babu_err}", flush=True)
+
+        # 5. Dispatch Telegram Alert to Owner (strictly AFTER DB commit)
         dispatch_telegram_appointment_alert(
             lead_id=lead_id,
             lead_name=lead_name,
@@ -668,6 +715,173 @@ def update_lead_funnel_stage(lead_id: str, new_stage: str, notes: Optional[str] 
     except Exception as e:
         print(f"[CRM STAGE ERROR] Failed to update lead stage: {e}", flush=True)
         return False
+
+
+def get_or_create_lead(source_ref: str, name: str, channel: str = "PUBLIC_TELEGRAM") -> Dict[str, Any]:
+    """Retrieve existing lead or create a new initial lead in AWAITING_SERVICE state."""
+    existing = get_lead_by_source_ref(source_ref)
+    if existing:
+        return existing
+
+    conn, is_pg = get_db_connection()
+    if not conn:
+        return {
+            "lead_id": f"LEAD-{datetime.now().strftime('%Y%m%d')}-{random.randint(1000, 9999)}",
+            "name": name,
+            "channel": channel,
+            "contact_info": "",
+            "service_category": "Overview",
+            "status": "AWAITING_SERVICE",
+            "urgency_score": 0.5,
+            "notes": "Public Telegram Bot Lead"
+        }
+
+    try:
+        cursor = conn.cursor()
+        date_str = datetime.now().strftime("%Y%m%d")
+        rand_suffix = f"{random.randint(1000, 9999)}"
+        lead_id = f"LEAD-{date_str}-{rand_suffix}"
+
+        if is_pg:
+            cursor.execute("""
+                INSERT INTO babu_leads (
+                    lead_id, name, channel, contact_info, service_category, 
+                    status, urgency_score, estimated_value, notes, source_ref
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (lead_id, name, channel, "", "Overview", "AWAITING_SERVICE", 0.5, 0.0, "Public Telegram Bot Lead", str(source_ref)))
+        else:
+            cursor.execute("""
+                INSERT INTO babu_leads (
+                    lead_id, name, channel, contact_info, service_category, 
+                    status, urgency_score, estimated_value, notes, source_ref
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (lead_id, name, channel, "", "Overview", "AWAITING_SERVICE", 0.5, 0.0, "Public Telegram Bot Lead", str(source_ref)))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return {
+            "lead_id": lead_id,
+            "name": name,
+            "channel": channel,
+            "contact_info": "",
+            "service_category": "Overview",
+            "status": "AWAITING_SERVICE",
+            "urgency_score": 0.5,
+            "notes": "Public Telegram Bot Lead"
+        }
+    except Exception as e:
+        print(f"[CRM GET_OR_CREATE ERROR] {e}", flush=True)
+        return {
+            "lead_id": f"LEAD-{datetime.now().strftime('%Y%m%d')}-{random.randint(1000, 9999)}",
+            "name": name,
+            "channel": channel,
+            "contact_info": "",
+            "service_category": "Overview",
+            "status": "AWAITING_SERVICE",
+            "urgency_score": 0.5,
+            "notes": ""
+        }
+
+
+def freeze_lead_service(lead_id: str, service_category: str) -> bool:
+    """Freeze the selected service category on the lead in CRM and advance stage."""
+    conn, is_pg = get_db_connection()
+    if not conn:
+        return False
+    try:
+        cursor = conn.cursor()
+        if is_pg:
+            cursor.execute("SELECT contact_info FROM babu_leads WHERE lead_id = %s", (lead_id,))
+        else:
+            cursor.execute("SELECT contact_info FROM babu_leads WHERE lead_id = ?", (lead_id,))
+        row = cursor.fetchone()
+        has_phone = bool(row and row[0] and re.search(r'\b[6-9]\d{9}\b', str(row[0])))
+        new_status = "AWAITING_APPOINTMENT" if has_phone else "AWAITING_CONTACT"
+
+        if is_pg:
+            cursor.execute("""
+                UPDATE babu_leads 
+                SET service_category = %s, status = %s, updated_at = CURRENT_TIMESTAMP 
+                WHERE lead_id = %s
+            """, (service_category, new_status, lead_id))
+        else:
+            cursor.execute("""
+                UPDATE babu_leads 
+                SET service_category = ?, status = ?, updated_at = CURRENT_TIMESTAMP 
+                WHERE lead_id = ?
+            """, (service_category, new_status, lead_id))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print(f"[CRM FREEZE SERVICE] Lead {lead_id} service frozen to {service_category} (New Status: {new_status})", flush=True)
+        return True
+    except Exception as e:
+        print(f"[CRM FREEZE SERVICE ERROR] {e}", flush=True)
+        return False
+
+
+def freeze_lead_contact(lead_id: str, phone: str) -> bool:
+    """Freeze validated 10-digit mobile number in CRM and advance stage to AWAITING_APPOINTMENT."""
+    conn, is_pg = get_db_connection()
+    if not conn:
+        return False
+    try:
+        cursor = conn.cursor()
+        clean_phone = phone.strip()
+        match = re.search(r'\b(?:(?:\+91|0)?[6-9]\d{9})\b', clean_phone)
+        if match:
+            core_10 = match.group(0)[-10:]
+            clean_phone = f"+91 {core_10}"
+
+        if is_pg:
+            cursor.execute("""
+                UPDATE babu_leads 
+                SET contact_info = %s, status = 'AWAITING_APPOINTMENT', updated_at = CURRENT_TIMESTAMP 
+                WHERE lead_id = %s
+            """, (clean_phone, lead_id))
+        else:
+            cursor.execute("""
+                UPDATE babu_leads 
+                SET contact_info = ?, status = 'AWAITING_APPOINTMENT', updated_at = CURRENT_TIMESTAMP 
+                WHERE lead_id = ?
+            """, (clean_phone, lead_id))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print(f"[CRM FREEZE CONTACT] Lead {lead_id} contact frozen to {clean_phone}", flush=True)
+        return True
+    except Exception as e:
+        print(f"[CRM FREEZE CONTACT ERROR] {e}", flush=True)
+        return False
+
+
+REQUIRED_DOCS_BY_SERVICE: Dict[str, str] = {
+    "PF": (
+        "• आधार कार्ड (चालू मोबाइल नंबर लिंक होना चाहिए)\n"
+        "• पैन कार्ड\n"
+        "• बैंक पासबुक या कैंसिल चेक (नाम व IFSC साफ़ होना चाहिए)\n"
+        "• UAN नंबर एवं पासवर्ड"
+    ),
+    "Tax": (
+        "• फॉर्म 16 / सैलरी स्लिप्स (यदि वेतनभोगी हैं)\n"
+        "• पूरे वित्तीय वर्ष का बैंक स्टेटमेंट\n"
+        "• पैन कार्ड एवं आधार कार्ड\n"
+        "• टैक्स बचत / निवेश के प्रमाण (80C, 80D आदि)"
+    ),
+    "GST": (
+        "• मालिक/पार्टनर का पैन कार्ड एवं आधार कार्ड\n"
+        "• व्यापार स्थल का बिजली बिल / किरायानामा / NOC\n"
+        "• बैंक खाता विवरण / कैंसिल चेक\n"
+        "• पासपोर्ट साइज फोटो एवं व्यापार का नाम"
+    ),
+    "General": (
+        "• आधार कार्ड (मोबाइल लिंक)\n"
+        "• पैन कार्ड\n"
+        "• संबंधित योजना / आवेदन के आवश्यक विवरण"
+    )
+}
 
 
 def extract_lead_intent_and_service(text: str) -> Dict[str, Any]:

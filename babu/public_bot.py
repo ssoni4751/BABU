@@ -51,6 +51,11 @@ try:
         dispatch_telegram_appointment_alert,
         SUPPORTED_SERVICE_CATALOG,
         UNSUPPORTED_SERVICE_KEYWORDS,
+        get_or_create_lead,
+        get_lead_by_source_ref,
+        freeze_lead_service,
+        freeze_lead_contact,
+        REQUIRED_DOCS_BY_SERVICE,
     )
 except ImportError:
     from crm_service import (
@@ -63,6 +68,11 @@ except ImportError:
         dispatch_telegram_appointment_alert,
         SUPPORTED_SERVICE_CATALOG,
         UNSUPPORTED_SERVICE_KEYWORDS,
+        get_or_create_lead,
+        get_lead_by_source_ref,
+        freeze_lead_service,
+        freeze_lead_contact,
+        REQUIRED_DOCS_BY_SERVICE,
     )
 
 # Office constants
@@ -71,6 +81,27 @@ CONSULTANT_NAME = "Shubham Swarnkar (शुभम स्वर्णकार �
 OFFICE_ADDRESS = "Kaushal Market, Rath Road, Orai, Uttar Pradesh"
 OFFICE_HOURS = "सोमवार से शनिवार: सुबह 11:00 बजे से शाम 6:00 बजे तक (रविवार बंद)"
 OFFICE_PHONE = "+91 7217646673"
+
+SERVICE_SELECTION_KEYBOARD = InlineKeyboardMarkup([
+    [
+        InlineKeyboardButton("🏢 1. PF Consultancy (Primary)", callback_data="svc_pf"),
+        InlineKeyboardButton("📑 2. Tax / ITR Services", callback_data="svc_tax")
+    ],
+    [
+        InlineKeyboardButton("📊 3. GST Services", callback_data="svc_gst"),
+        InlineKeyboardButton("🌐 4. General Services", callback_data="svc_general")
+    ],
+    [
+        InlineKeyboardButton("📍 कार्यालय का पता व संपर्क", callback_data="svc_address")
+    ]
+])
+
+SERVICE_TITLES: Dict[str, str] = {
+    "PF": "PF Consultancy (Primary Specialization)",
+    "Tax": "Tax Services (Income Tax / ITR)",
+    "GST": "GST Services & Compliance",
+    "General": "General Services (MSME, Life Certificate, Passport, PAN)"
+}
 
 TELEGRAM_PUBLIC_BOT_TOKEN = os.environ.get("TELEGRAM_PUBLIC_BOT_TOKEN", "").strip()
 TELEGRAM_USER_CHAT_ID = os.environ.get("TELEGRAM_USER_CHAT_ID", "").strip()
@@ -102,36 +133,31 @@ def send_owner_client_alert(headline: str, client_name: str, username: str, deta
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Warm, professional welcome message in Hindi & English."""
+    """Warm, professional welcome message forcing service category selection."""
     user = update.effective_user
     name = user.first_name or "मित्र"
+    sender_id = f"tg_{user.id}"
+    
+    # Initialize persistent CRM lead
+    lead = get_or_create_lead(sender_id, user.full_name or name, "PUBLIC_TELEGRAM")
     
     welcome_text = (
         f"नमस्ते {name} जी! 🙏\n\n"
         f"**{OFFICE_NAME}**, कौशल मार्केट, उरई के आधिकारिक डिजिटल सहायता केंद्र में आपका स्वागत है।\n\n"
         f"मैं कंसल्टेंट **{CONSULTANT_NAME}** का AI असिस्टेंट हूँ।\n\n"
         f"💼 **हमारी 4 मुख्य सेवा श्रेणियां:**\n"
-        f"1. 🏢 **PF Consultancy (Primary Specialization):** एडवांस क्लेम (Form 31), फाइनल सेटलमेंट (Form 19), पेंशन (Form 10C), KYC/नाम/DOB सुधार, UAN ट्रांसफर व जॉइंट डिक्लेरेशन\n"
+        f"1. 🏢 **PF Consultancy (Primary Specialization):** क्लेम सेटलमेंट (Form 19/10C/31), UAN ट्रांसफर, KYC/DOB सुधार, जॉइंट डिक्लेरेशन, ट्रांसफर\n"
         f"2. 📑 **Tax Services:** Income Tax Return (ITR-1, 2, 4) फाइलिंग, टैक्स कम्प्यूटेशन, रिफंड स्टेटस व नोटिस समाधान\n"
-        f"3. 📊 **GST Services:** नया GST रजिस्ट्रेशन, मासिक व त्रैमासिक रिटर्न (GSTR-1, 3B), कम्पोजिशन व नोटिस समाधान\n"
-        f"4. 🌐 **General Services (अन्य सभी डिजिटल सेवाएं):** MSME उद्यम रजिस्ट्रेशन, जीवन प्रमाण पत्र (Jeevan Pramaan), पासपोर्ट, पैन कार्ड व अन्य ऑनलाइन आवेदन\n\n"
+        f"3. 📊 **GST Services:** नया GST रजिस्ट्रेशन, मासिक व त्रैमासिक रिटर्न (GSTR-1, 3B), व नोटिस समाधान\n"
+        f"4. 🌐 **General Services:** MSME उद्यम रजिस्ट्रेशन, जीवन प्रमाण पत्र (Jeevan Pramaan), पासपोर्ट, पैन कार्ड व अन्य डिजिटल सेवाएं\n\n"
         f"📍 **कार्यालय:** {OFFICE_ADDRESS}\n"
         f"⏰ **समय:** {OFFICE_HOURS}\n"
         f"📞 **हेल्पलाइन:** {OFFICE_PHONE}\n\n"
-        f"आप अपना प्रश्न नीचे लिख सकते हैं या परामर्श के लिए अपॉइंटमेंट का दिन/समय बता सकते हैं।\n"
-        f"*(You can also chat in English if you prefer!)*"
+        f"👉 **परामर्श व आगे की सहायता के लिए, कृपया सबसे पहले नीचे दिए गए विकल्पों में से अपनी सेवा श्रेणी (Service Category) चुनें:**"
     )
     
-    keyboard = [
-        [InlineKeyboardButton("🏢 PF Consultancy (Primary)", callback_data="svc_pf"), InlineKeyboardButton("📑 Tax / ITR Services", callback_data="svc_tax")],
-        [InlineKeyboardButton("📊 GST Services", callback_data="svc_gst"), InlineKeyboardButton("🌐 General Services", callback_data="svc_general")],
-        [InlineKeyboardButton("📅 अपॉइंटमेंट बुक करें", callback_data="svc_book"), InlineKeyboardButton("📍 कार्यालय का पता", callback_data="svc_address")],
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(welcome_text, parse_mode="Markdown", reply_markup=SERVICE_SELECTION_KEYBOARD)
     
-    await update.message.reply_text(welcome_text, parse_mode="Markdown", reply_markup=reply_markup)
-    
-    # Notify owner of new user engagement
     send_owner_client_alert(
         "New Client Started Public Bot",
         user.full_name or name,
@@ -189,43 +215,74 @@ async def on_public_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     await query.answer()
     data = query.data
+    user = update.effective_user
+    sender_id = f"tg_{user.id}"
+    client_name = user.full_name or user.first_name or "Client"
     
-    if data == "svc_pf":
-        slice_text = get_selective_knowledge_slice("PF")
-        await query.message.reply_text(
-            f"🏢 **PF Consultancy (Primary Specialization):**\n\n{slice_text}\n\n"
-            f"बताएं, क्या आपको PF एडवांस निकालना है, ट्रांसफर करना है या KYC/नाम में कोई सुधार कराना है?",
-            parse_mode="Markdown"
-        )
-    elif data in ("svc_tax", "svc_itr"):
-        slice_text = get_selective_knowledge_slice("Tax")
-        await query.message.reply_text(
-            f"📑 **Tax / ITR Services:**\n\n{slice_text}\n\n"
-            f"अपनी ITR फाइल कराने, टैक्स कम्प्यूटेशन या रिफंड के लिए आप फॉर्म 16 या बैंक स्टेटमेंट लेकर कार्यालय आ सकते हैं।",
-            parse_mode="Markdown"
-        )
-    elif data == "svc_gst":
-        slice_text = get_selective_knowledge_slice("GST")
-        await query.message.reply_text(
-            f"📊 **GST Services:**\n\n{slice_text}\n\n"
-            f"नया GST नंबर लेने, मासिक रिटर्न (GSTR-1, 3B) या नोटिस समाधान हेतु संपर्क करें।",
-            parse_mode="Markdown"
-        )
-    elif data in ("svc_general", "svc_msme"):
-        slice_text = get_selective_knowledge_slice("General")
-        await query.message.reply_text(
-            f"🌐 **General Services (PF, Tax व GST से भिन्न अन्य सभी सेवाएं):**\n\n{slice_text}\n\n"
-            f"MSME उद्यम, जीवन प्रमाण पत्र, पासपोर्ट, पैन कार्ड आदि कार्य हेतु आवश्यक दस्तावेज लेकर पधारें।",
-            parse_mode="Markdown"
-        )
+    lead = get_or_create_lead(sender_id, client_name, "PUBLIC_TELEGRAM")
+    lead_id = lead["lead_id"]
+    
+    svc_map = {
+        "svc_pf": ("PF", "🏢 **PF Consultancy (Primary Specialization)**"),
+        "svc_tax": ("Tax", "📑 **Tax Services (Income Tax / ITR)**"),
+        "svc_itr": ("Tax", "📑 **Tax Services (Income Tax / ITR)**"),
+        "svc_gst": ("GST", "📊 **GST Services & Compliance**"),
+        "svc_general": ("General", "🌐 **General Services (MSME & Digital)**"),
+        "svc_msme": ("General", "🌐 **General Services (MSME & Digital)**")
+    }
+    
+    if data in svc_map:
+        category, title = svc_map[data]
+        freeze_lead_service(lead_id, category)
+        # Re-fetch lead to check if phone is present
+        lead = get_or_create_lead(sender_id, client_name, "PUBLIC_TELEGRAM")
+        has_phone = bool(lead.get("contact_info") and re.search(r'\b[6-9]\d{9}\b', str(lead.get("contact_info"))))
+        
+        if not has_phone:
+            await query.message.reply_text(
+                f"✅ **सेवा श्रेणी सुरक्षित कर ली गई है:** {title}\n\n"
+                f"👉 **अगला चरण:** परामर्श व अपॉइंटमेंट दर्ज करने हेतु कृपया अपना **10 अंकों का मोबाइल नंबर** (Mobile Number) यहाँ लिखकर भेजें:",
+                parse_mode="Markdown"
+            )
+        else:
+            await query.message.reply_text(
+                f"✅ **सेवा श्रेणी सुरक्षित कर ली गई है:** {title}\n"
+                f"📞 **दर्ज मोबाइल नंबर:** `{lead['contact_info']}`\n\n"
+                f"📅 **अपॉइंटमेंट बुकिंग:**\n"
+                f"कृपया कार्यालय आने के लिए अपना पसंदीदा **दिन और समय** बताएं।\n"
+                f"(कार्यालय समय: सोमवार से शनिवार, सुबह 11:00 बजे से शाम 6:00 बजे, कौशल मार्केट, राठ रोड, उरई)\n\n"
+                f"उदाहरण: *कल दोपहर 2 बजे*, *सोमवार 4 PM*, आदि।",
+                parse_mode="Markdown"
+            )
     elif data == "svc_book":
-        await query.message.reply_text(
-            "📅 **परामर्श अपॉइंटमेंट:**\n\n"
-            "कृपया बताएं आप किस दिन और किस समय आना चाहते हैं?\n"
-            "(उदाहरण: *कल दोपहर 2 बजे*, *सोमवार 4 PM*, आदि)\n\n"
-            "हमारा समय: सोमवार से शनिवार, सुबह 11:00 से शाम 6:00 बजे के बीच।",
-            parse_mode="Markdown"
-        )
+        lead = get_or_create_lead(sender_id, client_name, "PUBLIC_TELEGRAM")
+        current_service = lead.get("service_category")
+        is_frozen = current_service in ("PF", "Tax", "GST", "General") and lead.get("status") not in ("AWAITING_SERVICE", "NEW", "DISCOVERY")
+        has_phone = bool(lead.get("contact_info") and re.search(r'\b[6-9]\d{9}\b', str(lead.get("contact_info"))))
+        
+        if not is_frozen:
+            keyboard = [
+                [InlineKeyboardButton("🏢 1. PF Consultancy (Primary)", callback_data="svc_pf"), InlineKeyboardButton("📑 2. Tax / ITR Services", callback_data="svc_tax")],
+                [InlineKeyboardButton("📊 3. GST Services", callback_data="svc_gst"), InlineKeyboardButton("🌐 4. General Services", callback_data="svc_general")],
+            ]
+            await query.message.reply_text(
+                "परामर्श बुक करने के लिए कृपया सबसे पहले अपनी सेवा श्रेणी चुनें:",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="Markdown"
+            )
+        elif not has_phone:
+            await query.message.reply_text(
+                f"आपने **{current_service}** सेवा चुनी है।\n\nअपॉइंटमेंट बुक करने के लिए कृपया अपना **10 अंकों का मोबाइल नंबर** यहाँ भेजें:",
+                parse_mode="Markdown"
+            )
+        else:
+            await query.message.reply_text(
+                f"📅 **परामर्श अपॉइंटमेंट ({current_service}):**\n\n"
+                f"कृपया बताएं आप किस दिन और किस समय आना चाहते हैं?\n"
+                f"(कार्यालय समय: सोमवार से शनिवार, सुबह 11:00 से शाम 6:00 बजे)\n\n"
+                f"उदाहरण: *कल दोपहर 2 बजे*, *सोमवार 4 PM*, आदि।",
+                parse_mode="Markdown"
+            )
     elif data == "svc_address":
         await cmd_contact(update, context)
 
@@ -321,97 +378,215 @@ def generate_public_ai_reply(client_text: str, client_name: str, service_categor
 
 
 async def on_public_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle all incoming client messages on the public bot."""
+    """
+    Handle all incoming client messages on the public bot using a strict stateful funnel:
+    1. Service Category Selection & Freeze: Force client to choose from 4 authorized categories.
+    2. Contact Collection & Freeze: Focus on securing 10-digit mobile number in CRM.
+    3. Slot-Checked Appointment Booking: Parse preferred day/time (Mon-Sat, 11 AM - 6 PM), check conflicts, commit to CRM/Babu, and dispatch alerts + document checklist.
+    """
     if not update.message or not update.message.text:
         return
         
     user = update.effective_user
-    client_name = user.full_name or user.first_name or "Customer"
+    client_name = user.full_name or user.first_name or "Client"
     username = user.username or ""
     sender_id = f"tg_{user.id}"
     text = update.message.text.strip()
     
-    # Check for phone number in message
-    phone_match = re.search(r'\b(?:\+91|0)?[6-9]\d{9}\b', text)
-    extracted_phone = phone_match.group(0) if phone_match else ""
+    # Check for Aadhaar / Unsupported services first (Fast Intercept)
+    extracted_intent = extract_lead_intent_and_service(text)
+    if extracted_intent.get("is_unsupported") or any(k in text.lower() for k in ("aadhaar", "aadhar", "adhar", "uidai", "rashan", "ration", "driving license", "dl renewal")):
+        reply = (
+            f"नमस्ते {client_name} जी! अंशु कंप्यूटर एंड टैक्स कंसल्टेंसी में आधार कार्ड संशोधन (Aadhaar Card Update), राशन कार्ड या ड्राइविंग लाइसेंस की सुविधा उपलब्ध नहीं है।\n\n"
+            f"कृपया हमारी 4 मुख्य सेवाओं में से चयन करें:\n"
+            f"1. 🏢 **PF Consultancy (Primary Specialization)** - क्लेम, KYC सुधार, UAN ट्रांसफर\n"
+            f"2. 📑 **Tax Services** - इनकम टैक्स रिटर्न (ITR) फाइलिंग व टैक्स कम्प्यूटेशन\n"
+            f"3. 📊 **GST Services** - नया रजिस्ट्रेशन व मासिक रिटर्न (GSTR-1, 3B)\n"
+            f"4. 🌐 **General Services** - MSME उद्यम, जीवन प्रमाण पत्र, पासपोर्ट, पैन कार्ड\n\n"
+            f"नीचे दिए गए बटन पर क्लिक करके अपनी सेवा चुनें:"
+        )
+        await update.message.reply_text(reply, reply_markup=SERVICE_SELECTION_KEYBOARD, parse_mode="Markdown")
+        ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=f"@{username}" if username else None, source_ref=sender_id, notes="Public bot: Unsupported service inquiry")
+        return
 
-    # Extract lead intent and service category
-    extracted = extract_lead_intent_and_service(text)
-    service = extracted.get("service_category", "General")
-    intent = extracted.get("intent", "INQUIRY")
-    date_expr = extracted.get("extracted_date")
-    time_expr = extracted.get("extracted_time")
+    # 1. Fetch or initialize persistent lead state from CRM
+    lead = get_or_create_lead(sender_id, client_name, "PUBLIC_TELEGRAM")
+    lead_id = lead["lead_id"]
+    current_service = lead.get("service_category", "")
+    lead_status = lead.get("status", "AWAITING_SERVICE")
+    existing_phone = lead.get("contact_info", "")
+
+    # Check for 10-digit mobile number in incoming message
+    phone_match = re.search(r'\b(?:(?:\+91|0)?[6-9]\d{9})\b', text)
+    extracted_phone = phone_match.group(0) if phone_match else None
+
+    # Determine if service is currently frozen
+    service_is_frozen = current_service in ("PF", "Tax", "GST", "General") and lead_status not in ("AWAITING_SERVICE", "NEW", "DISCOVERY")
+
+    # STEP 1: SERVICE CATEGORY SELECTION & FREEZE
+    if not service_is_frozen:
+        detected_service = extracted_intent.get("service_category")
+        if detected_service in ("PF", "Tax", "GST", "General"):
+            # Customer mentioned a valid service in text; freeze it now!
+            freeze_lead_service(lead_id, detected_service)
+            current_service = detected_service
+            service_is_frozen = True
+            lead = get_or_create_lead(sender_id, client_name, "PUBLIC_TELEGRAM")
+            lead_status = lead.get("status", "AWAITING_CONTACT")
+            existing_phone = lead.get("contact_info", "")
+        else:
+            # Service not selected yet -> Force selection via 4 catalog buttons
+            reply = (
+                f"नमस्ते {client_name} जी! **{OFFICE_NAME}**, उरई में आपका स्वागत है।\n\n"
+                f"कंसल्टेंट **{CONSULTANT_NAME}** से परामर्श व सेवा शुरू करने के लिए कृपया सबसे पहले अपनी **सेवा श्रेणी** चुनें:\n\n"
+                f"1. 🏢 **PF Consultancy (Primary Specialization)** - क्लेम (Form 19/10C/31), UAN, KYC/DOB सुधार\n"
+                f"2. 📑 **Tax Services** - इनकम टैक्स रिटर्न (ITR-1, 2, 4) फाइलिंग व टैक्स कम्प्यूटेशन\n"
+                f"3. 📊 **GST Services** - नया रजिस्ट्रेशन व मासिक रिटर्न (GSTR-1, 3B)\n"
+                f"4. 🌐 **General Services** - MSME उद्यम, जीवन प्रमाण पत्र, पासपोर्ट, पैन कार्ड\n\n"
+                f"👉 कृपया नीचे दिए गए विकल्पों में से चयन करें:"
+            )
+            await update.message.reply_text(reply, reply_markup=SERVICE_SELECTION_KEYBOARD, parse_mode="Markdown")
+            ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=f"@{username}" if username else None, source_ref=sender_id, notes="Public bot: Awaiting service category")
+            return
+
+    # STEP 2: CONTACT INTAKE & FREEZE
+    phone_is_frozen = bool(existing_phone and re.search(r'\b[6-9]\d{9}\b', str(existing_phone)))
+
+    if extracted_phone and not phone_is_frozen:
+        freeze_lead_contact(lead_id, extracted_phone)
+        lead = get_or_create_lead(sender_id, client_name, "PUBLIC_TELEGRAM")
+        existing_phone = lead.get("contact_info", extracted_phone)
+        phone_is_frozen = True
+        lead_status = "AWAITING_APPOINTMENT"
+
+    if not phone_is_frozen:
+        # Service is frozen, but phone number is still missing
+        svc_name = SERVICE_TITLES.get(current_service, current_service)
+        ai_reply = generate_public_ai_reply(text, client_name, current_service)
+        reply = (
+            f"{ai_reply}\n\n"
+            f"──────────────────────────────\n"
+            f"💼 **चयनित सेवा:** {svc_name}\n\n"
+            f"👉 **आवश्यक विवरण:** आपकी फाइल तैयार करने व परामर्श अपॉइंटमेंट दर्ज करने के लिए कृपया अपना **10 अंकों का मोबाइल नंबर** (Mobile Number) यहाँ लिखकर भेजें।"
+        )
+        await update.message.reply_text(reply)
+        ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=f"@{username}" if username else None, source_ref=sender_id, notes=f"Public bot: Awaiting mobile number for {current_service}")
+        return
+
+    # STEP 3: APPOINTMENT SCHEDULING (Both Service & Mobile are frozen)
+    svc_name = SERVICE_TITLES.get(current_service, current_service)
     
-    # 1. Appointment scheduling request detection
-    is_appointment_request = intent in ("APPOINTMENT_REQUEST",) or any(
-        kw in text.lower() for kw in ("appointment", "milna", "aana", "slot", "meeting", "puchna", "time", "kal", "parso")
+    # Try parsing date/time from the client's message
+    dt_res = parse_ist_datetime(text, text)
+    
+    if not dt_res.get("valid"):
+        reason = dt_res.get("reason")
+        if reason == "SUNDAY_CLOSED":
+            reply = (
+                f"⚠️ **क्षमा करें, रविवार (Sunday) को हमारा कार्यालय बंद रहता है।**\n\n"
+                f"🕒 **कार्यालय समय:** सोमवार से शनिवार, सुबह 11:00 बजे से शाम 6:00 बजे तक।\n"
+                f"📍 स्थान: कौशल मार्केट, राठ रोड, उरई।\n\n"
+                f"कृपया सोमवार से शनिवार के बीच कोई अन्य दिन या समय बताएं (जैसे *सोमवार दोपहर 2:00 बजे*)।"
+            )
+            await update.message.reply_text(reply, parse_mode="Markdown")
+            ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=existing_phone, source_ref=sender_id, notes="Public bot: Sunday appointment rejected")
+            return
+        elif reason == "OUTSIDE_WORKING_HOURS":
+            req_time = dt_res.get("time_str", "")
+            reply = (
+                f"⚠️ **कार्यालय समय सुबह 11:00 बजे से शाम 6:00 बजे तक ही है।**\n\n"
+                f"आपके द्वारा चुना गया समय ({req_time}) कार्यालय समय के बाहर है।\n"
+                f"कृपया 11:00 AM से 6:00 PM के बीच का कोई समय बताएं (उदा. *सोमवार 12:00 PM* या *कल 3:30 PM*)।"
+            )
+            await update.message.reply_text(reply, parse_mode="Markdown")
+            ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=existing_phone, source_ref=sender_id, notes=f"Public bot: Outside hours rejected ({req_time})")
+            return
+        else:
+            # Client did not provide a specific date/time expression; prompt for appointment or answer query
+            is_pure_contact = bool(extracted_phone) and len(text.strip()) <= 15
+            if is_pure_contact:
+                reply = (
+                    f"✅ **मोबाइल नंबर सुरक्षित कर लिया गया है:** `{existing_phone}`\n"
+                    f"💼 **सेवा श्रेणी:** **{svc_name}**\n\n"
+                    f"📅 **परामर्श अपॉइंटमेंट बुकिंग:**\n"
+                    f"कृपया कार्यालय आने के लिए अपना पसंदीदा **दिन और समय** बताएं।\n"
+                    f"(कार्यालय समय: सोमवार से शनिवार, सुबह 11:00 बजे से शाम 6:00 बजे, कौशल मार्केट, राठ रोड, उरई)\n\n"
+                    f"उदाहरण: *कल दोपहर 2 बजे*, *सोमवार शाम 4 बजे*, आदि।"
+                )
+            else:
+                ai_reply = generate_public_ai_reply(text, client_name, current_service)
+                reply = (
+                    f"{ai_reply}\n\n"
+                    f"──────────────────────────────\n"
+                    f"💼 **सेवा:** {svc_name}\n"
+                    f"📞 **मोबाइल:** `{existing_phone}`\n\n"
+                    f"📅 **कार्यालय परामर्श अपॉइंटमेंट:**\n"
+                    f"कंसल्टेंट शुभम जी से मिलने हेतु कृपया अपना पसंदीदा **दिन और समय** बताएं (सोम-शनि, 11 AM - 6 PM)।\n"
+                    f"उदाहरण: *कल दोपहर 2 बजे*, *सोमवार 3 PM*।"
+                )
+            await update.message.reply_text(reply, parse_mode="Markdown")
+            ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=existing_phone, source_ref=sender_id, notes=f"Public bot: Prompted appointment slot for {current_service}")
+            return
+
+    # Valid datetime parsed! Check slot availability
+    avail_ok, alt_slots = check_slot_availability(dt_res["date_str"], dt_res["time_str"])
+    if not avail_ok:
+        alt_str = ", ".join(alt_slots) if alt_slots else "सुबह 11:00 से शाम 6:00 बजे के बीच कोई अन्य समय"
+        reply = (
+            f"⚠️ **क्षमा करें, {dt_res['display_date']} को {dt_res['display_time']} का स्लॉट पहले से व्यस्त (आरक्षित) है।**\n\n"
+            f"उपलब्ध समय विकल्प:\n• {alt_str}\n\n"
+            f"कृपया बताएं, क्या आप इनमें से किसी समय आना चाहेंगे?"
+        )
+        await update.message.reply_text(reply, parse_mode="Markdown")
+        ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=existing_phone, source_ref=sender_id, notes=f"Public bot: Slot conflict at {dt_res['iso_timestamp']}")
+        return
+
+    # Slot is available! Commit appointment to CRM & Babu Central Brain
+    commit_res = commit_crm_appointment(
+        lead_id=lead_id,
+        date_str=dt_res["date_str"],
+        time_str=dt_res["time_str"],
+        purpose=f"{current_service} Consultation ({text[:50]})",
+        notes=f"Public bot booking by {client_name} (@{username})"
     )
     
-    if is_appointment_request and (date_expr or time_expr or any(d in text.lower() for d in ("kal", "parso", "somwar", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "today", "aaj"))):
-        dt_res = parse_ist_datetime(date_expr or "kal", time_expr or "14:00")
-        if dt_res.get("valid"):
-            avail_ok, alt_slots = check_slot_availability(dt_res["date_str"], dt_res["time_str"])
-            if avail_ok:
-                lead_id = f"LEAD-{int(time.time())}-{user.id % 1000}"
-                commit_res = commit_crm_appointment(
-                    lead_id=lead_id,
-                    date_str=dt_res["date_str"],
-                    time_str=dt_res["time_str"],
-                    purpose=f"{service} Consultation ({text[:60]})",
-                    notes=f"Public bot booking by {client_name} (@{username})"
-                )
-                
-                # Dispatch alert to business owner on private bot
-                dispatch_telegram_appointment_alert(
-                    lead_id=lead_id,
-                    lead_name=client_name,
-                    service=service,
-                    scheduled_date=dt_res["display_date"],
-                    scheduled_time=dt_res["display_time"],
-                    contact_info=extracted_phone or f"Telegram: @{username} (ID: {user.id})",
-                    channel="Public Telegram Bot (@Anshu4751_bot)"
-                )
-                
-                reply = (
-                    f"✅ **आपकी अपॉइंटमेंट बुक कर ली गई है!**\n\n"
-                    f"👤 नाम: **{client_name}**\n"
-                    f"💼 सेवा: **{service} Consultation**\n"
-                    f"🗓️ दिनांक: **{dt_res['display_date']}**\n"
-                    f"⏰ समय: **{dt_res['display_time']}**\n"
-                    f"📍 स्थान: **{OFFICE_ADDRESS}**\n\n"
-                    f"कंसल्टेंट **{CONSULTANT_NAME}** जी को आपकी अपॉइंटमेंट की सूचना भेज दी गई है। "
-                    f"कृपया अपने संबंधित दस्तावेज़ साथ लाएं। धन्यवाद!"
-                )
-                await update.message.reply_text(reply, parse_mode="Markdown")
-                ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=extracted_phone or (f"@{username}" if username else None), source_ref=sender_id, notes=f"Public bot booking: {service}")
-                return
-            else:
-                alt_str = ", ".join(alt_slots) if alt_slots else "सुबह 11:00 से शाम 6:00 बजे के बीच कोई अन्य समय"
-                reply = (
-                    f"⚠️ **क्षमा करें, {dt_res['display_date']} को {dt_res['display_time']} का समय पहले से व्यस्त है।**\n\n"
-                    f"उपलब्ध समय विकल्प:\n• {alt_str}\n\n"
-                    f"कृपया बताएं, क्या आप इनमें से किसी समय आना चाहेंगे?"
-                )
-                await update.message.reply_text(reply, parse_mode="Markdown")
-                ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=extracted_phone or (f"@{username}" if username else None), source_ref=sender_id, notes=f"Public bot slot conflict: {service}")
-                return
-
-    # 2. Standard grounded inquiry response
-    reply = generate_public_ai_reply(text, client_name, service)
-    await update.message.reply_text(reply)
-    
-    # 3. Log lead and interaction in CRM
-    ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=extracted_phone or (f"@{username}" if username else None), source_ref=sender_id, notes=f"Public bot inquiry: {service}")
-    
-    # 4. If customer provided phone or expressed urgent service, notify owner
-    if extracted_phone or intent in ("PRICE_CHECK", "APPOINTMENT_REQUEST"):
+    if commit_res.get("status") == "SUCCESS":
+        doc_checklist = REQUIRED_DOCS_BY_SERVICE.get(current_service, REQUIRED_DOCS_BY_SERVICE["General"])
+        reply = (
+            f"🎉 **आपकी अपॉइंटमेंट सफलतापूर्वक बुक हो गई है!**\n\n"
+            f"👤 **ग्राहक का नाम:** {client_name}\n"
+            f"💼 **सेवा:** {svc_name}\n"
+            f"🗓️ **दिनांक:** {dt_res['display_date']}\n"
+            f"⏰ **समय:** {dt_res['display_time']}\n"
+            f"📞 **मोबाइल नंबर:** `{existing_phone}`\n"
+            f"📍 **स्थान:** {OFFICE_ADDRESS}\n\n"
+            f"📋 **साथ लाने हेतु आवश्यक दस्तावेज़:**\n{doc_checklist}\n\n"
+            f"कंसल्टेंट **{CONSULTANT_NAME}** जी को आपकी अपॉइंटमेंट की सूचना प्रेषित कर दी गई है। नियत समय पर पधारें, धन्यवाद!"
+        )
+        await update.message.reply_text(reply, parse_mode="Markdown")
+        ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=existing_phone, source_ref=sender_id, notes=f"Booked: {dt_res['iso_timestamp']}")
+        
         send_owner_client_alert(
-            "High-Intent Lead on Public Bot",
+            "New Appointment Confirmed",
             client_name,
             username,
-            f"Query: \"{text}\"\nService: {service}\nAI Reply: \"{reply[:100]}...\"",
-            phone=extracted_phone
+            f"Service: {current_service}\nDate/Time: {dt_res['display_date']} at {dt_res['display_time']}\nPhone: {existing_phone}",
+            phone=existing_phone
         )
+        return
+    elif commit_res.get("status") == "SLOT_CONFLICT":
+        alt_str = ", ".join(commit_res.get("alternatives", [])) or "11:00 AM, 03:00 PM"
+        reply = (
+            f"⚠️ **क्षमा करें, यह समय अभी-अभी किसी अन्य ग्राहक द्वारा बुक कर लिया गया है।**\n\n"
+            f"वैकल्पिक उपलब्ध स्लॉट्स:\n• {alt_str}\n\n"
+            f"कृपया इनमें से कोई समय बताएं।"
+        )
+        await update.message.reply_text(reply, parse_mode="Markdown")
+        return
+    else:
+        reply = "अपॉइंटमेंट दर्ज करते समय एक तकनीकी समस्या आई। कृपया कुछ क्षण पश्चात पुनः प्रयास करें।"
+        await update.message.reply_text(reply)
+        return
 
 
 async def on_public_document(update: Update, context: ContextTypes.DEFAULT_TYPE):

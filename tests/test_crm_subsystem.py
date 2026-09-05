@@ -17,6 +17,10 @@ from crm_service import (
     commit_crm_appointment,
     get_selective_knowledge_slice,
     get_lead_by_source_ref,
+    get_or_create_lead,
+    freeze_lead_service,
+    freeze_lead_contact,
+    REQUIRED_DOCS_BY_SERVICE,
     IST
 )
 
@@ -232,6 +236,52 @@ class TestCRMSubsystem(unittest.TestCase):
             self.assertEqual(lead["status"], "DISCOVERY")
         except Exception as e:
             print(f"[TEST WARNING] Discovery test skipped LLM execution: {e}")
+
+    def test_stateful_crm_funnel_workflow(self):
+        """Verify strict multi-stage funnel: create -> freeze service -> freeze contact -> commit slot."""
+        test_sender = f"tg_test_{int(datetime.now().timestamp())}"
+        
+        # 1. Initial touchpoint creates lead in AWAITING_SERVICE
+        lead1 = get_or_create_lead(test_sender, "Ankit Kumar", "PUBLIC_TELEGRAM")
+        self.assertIsNotNone(lead1["lead_id"])
+        self.assertEqual(lead1["status"], "AWAITING_SERVICE")
+        self.assertEqual(lead1["service_category"], "Overview")
+        
+        lead_id = lead1["lead_id"]
+        
+        # 2. Freeze Service Category to PF
+        ok_svc = freeze_lead_service(lead_id, "PF")
+        self.assertTrue(ok_svc)
+        
+        lead2 = get_lead_by_source_ref(test_sender)
+        self.assertEqual(lead2["service_category"], "PF")
+        self.assertEqual(lead2["status"], "AWAITING_CONTACT")
+        
+        # 3. Freeze Contact Information (Mobile)
+        ok_phone = freeze_lead_contact(lead_id, "9876543210")
+        self.assertTrue(ok_phone)
+        
+        lead3 = get_lead_by_source_ref(test_sender)
+        self.assertEqual(lead3["contact_info"], "+91 9876543210")
+        self.assertEqual(lead3["status"], "AWAITING_APPOINTMENT")
+        
+        # 4. Commit appointment slot
+        commit_res = commit_crm_appointment(
+            lead_id=lead_id,
+            date_str="2026-08-28",
+            time_str="15:00",
+            purpose="PF Withdrawal Consultation"
+        )
+        self.assertEqual(commit_res["status"], "SUCCESS")
+        
+        # Verify status is now APPOINTMENT_SCHEDULED
+        lead4 = get_lead_by_source_ref(test_sender)
+        self.assertEqual(lead4["status"], "APPOINTMENT_SCHEDULED")
+        
+        # Verify document checklist is available for PF
+        pf_docs = REQUIRED_DOCS_BY_SERVICE.get("PF")
+        self.assertIn("आधार कार्ड", pf_docs)
+        self.assertIn("UAN", pf_docs)
 
 if __name__ == "__main__":
     unittest.main()
