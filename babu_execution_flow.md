@@ -10,11 +10,24 @@
 
 ## Step-by-Step Execution Flow
 
-### 1. User Input (Telegram)
-The user sends a message or command via Telegram to the BABU Bot.
+### 1. Dual-Bot User Ingress (Telegram)
+The platform operates two isolated Telegram bots running concurrently:
 
-### 2. Command Routing
-The Bot dispatches to the appropriate handler:
+1. **Private Executive Agent — Pragya (`bot.py` / `TELEGRAM_BOT_TOKEN`):**
+   * **Audience:** Strictly restricted to the owner (`TELEGRAM_USER_CHAT_ID = 8832681666`).
+   * **Persona:** **Pragya (Project BABU Cognitive OS)**.
+   * **Capabilities:** Full LangGraph 9-layer orchestration, Google Workspace mutations, Facebook publishing, system telemetry, memory, and CRM administration.
+   * **Security:** Unauthorized senders trigger `is_telegram_operator()` rejection and are redirected to `@Anshu4751_bot`.
+
+2. **Public Client Desk Bot (`public_bot.py` / `TELEGRAM_PUBLIC_BOT_TOKEN` / `@Anshu4751_bot`):**
+   * **Audience:** Public clients and prospective customers of **Anshu Computer & Tax Consultancy, Orai**.
+   * **Capabilities:** Service inquiry, stateful lead qualification, 10-digit mobile intake, office appointment booking (11 AM - 6 PM IST), and document intake.
+   * **Isolation:** Zero access to Google Workspace, private memories, or administrative commands.
+
+---
+
+### 2. Private Bot Command Routing (Pragya)
+The Executive Bot dispatches to the appropriate handler:
 
 | Command | Handler | Purpose |
 |---------|---------|---------|
@@ -30,11 +43,53 @@ The Bot dispatches to the appropriate handler:
 | `/leads` | `cmd_leads` | View recent client inquiries and appointments |
 | `/add_lead <name> <phone>` | `cmd_add_lead` | Register a new client lead |
 | `/help` | `cmd_help` | Show help text |
-| *(text/voice)* | `on_message` | Normal message → Planner |
+| *(text/voice)* | `on_message` | Normal message → LangGraph Planner |
 
 ---
 
-### 3. Inbound Social CRM Conversational Funnel (Facebook / Messenger)
+### 3. Public Client Desk Stateful CRM Funnel (`public_bot.py`)
+```
+Public Telegram Message / Callback
+  │
+  ├── 1. Aadhaar / Unsupported Service Fast-Intercept
+  │      Detects: 'aadhaar', 'ration', 'driving license'
+  │      → Polite rejection in Hindi + display 4 supported categories
+  │
+  ├── 2. Step 1: Service Category Selection & Freeze (freeze_lead_service)
+  │      Options: [1] PF Consultancy (Primary)  [2] Tax Services (ITR)
+  │               [3] GST Services              [4] General Services
+  │      → Freezes service category on lead record, transitions to AWAITING_CONTACT
+  │
+  ├── 3. Step 2: Contact Intake & Freeze (freeze_lead_contact)
+  │      Extracts: 10-digit mobile number [6-9]\d{9}
+  │      → Freezes contact_info, transitions to AWAITING_APPOINTMENT_SLOT
+  │      → Re-prompts client by name: "धन्यवाद {client_name} जी! कृपया पसंदीदा दिन व समय बताएं"
+  │
+  ├── 4. Step 3: Appointment Slot Parsing & Validation (parse_ist_datetime)
+  │      Checks:
+  │      - Explicit date + time expressions in IST (Asia/Kolkata)
+  │      - Rejects phone-only inputs (avoids premature auto-booking)
+  │      - Validates office window: Mon-Sat, 11:00 AM - 6:00 PM (Sunday Closed)
+  │
+  ├── 5. Step 4: Slot Anti-Collision Check (check_slot_availability)
+  │      - Inspects babu_followups for conflicts at requested hour
+  │      - If booked: Suggests alternative open slots (e.g. 11 AM, 3 PM)
+  │
+  └── 6. Step 5: Atomic Commit & Single Alert Dispatch
+         - commit_crm_appointment():
+             • Updates babu_leads status = 'APPOINTMENT_SCHEDULED'
+             • INSERT INTO babu_followups (protected by DB partial unique index)
+             • Records event to babu_temporal_timeline & execution_ledger
+             • COMMIT Transaction
+         - dispatch_telegram_appointment_alert():
+             • Sends single verified HTML alert card to business owner on Telegram
+         - Client Confirmation:
+             • Warmly greets by name ({client_name} जी) with booking receipt & required documents
+```
+
+---
+
+### 4. Inbound Social CRM Conversational Funnel (Facebook / Messenger)
 ```
 Customer Message (Comment / DM)
   → Webhook Ingestion (process_facebook_webhook_event in social_media.py)
@@ -118,6 +173,13 @@ User sends a message
 
 | Feature | Status | Description |
 |---------|--------|-------------|
+| **Dual-Bot Architecture** | ✅ Active | Private Executive Bot (Pragya) + Public Client Desk Bot (`@Anshu4751_bot`) running concurrently |
+| **Operator Lockdown** | ✅ Active | Strict authentication (`TELEGRAM_USER_CHAT_ID = 8832681666`) with external user redirection |
+| **Stateful CRM Lead Funnel** | ✅ Active | 4-category service selection & freeze, 10-digit phone freeze, slot intake & booking |
+| **Fast Aadhaar Intercept** | ✅ Active | Instant polite Hindi guidance on unsupported Aadhaar, ration, and driving license inquiries |
+| **Deterministic IST Engine** | ✅ Active | Asia/Kolkata date/time validation enforcing office window (Mon-Sat, 11 AM - 6 PM) |
+| **Slot Anti-Collision Engine** | ✅ Active | Database-level unique constraint preventing double-booking; auto-suggests alternative slots |
+| **Single CRM Booking Alert** | ✅ Active | Atomic commit to `babu_leads` & `babu_followups` before dispatching authoritative HTML card |
 | **E0-A Constitution** | ✅ Active | Read-only safety rules loaded from `e0/constitution.json` |
 | **E0-B Governance** | ✅ Active | Policies loaded from `e0/policies.json` — thresholds for demotion/promotion |
 | **E[Temp] Trusted Templates** | ✅ Active | Compiled workflows stored in `trusted_templates` table |
@@ -172,6 +234,17 @@ User sends a message
 | `metadata` | TEXT | JSON metadata (GoalGraph, results, etc.) |
 | `timestamp` | TIMESTAMP | Event timestamp |
 
+### `babu_leads` (Commercial CRM)
+| Column | Type | Description |
+|--------|------|-------------|
+| `lead_id` | TEXT (PK) | Unique lead identifier (e.g., `LEAD-20260905-1234`) |
+| `source_ref` | TEXT | Originating user ID (`tg_123456`, `fb_789`) |
+| `channel` | TEXT | Channel source (`PUBLIC_TELEGRAM`, `FACEBOOK`, `MANUAL`) |
+| `name` | TEXT | Client full name / Telegram handle |
+| `contact_info` | TEXT | Validated 10-digit mobile number |
+| `service_category` | TEXT | Frozen category: `PF`, `Tax`, `GST`, `General` |
+| `status` | TEXT | `AWAITING_SERVICE`, `AWAITING_CONTACT`, `AWAITING_APPOINTMENT_SLOT`, `APPOINTMENT_SCHEDULED` |
+
 ---
 
 ## Codebase Modularization & Layers
@@ -183,13 +256,19 @@ To maintain operational sanity, the code is structured as follows:
 │                        BABU v2 ARCHITECTURE LAYERS                     │
 └────────────────────────────────────────────────────────────────────────┘
      │
-     ├─► [Layer 0: gateway.py] ───────► Greetings, FAQs, identity, health metrics.
+     ├─► [Gateway: gateway.py] ───────► Greetings, FAQs, identity, health metrics.
      │
-     ├─► [Layer 4: services.py] ──────► DB, cache, token extraction, temporal logs.
+     ├─► [Core Services: services.py] ► DB, cache, token extraction, temporal logs.
+     │
+     ├─► [CRM Engine: crm_service.py] ► Leads, stateful funnel, slot booking, alerts.
+     │
+     ├─► [Public Bot: public_bot.py] ─► Front-desk bot (@Anshu4751_bot) intake.
+     │
+     ├─► [Private Bot: bot.py] ───────► Telegram operator interface (Pragya).
      │
      ├─► [Orchestration: graph.py] ───► LangGraph state graph, intent router, nodes.
      │
-     └─► [Entry Point: bot.py] ───────► Telegram webhook, loops, health servers.
+     └─► [Entry Point: bootstrap.py] ─► Concurrent service boot (Web, Private & Public Bots).
 ```
 
 > [!NOTE]

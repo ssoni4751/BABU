@@ -217,5 +217,72 @@
 
 ---
 
+## ADR-105: Strict Dual-Bot Architecture & Operator Lockdown Boundary
+* **Status:** Accepted / Live in Production
+* **Context:** Operating a single Telegram bot for both private executive assistance (Google Workspace mutation, Facebook publishing, system telemetry, private memory) and commercial client desk interactions exposed sensitive operator commands to external clients. Client inquiries also polluted the private executive session context.
+* **Decision:**
+  1. **Dual-Bot Split:** Hard-partitioned the Telegram interface into two separate applications running concurrently in the same process:
+     * **Private Executive Bot (`bot.py` via `TELEGRAM_BOT_TOKEN`):** Reserved exclusively for the business owner (`TELEGRAM_USER_CHAT_ID = 8832681666`). Retains full constitutional 9-layer LangGraph orchestration, Google Workspace mutations, Facebook publishing, and CRM management.
+     * **Public Client Desk Bot (`public_bot.py` via `TELEGRAM_PUBLIC_BOT_TOKEN` / `@Anshu4751_bot`):** Open to all prospective clients. Provides polite front-desk services for Anshu Computer & Tax Consultancy in Hindi and English, captures leads, validates phone numbers, schedules appointments, and accepts client documents.
+  2. **Operator Lockdown Gate (`is_telegram_operator`):**
+     * All messages arriving at `bot.py` verify sender against `TELEGRAM_USER_CHAT_ID`.
+     * Unauthorized senders receive an access restriction notice and are redirected to the official public client desk: `@Anshu4751_bot`.
+  3. **Zero Privilege Leakage:** The public bot possesses zero access to Google Workspace tools, Facebook Graph API, file deletion, or private conversation memories.
+* **Consequences:** Flawless isolation between private executive control and public commercial intake. Eliminates risk of unauthorized command execution.
+
+---
+
+## ADR-106: Commercial Service Catalog Alignment & Fast Aadhaar Exclusion Intercept
+* **Status:** Accepted / Live in Production
+* **Context:** Client inquiries frequently asked for services outside the firm's core scope (e.g., Aadhaar address/DOB updates, ration cards, driving license renewals). Furthermore, generic service classifications caused ambiguity during lead intake.
+* **Decision:**
+  1. **Catalog Alignment from `business_profile.json`:**
+     * Formally anchored the public catalog on 4 authoritative categories:
+       1. **PF Consultancy (Primary Specialization):** EPFO claim settlements (Form 19, 10C, 31), UAN activation/transfer, joint declarations, KYC/DOB corrections.
+       2. **Tax Services:** Income Tax Return (ITR-1, 2, 4) filing, tax computations, refund status tracking, and notice resolution.
+       3. **GST Services:** New GST registration, monthly/quarterly return filings (GSTR-1, 3B), and department notice resolution.
+       4. **General Services:** MSME Udyam registration, Jeevan Pramaan (digital life certificates for pensioners), passport applications, PAN card services, and related digital consultancy.
+  2. **Fast Aadhaar Intercept:**
+     * Incoming inquiries mentioning `aadhaar`, `aadhar`, `adhar`, `uidai`, `rashan`, `ration`, or `driving license` trigger a deterministic, polite Hindi message clarifying that Aadhaar/ration/driving license updates are not provided, followed immediately by the 4-category selection buttons.
+* **Consequences:** Eliminates mismatched client expectations and focuses client acquisition on high-value compliance and tax services.
+
+---
+
+## ADR-107: Stateful CRM Client Qualification Funnel & Slot Anti-Collision
+* **Status:** Accepted / Live in Production
+* **Context:** Stateless bots frequently hallucinated appointments, attempted auto-booking when customers merely shared their phone number, or booked appointments without explicit customer-confirmed day and time expressions.
+* **Decision:**
+  1. **Four-Phase Stateful Funnel:**
+     * **Phase 1 (Service Selection & Freeze):** Customer must select one of the 4 service categories via interactive buttons or text. Status moves to `AWAITING_CONTACT` and service is frozen.
+     * **Phase 2 (Contact Intake & Freeze):** Bot demands a 10-digit Indian mobile number (`[6-9]\d{9}`). Once verified, phone is frozen and status transitions to `AWAITING_APPOINTMENT_SLOT`.
+     * **Phase 3 (Slot Intake & Validation):** Client is prompted for preferred day and time within office hours (Monday to Saturday, 11:00 AM to 6:00 PM IST).
+     * **Phase 4 (Anti-Collision & Commit):** `parse_ist_datetime` strictly verifies date and time. Standalone phone numbers or date-only inputs return explicit guidance rather than auto-booking. `check_slot_availability` verifies slot openness; if occupied, it generates alternate working slots.
+  2. **Atomic Commitment (`commit_crm_appointment`):**
+     * Updates `babu_leads` to `APPOINTMENT_SCHEDULED`.
+     * Inserts into `babu_followups` with database-level uniqueness protection.
+     * Logs `APPOINTMENT_BOOKED` into `babu_temporal_timeline` and `execution_ledger`.
+* **Consequences:** Guarantees 100% truthful appointment scheduling, zero phantom bookings, and complete lead progression tracking.
+
+---
+
+## ADR-108: Executive Identity Separation (Pragya) & Authoritative CRM Booking Alerts
+* **Status:** Accepted / Live in Production
+* **Context:** 
+  1. Operating the private executive companion under the technical project title "BABU" created persona dissonance. The business owner requested naming the private executive assistant **Pragya (प्रज्ञा)** while retaining the underlying BABU Cognitive OS kernel.
+  2. The public bot was dispatching redundant appointment alerts to the owner on top of the CRM subsystem's own booking alerts, causing duplicate message spam.
+  3. Public interactions lacked personalized customer address once client names were established.
+* **Decision:**
+  1. **Executive Identity Separation:**
+     * The private bot persona is formally named **Pragya (Project BABU Cognitive OS)** across `graph.py` (manifesto, system prompts) and `gateway.py` (Identity Index, health dashboard, self-awareness responses).
+     * The underlying architecture (9 layers, LangGraph, Bipartite Auditor, K0-K7 memory, tools) remains Project BABU.
+  2. **Personalized Customer Address:**
+     * In `public_bot.py`, once client name is resolved, the public bot consistently and respectfully addresses the client as `नमस्ते {client_name} जी!` across service freeze, phone capture, slot prompts, conflicts, and booking confirmations.
+  3. **Single Authoritative Alert Dispatch:**
+     * Eliminated secondary `send_owner_client_alert` calls from `public_bot.py`.
+     * Booking alerts are dispatched exclusively by `dispatch_telegram_appointment_alert` in `crm_service.py` upon verified database commit, formatted as a single clean HTML notification card with HTML escaping.
+* **Consequences:** Clear, warm persona for the owner's private companion, professional customer-facing etiquette on the public desk, and clean single-alert notifications without spam.
+
+---
+
 *BABU ADR Book Volume 7 — Updated September 2026*
 

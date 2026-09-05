@@ -8,16 +8,18 @@ K0 WORKING MEMORY
 ├─ Recency Cache → Last session goal, execution results, status summary
 
 K1 IDENTITY
-├─ System name → Project BABU (Governed Control Platform)
+├─ Private Persona → Pragya (Executive Companion)
+├─ System Architecture → Project BABU (Governed Control Platform)
 ├─ Date of Birth → 2026-05-27
-├─ Version → 3.5.0
+├─ Version → 4.0.0 (Dual-Bot Architecture)
 ├─ Creator → Anshu (Shubham Swarnkar)
 ├─ Operational Scope → Anshu Computer & Tax Consultancy / Personal Cognition
 
 K2 RUNTIME
 ├─ Uptime → BOT_START_TIME / get_babu_age_string()
+├─ Dual-Bot Telegram → Private Bot (Pragya / TELEGRAM_BOT_TOKEN), Public Desk (@Anshu4751_bot / TELEGRAM_PUBLIC_BOT_TOKEN)
 ├─ Active Memory → state, SQLite checkpoint DB (babu_checkpoint.db)
-├─ Threads → autonomous_scheduler, web_dashboard_health_server
+├─ Threads → autonomous_scheduler, web_dashboard_health_server, dual_bot_polling
 ├─ Failures Log → execution_ledger, failures.json (epistemic immune system)
 ├─ Multi-Model Swarm → Primary Groq, Secondary NVIDIA NIM / OpenRouter, Tertiary Gemini Native
 ├─ Live Telemetry → /api/telemetry, /api/healthz, /stats
@@ -33,19 +35,24 @@ K3 USER & BUSINESS
 K4 EXECUTION & SWARM
 ├─ 7-Layer Pipeline → Understand (L0/L1) → Classify (L2) → Govern (L3) → Plan (L4) → Execute (L5) → Verify (L6) → Respond
 ├─ Departments → information, research, analysis, writing, execution, pa
+├─ Commercial Intake → public_bot.py (Stateful 4-category selection, mobile intake, IST slot anti-collision)
+├─ CRM Subsystem → crm_service.py (babu_leads, babu_followups, transactional appointment commit, single HTML alert)
 ├─ Template Registry → trusted_templates (ACTIVE, DEMOTED, RETIRED)
 ├─ Allowed Actions → governance rules (e0/constitution.json, e0/policies.json)
 ├─ DAG Planner → planner.py (IntentCompiler, GoalGraph)
 
 K5 ARCHITECTURE & GOVERNANCE
-├─ ADRs → architecture_knowledge (record_type='ADR', ADR-001 through ADR-095)
+├─ ADRs → architecture_knowledge (record_type='ADR', ADR-001 through ADR-108)
+├─ Dual-Bot Isolation → ADR-105 (Operator Lockdown & Public Desk Demarcation)
+├─ Catalog & Funnel → ADR-106, ADR-107 (PF/Tax/GST/General & Stateful Slot Booking)
+├─ Executive Identity → ADR-108 (Pragya Persona & Single CRM Booking Alert)
 ├─ Postmortems → architecture_knowledge (record_type='POSTMORTEM')
 ├─ Lessons → architecture_knowledge (record_type='LESSON')
 ├─ Tradeoffs → architecture_knowledge.tradeoff
 ├─ Impact Scores → architecture_knowledge.impact_score
 ├─ Evolution → architecture_knowledge ORDER BY phase
 ├─ Anti-patterns → failures.json (decaying confidence C = C_old * (1 - lambda * S))
-├─ Modularization → Layered Modules (gateway.py, graph.py, planner.py, auditor.py, services.py, task_engine.py, departments.py)
+├─ Modularization → Layered Modules (gateway.py, graph.py, planner.py, auditor.py, services.py, crm_service.py, public_bot.py, task_engine.py, departments.py)
 ├─ Service Classes → Class A (Auto-Approved Read), Class B (Single-Approval Mutation), Class C (Double-Confirmation Destructive)
 
 K6 DOMAIN & RETRIEVAL

@@ -181,6 +181,21 @@ ADR-032
 ADR-049
 ADR-054
 ADR-072
+ADR-095
+
+## Commercial CRM & Dual-Bot
+ADRs:
+ADR-096
+ADR-097
+ADR-099
+ADR-100
+ADR-105
+ADR-106
+ADR-107
+ADR-108
+
+Keywords:
+crm, leads, followups, appointments, public_bot, dual_bot, pragya, slot, catalog, aadhaar
 
 ---
 
@@ -230,10 +245,10 @@ Governed Control Plane Architecture, Meta Bidirectional Loop, Multi-Provider Fai
 
 ## BABU_ADR_Book_v7.md
 Coverage:
-ADR-091 → ADR-100
+ADR-091 → ADR-108
 
 Domains:
-Topology-Aware Query Classification, Capability Demand Packet, Orchestration Bypass, Conversational State Inheritance, Telemetry Observability, Decoupled Commercial CRM Plane, Bidirectional Social Webhook Memory, Swarm Model Calibration, Deterministic Conversational Sales Funnel, IST Datetime Slot Parsing, Database-Level Concurrency Isolation
+Topology-Aware Query Classification, Capability Demand Packet, Orchestration Bypass, Conversational State Inheritance, Telemetry Observability, Decoupled Commercial CRM Plane, Bidirectional Social Webhook Memory, Tri-Domain Capability Demand Router, Production Render Hardening, Intent Taxonomy Modernization, Direct Action Dispatch, Dual-Bot Architecture & Operator Lockdown, 4-Category Catalog Alignment & Fast Aadhaar Intercept, Stateful CRM Lead Funnel & IST Slot Anti-Collision, Pragya Executive Persona & Authoritative Single CRM Booking Alerts
 
 ## BABU_VISION_PLAN_2026.md
 Domains:
