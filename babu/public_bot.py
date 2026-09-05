@@ -145,7 +145,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         f"नमस्ते {name} जी! 🙏\n\n"
         f"**{OFFICE_NAME}**, कौशल मार्केट, उरई के आधिकारिक डिजिटल सहायता केंद्र में आपका स्वागत है।\n\n"
-        f"मैं कंसल्टेंट **{CONSULTANT_NAME}** का AI असिस्टेंट हूँ।\n\n"
+        f"मेरा नाम **प्रज्ञा (Pragya)** है — **{OFFICE_NAME}**, उरई की डिजिटल रिसेप्शनिस्ट (Front-Desk Receptionist)।\n\n"
         f"💼 **हमारी 4 मुख्य सेवा श्रेणियां:**\n"
         f"1. 🏢 **PF Consultancy (Primary Specialization):** क्लेम सेटलमेंट (Form 19/10C/31), UAN ट्रांसफर, KYC/DOB सुधार, जॉइंट डिक्लेरेशन, ट्रांसफर\n"
         f"2. 📑 **Tax Services:** Income Tax Return (ITR-1, 2, 4) फाइलिंग, टैक्स कम्प्यूटेशन, रिफंड स्टेटस व नोटिस समाधान\n"
@@ -298,7 +298,7 @@ def generate_public_ai_reply(client_text: str, client_name: str, service_categor
     k_slice = get_selective_knowledge_slice(service_category)
     
     sys_prompt = (
-        "You are JARVIS, the polite, professional AI Front-Desk Receptionist at Anshu Computer & Tax Consultancy, Kaushal Market, Rath Road, Orai. "
+        "You are Pragya (प्रज्ञा), the polite, professional Digital Assistant and Front-Desk Receptionist at Anshu Computer & Tax Consultancy, Kaushal Market, Rath Road, Orai. "
         "You represent Mr. Shubham Swarnkar (Consultant).\n\n"
         "AUTHORITATIVE BUSINESS POSITIONING:\n"
         "- The business has 4 main service categories:\n"

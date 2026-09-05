@@ -13,20 +13,21 @@
 ### 1. Dual-Bot User Ingress (Telegram)
 The platform operates two isolated Telegram bots running concurrently:
 
-1. **Private Executive Agent — Pragya (`bot.py` / `TELEGRAM_BOT_TOKEN`):**
+1. **Private Executive Agent — BABU (`bot.py` / `TELEGRAM_BOT_TOKEN`):**
    * **Audience:** Strictly restricted to the owner (`TELEGRAM_USER_CHAT_ID = 8832681666`).
-   * **Persona:** **Pragya (Project BABU Cognitive OS)**.
+   * **Persona:** **BABU (Project BABU Cognitive OS)**.
    * **Capabilities:** Full LangGraph 9-layer orchestration, Google Workspace mutations, Facebook publishing, system telemetry, memory, and CRM administration.
    * **Security:** Unauthorized senders trigger `is_telegram_operator()` rejection and are redirected to `@Anshu4751_bot`.
 
-2. **Public Client Desk Bot (`public_bot.py` / `TELEGRAM_PUBLIC_BOT_TOKEN` / `@Anshu4751_bot`):**
+2. **Public Client Desk Bot — Pragya (`public_bot.py` / `TELEGRAM_PUBLIC_BOT_TOKEN` / `@Anshu4751_bot`):**
    * **Audience:** Public clients and prospective customers of **Anshu Computer & Tax Consultancy, Orai**.
+   * **Persona:** **Pragya (प्रज्ञा)** — Digital Assistant & Front-Desk Receptionist.
    * **Capabilities:** Service inquiry, stateful lead qualification, 10-digit mobile intake, office appointment booking (11 AM - 6 PM IST), and document intake.
    * **Isolation:** Zero access to Google Workspace, private memories, or administrative commands.
 
 ---
 
-### 2. Private Bot Command Routing (Pragya)
+### 2. Private Bot Command Routing (BABU)
 The Executive Bot dispatches to the appropriate handler:
 
 | Command | Handler | Purpose |

@@ -12,8 +12,8 @@
 **Project BABU** is a governed, stratified 9-layer Cognitive Operating System designed to unify private executive intelligence with public commercial customer management. Built on LangGraph, Groq open-weights (`openai/gpt-oss-120b` and `openai/gpt-oss-20b`), and a PostgreSQL/SQLite hybrid persistence tier, the platform delivers zero-hallucination execution, human-supreme governance, and automated client acquisition.
 
 The system is hard-partitioned into a **Dual-Bot Architecture**:
-1. **Pragya (Private Executive PA):** A high-cognition personal companion and administrative terminal running on `TELEGRAM_BOT_TOKEN`. Strictly locked to the business owner (`TELEGRAM_USER_CHAT_ID = 8832681666`).
-2. **Public Client Desk (@Anshu4751_bot):** An automated front-desk digital assistant running on `TELEGRAM_PUBLIC_BOT_TOKEN` for **Anshu Computer & Tax Consultancy, Orai**, managing service discovery, 10-digit mobile intake, office appointment booking, and client document drop-off.
+1. **BABU (Private Executive PA):** A high-cognition personal companion and administrative terminal running on `TELEGRAM_BOT_TOKEN`. Strictly locked to the business owner (`TELEGRAM_USER_CHAT_ID = 8832681666`).
+2. **Pragya — Public Client Desk (@Anshu4751_bot):** An automated front-desk digital assistant named **Pragya (प्रज्ञा)** running on `TELEGRAM_PUBLIC_BOT_TOKEN` for **Anshu Computer & Tax Consultancy, Orai**, managing service discovery, 10-digit mobile intake, office appointment booking, and client document drop-off.
 
 ```
                      ┌────────────────────────────────────────────────────────┐
@@ -24,7 +24,7 @@ The system is hard-partitioned into a **Dual-Bot Architecture**:
                     (Owner Only)         │                │  (Prospective Clients)
                                          ▼                ▼
      ┌─────────────────────────────────────┐            ┌──────────────────────────────────────┐
-     │      BOT 1: PRAGYA (EXECUTIVE)      │            │       BOT 2: PUBLIC CLIENT DESK      │
+     │      BOT 1: BABU (EXECUTIVE)        │            │       BOT 2: PRAGYA (CLIENT DESK)    │
      │      (Personal Cognitive OS)        │            │        (@Anshu4751_bot)              │
      ├─────────────────────────────────────┤            ├──────────────────────────────────────┤
      │ Token: TELEGRAM_BOT_TOKEN           │            │ Token: TELEGRAM_PUBLIC_BOT_TOKEN     │
@@ -95,14 +95,14 @@ Derived from `business_profile.json`, the public bot offers 4 core categories:
                                   • If busy: Propose alternate open slots
        │
        ▼
-[Phase 5: Single CRM Alert]   ──► Single HTML card dispatched to Pragya Executive Bot
+[Phase 5: Single CRM Alert]   ──► Single HTML card dispatched to Private Executive Bot (BABU)
 ```
 
 ---
 
 ## 🎮 Command Console Reference
 
-### Private Bot (Pragya — Operator Only)
+### Private Bot (BABU — Operator Only)
 * `/crm`: Open the interactive Anshu Consultancy CRM pipeline summary.
 * `/leads`: Inspect recent customer inquiries, contact details, and scheduled meetings.
 * `/add_lead <name> <phone>`: Manually register a new walk-in client.
@@ -113,7 +113,7 @@ Derived from `business_profile.json`, the public bot offers 4 core categories:
 * `/promote <sig> <goal_id>`: Promote a validated task DAG into muscle memory ($E[\text{Temp}]$).
 * `/retire <sig>`: Demote or retire a legacy workflow template.
 
-### Public Client Desk (@Anshu4751_bot — Open)
+### Public Client Desk — Pragya (@Anshu4751_bot — Open)
 * `/start` / `/help`: Interactive welcome message with 4-category service selection keyboard.
 * `/services`: Detailed catalog of PF, Tax, GST, and General compliance services with required document checklists.
 * `/contact` / `/address`: Office address (Kaushal Market, Rath Road, Orai), helpline number, and working hours (Mon–Sat, 11:00 AM – 6:00 PM).
@@ -124,9 +124,9 @@ Derived from `business_profile.json`, the public bot offers 4 core categories:
 
 | Variable | Description |
 |---|---|
-| `TELEGRAM_BOT_TOKEN` | Bot token for the Private Executive Bot (Pragya). |
+| `TELEGRAM_BOT_TOKEN` | Bot token for the Private Executive Bot (BABU). |
 | `TELEGRAM_USER_CHAT_ID` | Telegram chat ID of the authorized owner (`8832681666`). |
-| `TELEGRAM_PUBLIC_BOT_TOKEN` | Bot token for the Public Client Desk Bot (`@Anshu4751_bot`). |
+| `TELEGRAM_PUBLIC_BOT_TOKEN` | Bot token for the Public Client Desk Bot Pragya (`@Anshu4751_bot`). |
 | `PUBLIC_BOT_USERNAME` | Username of the public bot (`Anshu4751_bot`). |
 | `GROQ_API_KEY` | API key for primary open-weight inference (`gpt-oss-120b` & `gpt-oss-20b`). |
 | `DATABASE_URL` | Optional PostgreSQL connection string (Render Postgres); falls back to SQLite. |

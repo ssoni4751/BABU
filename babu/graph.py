@@ -1650,9 +1650,9 @@ def pa_node(state: BabuState):
         _log_direct_pa_event(time_response)
         return {"messages": state["messages"] + [AIMessage(content=time_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
 
-    if not is_multi_request and any(k in lowered_query for k in ("how old are you", "how old you are", "your age", "what is your age", "date of birth", "dob", "birth date", "babu birth", "babu creation", "dob of babu", "pragya birth", "pragya age", "dob of pragya")):
+    if not is_multi_request and any(k in lowered_query for k in ("how old are you", "how old you are", "your age", "what is your age", "date of birth", "dob", "birth date", "babu birth", "babu creation", "dob of babu")):
         age_str = get_babu_age_string()
-        age_response = f"I am **Pragya** (Project BABU Cognitive OS). My date of birth is **May 27, 2026**. I have been active for **{age_str}**!"
+        age_response = f"I am **Project BABU** (Behavioral Autonomous Bureaucratic Utility). My date of birth is **May 27, 2026**. I have been active for **{age_str}**!"
         print(f"[PA NODE] Deterministic short-circuit for age query: '{user_query}'", flush=True)
         _log_direct_pa_event(age_response)
         return {"messages": state["messages"] + [AIMessage(content=age_response)], "tokens": {"prompt": 0, "completion": 0, "total": 0}, "is_deterministic_response": True}
@@ -2017,7 +2017,7 @@ def pa_node(state: BabuState):
         details = profile.get("personal_details", {}) if profile else {}
         nickname = details.get("primary_nickname", "") or details.get("full_name", "Anshu")
         manifesto = (
-            f"You are Pragya, a warm, direct, and helpful personal companion. Current date/time: {now_str}.\n"
+            f"You are BABU, a warm, direct, and helpful personal companion. Current date/time: {now_str}.\n"
             f"Style: Warm, brief, natural human dialogue. Max two short paragraphs. Do not mention internal details.\n"
             f"Recipient: You are talking directly to {nickname}.\n"
             f"CRITICAL: If the user asks about their personal details, family, business, career, or background, you MUST use the information provided in [Internal Research] (which is retrieved from the authoritative local user profile).\n"
@@ -2048,7 +2048,7 @@ def pa_node(state: BabuState):
         pa_rules = get_anti_pattern_rules("pa")
 
         manifesto = (
-            f"You are Pragya. Current date/time: {now_str}. Never reveal internal agents. {style}"
+            f"BABU. Current date/time: {now_str}. Never reveal internal agents. {style}"
             f" Use history for context, never repeat it verbatim."
             f"{google_ctx}{profile_ctx}"
         )

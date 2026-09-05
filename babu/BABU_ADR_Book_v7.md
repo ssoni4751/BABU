@@ -265,22 +265,22 @@
 
 ---
 
-## ADR-108: Executive Identity Separation (Pragya) & Authoritative CRM Booking Alerts
+## ADR-108: Public Front-Desk Identity (Pragya) & Authoritative CRM Booking Alerts
 * **Status:** Accepted / Live in Production
 * **Context:** 
-  1. Operating the private executive companion under the technical project title "BABU" created persona dissonance. The business owner requested naming the private executive assistant **Pragya (प्रज्ञा)** while retaining the underlying BABU Cognitive OS kernel.
+  1. The public client desk needed a warm, professional, dedicated brand persona representing Anshu Computer & Tax Consultancy, Orai. The business owner designated the name **Pragya (प्रज्ञा)** for the public-facing front-desk digital assistant, while the private executive companion remains **BABU / Project BABU**.
   2. The public bot was dispatching redundant appointment alerts to the owner on top of the CRM subsystem's own booking alerts, causing duplicate message spam.
   3. Public interactions lacked personalized customer address once client names were established.
 * **Decision:**
-  1. **Executive Identity Separation:**
-     * The private bot persona is formally named **Pragya (Project BABU Cognitive OS)** across `graph.py` (manifesto, system prompts) and `gateway.py` (Identity Index, health dashboard, self-awareness responses).
-     * The underlying architecture (9 layers, LangGraph, Bipartite Auditor, K0-K7 memory, tools) remains Project BABU.
+  1. **Dual Persona Separation:**
+     * **Public Client Desk Bot (`public_bot.py` / `@Anshu4751_bot`):** Formally named **Pragya (प्रज्ञा)** — Digital Assistant & Front-Desk Receptionist at Anshu Computer & Tax Consultancy, Orai.
+     * **Private Executive Agent (`bot.py` / `graph.py` / `gateway.py`):** Retains its canonical identity as **Project BABU (Behavioral Autonomous Bureaucratic Utility)**.
   2. **Personalized Customer Address:**
-     * In `public_bot.py`, once client name is resolved, the public bot consistently and respectfully addresses the client as `नमस्ते {client_name} जी!` across service freeze, phone capture, slot prompts, conflicts, and booking confirmations.
+     * In `public_bot.py`, once client name is resolved, Pragya consistently and respectfully addresses the client as `नमस्ते {client_name} जी!` across service freeze, phone capture, slot prompts, conflicts, and booking confirmations.
   3. **Single Authoritative Alert Dispatch:**
      * Eliminated secondary `send_owner_client_alert` calls from `public_bot.py`.
      * Booking alerts are dispatched exclusively by `dispatch_telegram_appointment_alert` in `crm_service.py` upon verified database commit, formatted as a single clean HTML notification card with HTML escaping.
-* **Consequences:** Clear, warm persona for the owner's private companion, professional customer-facing etiquette on the public desk, and clean single-alert notifications without spam.
+* **Consequences:** Clear, warm front-desk persona (Pragya) for clients, preserved executive identity (BABU) for the owner, and clean single-alert notifications without spam.
 
 ---
 

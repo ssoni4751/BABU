@@ -8,7 +8,8 @@ K0 WORKING MEMORY
 ├─ Recency Cache → Last session goal, execution results, status summary
 
 K1 IDENTITY
-├─ Private Persona → Pragya (Executive Companion)
+├─ Private Persona → BABU (Executive Cognitive OS)
+├─ Public Desk Persona → Pragya (Digital Assistant for Anshu Consultancy)
 ├─ System Architecture → Project BABU (Governed Control Platform)
 ├─ Date of Birth → 2026-05-27
 ├─ Version → 4.0.0 (Dual-Bot Architecture)
@@ -17,7 +18,7 @@ K1 IDENTITY
 
 K2 RUNTIME
 ├─ Uptime → BOT_START_TIME / get_babu_age_string()
-├─ Dual-Bot Telegram → Private Bot (Pragya / TELEGRAM_BOT_TOKEN), Public Desk (@Anshu4751_bot / TELEGRAM_PUBLIC_BOT_TOKEN)
+├─ Dual-Bot Telegram → Private Bot (BABU / TELEGRAM_BOT_TOKEN), Public Desk (Pragya / @Anshu4751_bot / TELEGRAM_PUBLIC_BOT_TOKEN)
 ├─ Active Memory → state, SQLite checkpoint DB (babu_checkpoint.db)
 ├─ Threads → autonomous_scheduler, web_dashboard_health_server, dual_bot_polling
 ├─ Failures Log → execution_ledger, failures.json (epistemic immune system)
@@ -35,7 +36,7 @@ K3 USER & BUSINESS
 K4 EXECUTION & SWARM
 ├─ 7-Layer Pipeline → Understand (L0/L1) → Classify (L2) → Govern (L3) → Plan (L4) → Execute (L5) → Verify (L6) → Respond
 ├─ Departments → information, research, analysis, writing, execution, pa
-├─ Commercial Intake → public_bot.py (Stateful 4-category selection, mobile intake, IST slot anti-collision)
+├─ Commercial Intake → public_bot.py (Pragya: Stateful 4-category selection, mobile intake, IST slot anti-collision)
 ├─ CRM Subsystem → crm_service.py (babu_leads, babu_followups, transactional appointment commit, single HTML alert)
 ├─ Template Registry → trusted_templates (ACTIVE, DEMOTED, RETIRED)
 ├─ Allowed Actions → governance rules (e0/constitution.json, e0/policies.json)
@@ -45,7 +46,7 @@ K5 ARCHITECTURE & GOVERNANCE
 ├─ ADRs → architecture_knowledge (record_type='ADR', ADR-001 through ADR-108)
 ├─ Dual-Bot Isolation → ADR-105 (Operator Lockdown & Public Desk Demarcation)
 ├─ Catalog & Funnel → ADR-106, ADR-107 (PF/Tax/GST/General & Stateful Slot Booking)
-├─ Executive Identity → ADR-108 (Pragya Persona & Single CRM Booking Alert)
+├─ Persona Separation → ADR-108 (BABU Private Kernel & Pragya Public Digital Assistant)
 ├─ Postmortems → architecture_knowledge (record_type='POSTMORTEM')
 ├─ Lessons → architecture_knowledge (record_type='LESSON')
 ├─ Tradeoffs → architecture_knowledge.tradeoff
