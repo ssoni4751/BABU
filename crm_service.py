@@ -173,6 +173,7 @@ def parse_ist_datetime(
 ) -> Dict[str, Any]:
     """
     Deterministically parses date and time expressions in Indian context (Hindi/English).
+    Requires explicit date AND/OR explicit time signals.
     Validates working window: Mon-Sat, 11:00 AM <= time <= 6:00 PM (18:00).
     """
     if not base_dt:
@@ -180,22 +181,25 @@ def parse_ist_datetime(
     
     date_clean = (date_text or "").strip().lower()
     time_clean = (time_text or "").strip().lower()
+    combined = f"{date_clean} {time_clean}".strip()
     
-    if not date_clean and not time_clean:
+    if not combined:
         return {"valid": False, "reason": "NO_DATETIME_PROVIDED"}
 
     target_date = None
-    target_time_str = None
-    
-    # 1. Parse Date Expression
-    if any(k in date_clean for k in ("aaj", "today")):
+    explicit_date_found = False
+
+    # 1. Explicit Date Expression Parsing
+    if any(k in combined for k in ("aaj", "today")):
         target_date = base_dt.date()
-    elif any(k in date_clean for k in ("kal", "tomorrow")):
+        explicit_date_found = True
+    elif any(k in combined for k in ("kal", "tomorrow")):
         target_date = (base_dt + timedelta(days=1)).date()
-    elif any(k in date_clean for k in ("parso", "day after tomorrow", "day after")):
+        explicit_date_found = True
+    elif any(k in combined for k in ("parso", "day after tomorrow", "day after")):
         target_date = (base_dt + timedelta(days=2)).date()
+        explicit_date_found = True
     else:
-        # Weekday matching (e.g. somwar, monday, friday, etc.)
         weekday_map = {
             "somwar": 0, "monday": 0, "mon": 0,
             "mangalwar": 1, "tuesday": 1, "tue": 1,
@@ -207,7 +211,7 @@ def parse_ist_datetime(
         }
         matched_wd = None
         for k, v in weekday_map.items():
-            if k in date_clean:
+            if re.search(rf'\b{k}\b', combined):
                 matched_wd = v
                 break
         
@@ -217,9 +221,9 @@ def parse_ist_datetime(
             if days_ahead <= 0:
                 days_ahead += 7
             target_date = (base_dt + timedelta(days=days_ahead)).date()
+            explicit_date_found = True
         else:
-            # Try ISO or standard numeric dates (YYYY-MM-DD or DD/MM/YYYY or DD-MM-YYYY)
-            date_match = re.search(r'\b(\d{1,4})[/\-\.](\d{1,2})[/\-\.](\d{1,4})\b', date_clean)
+            date_match = re.search(r'\b(\d{1,4})[/\-\.](\d{1,2})[/\-\.](\d{1,4})\b', combined)
             if date_match:
                 p1, p2, p3 = date_match.groups()
                 try:
@@ -227,42 +231,82 @@ def parse_ist_datetime(
                         target_date = datetime(int(p1), int(p2), int(p3)).date()
                     else: # DD-MM-YYYY
                         target_date = datetime(int(p3), int(p2), int(p1)).date()
+                    explicit_date_found = True
                 except Exception:
                     pass
 
-    # Default to today if date not specified but time is specified
-    if not target_date:
-        if time_clean:
-            target_date = base_dt.date()
-        else:
-            return {"valid": False, "reason": "UNRECOGNIZED_DATE"}
-
-    # 2. Parse Time Expression (e.g. "2 baje", "2 pm", "14:00", "11:30 am", "shaam 4 baje", "6:00 pm")
+    # 2. Explicit Time Expression Parsing
     hour = None
     minute = 0
-    
-    match_time = re.search(r'\b(\d{1,2})(?::([0-5]\d))?\s*(am|pm|baje)?\b', time_clean)
-    if match_time:
-        raw_h = int(match_time.group(1))
-        raw_m = int(match_time.group(2)) if match_time.group(2) else 0
-        
-        is_pm = "pm" in time_clean or any(k in time_clean for k in ("shaam", "dopehar", "afternoon", "evening"))
-        is_am = "am" in time_clean
-        
-        if is_am:
+    explicit_time_found = False
+
+    # a) "2:30 pm", "2 pm", "11 am", "11:00 am"
+    m_ampm = re.search(r'\b(\d{1,2})(?::([0-5]\d))?\s*(am|pm)\b', combined)
+    # b) "2 baje", "11 baje", "12 baje", "2 बजे"
+    m_baje = re.search(r'\b(\d{1,2})\s*(?:baje|बजे)\b', combined)
+    # c) Standard HH:MM 24hr or 12hr e.g. "14:00", "11:30"
+    m_colon = re.search(r'\b([01]?\d|2[0-3]):([0-5]\d)\b', combined)
+    # d) Prefix indicator e.g. "dopehar 2", "shaam 4", "subah 11", "at 3", "slot 2"
+    m_prefix = re.search(r'\b(?:dopehar|shaam|subah|morning|afternoon|evening|slot|time|at)\s*(\d{1,2})\b', combined)
+
+    if m_ampm:
+        raw_h = int(m_ampm.group(1))
+        minute = int(m_ampm.group(2)) if m_ampm.group(2) else 0
+        ampm = m_ampm.group(3).lower()
+        if ampm == "am":
             hour = 0 if raw_h == 12 else raw_h
-        elif is_pm:
+        else:
+            hour = 12 if raw_h == 12 else raw_h + 12
+        explicit_time_found = True
+    elif m_baje:
+        raw_h = int(m_baje.group(1))
+        minute = 0
+        is_pm = any(k in combined for k in ("shaam", "dopehar", "afternoon", "evening", "pm"))
+        if is_pm:
             hour = 12 if raw_h == 12 else (raw_h + 12 if raw_h < 12 else raw_h)
         elif raw_h in (1, 2, 3, 4, 5, 6):
-            # In Indian business context, 1-6 without AM means 1 PM - 6 PM
             hour = raw_h + 12
         else:
             hour = raw_h
-        minute = raw_m
-
-    if hour is None:
-        hour = 12
+        explicit_time_found = True
+    elif m_colon:
+        hour = int(m_colon.group(1))
+        minute = int(m_colon.group(2))
+        explicit_time_found = True
+    elif m_prefix:
+        raw_h = int(m_prefix.group(1))
         minute = 0
+        is_pm = any(k in combined for k in ("shaam", "dopehar", "afternoon", "evening", "pm"))
+        if is_pm or raw_h in (1, 2, 3, 4, 5, 6):
+            hour = 12 if raw_h == 12 else (raw_h + 12 if raw_h < 12 else raw_h)
+        else:
+            hour = raw_h
+        explicit_time_found = True
+
+    # Critical Guard: If NEITHER explicit date nor explicit time was stated, NOT A BOOKING REQUEST!
+    if not explicit_date_found and not explicit_time_found:
+        return {"valid": False, "reason": "NO_DATETIME_PROVIDED"}
+
+    # If only date was found without a specific time
+    if explicit_date_found and not explicit_time_found:
+        display_date = target_date.strftime("%d %b %Y (%A)")
+        return {
+            "valid": False,
+            "reason": "DATE_ONLY_NEED_TIME",
+            "date_str": target_date.strftime("%Y-%m-%d"),
+            "display_date": display_date,
+            "message": f"आप {display_date} को किस समय आना चाहते हैं? (कार्यालय समय: 11:00 AM से 6:00 PM)"
+        }
+
+    # If only time was found without a date: default to today (if still within office hours) or tomorrow
+    if not explicit_date_found and explicit_time_found:
+        curr_hour = base_dt.hour
+        if hour > curr_hour and base_dt.weekday() != 6:
+            target_date = base_dt.date()
+        else:
+            target_date = (base_dt + timedelta(days=1)).date()
+            if target_date.weekday() == 6: # Sunday closed -> Monday
+                target_date = target_date + timedelta(days=1)
 
     target_time_str = f"{hour:02d}:{minute:02d}"
 
@@ -585,26 +629,27 @@ def dispatch_telegram_appointment_alert(
         print("[CRM TELEGRAM ALERT SKIPPED] Missing TELEGRAM_BOT_TOKEN or TELEGRAM_USER_CHAT_ID", flush=True)
         return
 
+    import html
     text = (
-        "🚨 📅 **NEW APPOINTMENT SCHEDULED!**\n"
+        "🚨 📅 <b>NEW APPOINTMENT SCHEDULED!</b>\n"
         "──────────────────────────────\n"
-        f"👤 **Customer:** {lead_name}\n"
-        f"💼 **Service:** `{service}`\n"
-        f"🗓️ **Date:** {scheduled_date}\n"
-        f"⏰ **Time Slot:** {scheduled_time} (Office: 11 AM - 6 PM)\n"
-        f"📞 **Contact:** `{contact_info}`\n"
-        f"🌐 **Channel:** {channel}\n"
-        f"🆔 **Lead ID:** `{lead_id}`\n"
+        f"👤 <b>Customer:</b> {html.escape(str(lead_name))}\n"
+        f"💼 <b>Service:</b> <code>{html.escape(str(service))}</code>\n"
+        f"🗓️ <b>Date:</b> {html.escape(str(scheduled_date))}\n"
+        f"⏰ <b>Time Slot:</b> {html.escape(str(scheduled_time))} (Office: 11 AM - 6 PM)\n"
+        f"📞 <b>Contact:</b> <code>{html.escape(str(contact_info))}</code>\n"
+        f"🌐 <b>Channel:</b> {html.escape(str(channel))}\n"
+        f"🆔 <b>Lead ID:</b> <code>{html.escape(str(lead_id))}</code>\n"
         "──────────────────────────────\n"
-        "📍 *Venue: Kaushal Market, Rath Road, Orai*\n"
-        "💡 *View and manage in CRM Desk: /crm*"
+        "📍 <i>Venue: Kaushal Market, Rath Road, Orai</i>\n"
+        "💡 <i>View and manage in CRM Desk: /crm</i>"
     )
     
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {
         "chat_id": owner_chat_id,
         "text": text,
-        "parse_mode": "Markdown"
+        "parse_mode": "HTML"
     }
     try:
         res = requests.post(url, json=payload, timeout=10)

@@ -113,13 +113,14 @@ def send_owner_client_alert(headline: str, client_name: str, username: str, deta
     if not PRIVATE_BOT_TOKEN or not TELEGRAM_USER_CHAT_ID:
         return
     
-    user_tag = f"@{username}" if username else "No username"
-    phone_line = f"\n📞 **Phone:** `{phone}`" if phone else ""
+    import html
+    user_tag = f"@{html.escape(username)}" if username else "No username"
+    phone_line = f"\n📞 <b>Phone:</b> <code>{html.escape(phone)}</code>" if phone else ""
     text = (
-        f"🔔 **{headline}**\n"
+        f"🔔 <b>{html.escape(headline)}</b>\n"
         f"──────────────────────────────\n"
-        f"👤 **Client:** {client_name} ({user_tag}){phone_line}\n"
-        f"💬 **Details:**\n{details}\n"
+        f"👤 <b>Client:</b> {html.escape(client_name)} ({user_tag}){phone_line}\n"
+        f"💬 <b>Details:</b>\n{html.escape(details)}\n"
         f"──────────────────────────────\n"
         f"🌐 Channel: Public Telegram Bot (@Anshu4751_bot)\n"
         f"⏰ Time: {datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=5, minutes=30))).strftime('%d %b %Y, %I:%M %p IST')}"
@@ -127,7 +128,7 @@ def send_owner_client_alert(headline: str, client_name: str, username: str, deta
     import requests
     url = f"https://api.telegram.org/bot{PRIVATE_BOT_TOKEN}/sendMessage"
     try:
-        requests.post(url, json={"chat_id": TELEGRAM_USER_CHAT_ID, "text": text, "parse_mode": "Markdown"}, timeout=8)
+        requests.post(url, json={"chat_id": TELEGRAM_USER_CHAT_ID, "text": text, "parse_mode": "HTML"}, timeout=8)
     except Exception as e:
         print(f"[PUBLIC BOT ALERT ERROR] {e}", flush=True)
 
@@ -452,12 +453,30 @@ async def on_public_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # STEP 2: CONTACT INTAKE & FREEZE
     phone_is_frozen = bool(existing_phone and re.search(r'\b[6-9]\d{9}\b', str(existing_phone)))
 
+    # If the user provides a phone number in this message:
     if extracted_phone and not phone_is_frozen:
         freeze_lead_contact(lead_id, extracted_phone)
-        lead = get_or_create_lead(sender_id, client_name, "PUBLIC_TELEGRAM")
+        lead = get_lead_by_source_ref(sender_id) or lead
         existing_phone = lead.get("contact_info", extracted_phone)
         phone_is_frozen = True
         lead_status = "AWAITING_APPOINTMENT"
+
+        # Check if the user ALSO explicitly specified an appointment slot in this message
+        dt_res = parse_ist_datetime(text, text)
+        if not dt_res.get("valid"):
+            # User just sent their contact number! Prompt for appointment day and time, and wait!
+            svc_name = SERVICE_TITLES.get(current_service, current_service)
+            reply = (
+                f"✅ **मोबाइल नंबर सुरक्षित कर लिया गया है:** `{existing_phone}`\n"
+                f"💼 **सेवा श्रेणी:** **{svc_name}**\n\n"
+                f"📅 **परामर्श अपॉइंटमेंट बुकिंग:**\n"
+                f"कृपया कार्यालय आने के लिए अपना पसंदीदा **दिन और समय** बताएं।\n"
+                f"(कार्यालय समय: सोमवार से शनिवार, सुबह 11:00 बजे से शाम 6:00 बजे तक, कौशल मार्केट, राठ रोड, उरई)\n\n"
+                f"उदाहरण: *कल दोपहर 2 बजे*, *सोमवार शाम 4 बजे*, आदि।"
+            )
+            await update.message.reply_text(reply, parse_mode="Markdown")
+            ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=existing_phone, source_ref=sender_id, notes=f"Public bot: Contact frozen, asked for slot for {current_service}")
+            return
 
     if not phone_is_frozen:
         # Service is frozen, but phone number is still missing
@@ -469,7 +488,7 @@ async def on_public_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💼 **चयनित सेवा:** {svc_name}\n\n"
             f"👉 **आवश्यक विवरण:** आपकी फाइल तैयार करने व परामर्श अपॉइंटमेंट दर्ज करने के लिए कृपया अपना **10 अंकों का मोबाइल नंबर** (Mobile Number) यहाँ लिखकर भेजें।"
         )
-        await update.message.reply_text(reply)
+        await update.message.reply_text(reply, parse_mode="Markdown")
         ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=f"@{username}" if username else None, source_ref=sender_id, notes=f"Public bot: Awaiting mobile number for {current_service}")
         return
 
@@ -501,29 +520,28 @@ async def on_public_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(reply, parse_mode="Markdown")
             ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=existing_phone, source_ref=sender_id, notes=f"Public bot: Outside hours rejected ({req_time})")
             return
+        elif reason == "DATE_ONLY_NEED_TIME":
+            display_date = dt_res.get("display_date", "उक्त तिथि")
+            reply = (
+                f"📅 आपने **{display_date}** का दिन चुना है।\n\n"
+                f"👉 कृपया बताएं आप **किस समय** आना चाहते हैं?\n"
+                f"(कार्यालय समय: सुबह 11:00 बजे से शाम 6:00 बजे के बीच, जैसे *दोपहर 2:00 बजे* या *शाम 4 PM*)"
+            )
+            await update.message.reply_text(reply, parse_mode="Markdown")
+            ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=existing_phone, source_ref=sender_id, notes=f"Public bot: Prompted time for {display_date}")
+            return
         else:
-            # Client did not provide a specific date/time expression; prompt for appointment or answer query
-            is_pure_contact = bool(extracted_phone) and len(text.strip()) <= 15
-            if is_pure_contact:
-                reply = (
-                    f"✅ **मोबाइल नंबर सुरक्षित कर लिया गया है:** `{existing_phone}`\n"
-                    f"💼 **सेवा श्रेणी:** **{svc_name}**\n\n"
-                    f"📅 **परामर्श अपॉइंटमेंट बुकिंग:**\n"
-                    f"कृपया कार्यालय आने के लिए अपना पसंदीदा **दिन और समय** बताएं।\n"
-                    f"(कार्यालय समय: सोमवार से शनिवार, सुबह 11:00 बजे से शाम 6:00 बजे, कौशल मार्केट, राठ रोड, उरई)\n\n"
-                    f"उदाहरण: *कल दोपहर 2 बजे*, *सोमवार शाम 4 बजे*, आदि।"
-                )
-            else:
-                ai_reply = generate_public_ai_reply(text, client_name, current_service)
-                reply = (
-                    f"{ai_reply}\n\n"
-                    f"──────────────────────────────\n"
-                    f"💼 **सेवा:** {svc_name}\n"
-                    f"📞 **मोबाइल:** `{existing_phone}`\n\n"
-                    f"📅 **कार्यालय परामर्श अपॉइंटमेंट:**\n"
-                    f"कंसल्टेंट शुभम जी से मिलने हेतु कृपया अपना पसंदीदा **दिन और समय** बताएं (सोम-शनि, 11 AM - 6 PM)।\n"
-                    f"उदाहरण: *कल दोपहर 2 बजे*, *सोमवार 3 PM*।"
-                )
+            # Client did not provide a specific date/time expression; answer query and prompt for appointment
+            ai_reply = generate_public_ai_reply(text, client_name, current_service)
+            reply = (
+                f"{ai_reply}\n\n"
+                f"──────────────────────────────\n"
+                f"💼 **सेवा:** {svc_name}\n"
+                f"📞 **दर्ज मोबाइल:** `{existing_phone}`\n\n"
+                f"📅 **कार्यालय परामर्श अपॉइंटमेंट:**\n"
+                f"कंसल्टेंट शुभम जी से मिलने हेतु कृपया अपना पसंदीदा **दिन और समय** बताएं (सोम-शनि, 11 AM - 6 PM)।\n"
+                f"उदाहरण: *कल दोपहर 2 बजे*, *सोमवार शाम 4 बजे*।"
+            )
             await update.message.reply_text(reply, parse_mode="Markdown")
             ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=existing_phone, source_ref=sender_id, notes=f"Public bot: Prompted appointment slot for {current_service}")
             return

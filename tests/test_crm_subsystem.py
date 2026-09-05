@@ -105,6 +105,16 @@ class TestCRMSubsystem(unittest.TestCase):
         self.assertTrue(p5_close["valid"])
         self.assertEqual(p5_close["time_str"], "18:00")
 
+        # 6. Phone number isolation: Pure phone number must NEVER be parsed as a datetime
+        p6_phone = parse_ist_datetime("7217646676", "7217646676", base_dt=base_anchor)
+        self.assertFalse(p6_phone["valid"])
+        self.assertEqual(p6_phone["reason"], "NO_DATETIME_PROVIDED")
+
+        # 7. Date only without time: must ask for time
+        p7_date_only = parse_ist_datetime("kal", "kal", base_dt=base_anchor)
+        self.assertFalse(p7_date_only["valid"])
+        self.assertEqual(p7_date_only["reason"], "DATE_ONLY_NEED_TIME")
+
     def test_slot_availability_and_conflict_detection(self):
         # Ingest lead & book a slot
         ingest_res = ingest_lead(
