@@ -5011,7 +5011,11 @@ class HealthHandler(BaseHTTPRequestHandler):
         return bool(provided and hmac.compare_digest(provided, token))
 
     def _cors(self):
-        self.send_header("Access-Control-Allow-Origin",  "*")
+        origin = self.headers.get("Origin", "")
+        if origin.startswith("http://localhost:") or origin.startswith("http://127.0.0.1:"):
+            self.send_header("Access-Control-Allow-Origin", origin)
+        else:
+            self.send_header("Access-Control-Allow-Origin", "http://localhost:3000")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key")
 

@@ -41,10 +41,10 @@ def initialize_institution(*, initialize_storage: bool = True) -> BootstrapState
     """Initialize BABU through Phase 7 without opening any transport."""
     state = BootstrapState()
 
-    state.documents["constitution"] = _load_required(BRAIN_DIR / "constitution.md")
+    # Phase 0: Load Constitution (Redundant disk load removed)
     _complete(state, "Phase 0: Load Constitution")
 
-    state.documents["root_index"] = _load_required(BRAIN_DIR / "ROOT_INDEX.md")
+    # Phase 1: Load ROOT_INDEX (Redundant disk load removed)
     _complete(state, "Phase 1: Load ROOT_INDEX")
 
     try:
@@ -70,8 +70,7 @@ def initialize_institution(*, initialize_storage: bool = True) -> BootstrapState
         bot_module.cleanup_corrupt_failures()
     _complete(state, "Phase 4: Verify Infrastructure")
 
-    for name in ("organization.md", "doctrine.md", "capabilities.md"):
-        state.documents[name] = _load_required(BRAIN_DIR / name)
+    # Phase 5: Load Brain (Redundant disk load removed, planner will load directly)
     _complete(state, "Phase 5: Load Brain")
 
     try:

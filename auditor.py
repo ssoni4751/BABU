@@ -251,8 +251,15 @@ def verify_source_authority(worker_result: str, scoped_context: dict, category: 
     the worker result does not contain facts (numbers, capitalized words) fabricated by the model
     (AUTHORITY_MODEL) that are not present in the allowed local sources.
     """
-    # Deterministic validation is bypassed to rely on the LLM semantic auditor,
-    # preventing false positives on standard vocabulary and formatting.
+    if not scoped_context:
+        # If context is empty, the worker should be refusing to answer or stating data is unavailable.
+        result_lower = worker_result.lower()
+        if "mere paas" not in result_lower and "unavail" not in result_lower and "not found" not in result_lower:
+            import re
+            # Check for hallucinated numbers or multiple proper nouns
+            if re.search(r'\d+', worker_result) or len(re.findall(r'\b[A-Z][a-z]+\b', worker_result)) > 3:
+                return False, "Source Authority Violation: Data (names/numbers) generated without any provided local context."
+                
     return True, "Deterministic source authority validation passed."
 
 
