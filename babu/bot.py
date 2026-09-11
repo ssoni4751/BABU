@@ -5583,6 +5583,15 @@ class HealthHandler(BaseHTTPRequestHandler):
                                 _pending_actions[sid] = pending
                             db_save_pending_action(sid, pending)
                             reply = f"Action execution failed.\n\n{result_msg}\n\nYou can type '2' / 'confirm' again to retry, or '0' / 'cancel' to discard." if is_class_c else f"Action execution failed.\n\n{result_msg}\n\nYou can type '1' / 'approve' again to retry, or '0' / 'cancel' to discard."
+                        
+                        response = json.dumps({"reply": reply, "gear": "DYNAMIC", "has_pending": False}).encode()
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/json")
+                        self.send_header("Content-Length", str(len(response)))
+                        self._cors()
+                        self.end_headers()
+                        self.wfile.write(response)
+                        return
                 
                 # Check pending status
                 with _pending_actions_lock:
