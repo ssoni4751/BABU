@@ -5500,11 +5500,6 @@ class HealthHandler(BaseHTTPRequestHandler):
                     self.wfile.write(response)
                     return
 
-            # Check for pending action in _pending_actions
-            # Pop draft/action immediately under lock to prevent concurrent duplicate execution
-            with _pending_actions_lock:
-                pending = _pending_actions.pop(sid, None)
-
             # Get pending first without popping
             with _pending_actions_lock:
                 pending = _pending_actions.get(sid)
