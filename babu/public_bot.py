@@ -300,7 +300,7 @@ def evaluate_pragya_funnel(client_text: str, lead: dict) -> tuple[str, dict]:
     notes = lead.get("notes", "") or ""
     state = {}
     try:
-        import re, json
+        import re
         matches = list(re.finditer(r'\[PRAGYA_STATE:\s*({.*?})\]', notes))
         if matches:
             last_match = matches[-1]

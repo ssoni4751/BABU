@@ -5421,7 +5421,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                         notes = lead.get("notes", "") or ""
                         state = {}
                         try:
-                            import re, json
+                            import re
                             matches = list(re.finditer(r'\[PRAGYA_STATE:\s*({.*?})\]', notes))
                             if matches:
                                 # Always use the LAST state block as it has the most updated data
