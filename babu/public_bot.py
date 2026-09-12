@@ -354,7 +354,8 @@ Only ask for the NEXT missing requirement. Always reply in polite conversational
 
 INSTRUCTIONS:
 - Analyze the user's latest message.
-- If they provided information for a MISSING step, acknowledge it and ask the question for the VERY NEXT missing step.
+- If they provided ANY information for a MISSING step (like a date, time, or phone number), you MUST immediately extract it in the JSON block at the end. DO NOT ask for confirmation before extracting.
+- Acknowledge their input, and ask the question for the VERY NEXT missing step.
 - DO NOT ask for mobile number until Date & Time are confirmed.
 - At the VERY END of your reply, you MUST output a JSON block updating the state. 
 - *CRITICAL RULE*: ONLY include fields in the JSON block that the user JUST PROVIDED in this exact turn. DO NOT include fields that are already known/filled in the CURRENT CRM STATE above. For example, if Name is already known, NEVER output "name" in the JSON.
