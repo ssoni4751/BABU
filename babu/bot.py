@@ -5395,6 +5395,11 @@ class HealthHandler(BaseHTTPRequestHandler):
 
                 lead = get_or_create_lead(sid, client_name, "PUBLIC_WEB")
                 
+                # If the DB already has a real name, use it instead of the generic payload name
+                db_name = lead.get("name", "")
+                if db_name and not any(x in db_name.lower() for x in ("customer", "user", "client", "visitor", "website")):
+                    client_name = db_name
+                
                 reply_text, updates = evaluate_pragya_funnel(msg, lead)
                 
                 # Apply updates from AI to CRM
@@ -5416,11 +5421,14 @@ class HealthHandler(BaseHTTPRequestHandler):
                         notes = lead.get("notes", "") or ""
                         state = {}
                         try:
-                            import re
-                            match = re.search(r'\[PRAGYA_STATE:\s*({.*?})\]', notes)
-                            if match:
-                                state = json.loads(match.group(1))
-                                notes = notes.replace(match.group(0), "").strip()
+                            import re, json
+                            matches = list(re.finditer(r'\[PRAGYA_STATE:\s*({.*?})\]', notes))
+                            if matches:
+                                # Always use the LAST state block as it has the most updated data
+                                last_match = matches[-1]
+                                state = json.loads(last_match.group(1))
+                                # Clean up notes by removing ALL state blocks
+                                notes = re.sub(r'\[PRAGYA_STATE:\s*({.*?})\]', '', notes).strip()
                         except:
                             pass
                         

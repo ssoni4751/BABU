@@ -298,13 +298,13 @@ def evaluate_pragya_funnel(client_text: str, lead: dict) -> tuple[str, dict]:
         service = "MISSING"
     phone = lead.get("contact_info", "")
     notes = lead.get("notes", "") or ""
-    
-    # Parse custom JSON state from notes
     state = {}
     try:
-        match = re.search(r'\[PRAGYA_STATE:\s*({.*?})\]', notes)
-        if match:
-            state = json.loads(match.group(1))
+        import re, json
+        matches = list(re.finditer(r'\[PRAGYA_STATE:\s*({.*?})\]', notes))
+        if matches:
+            last_match = matches[-1]
+            state = json.loads(last_match.group(1))
     except:
         pass
 
