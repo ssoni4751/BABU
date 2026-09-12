@@ -5388,47 +5388,126 @@ class HealthHandler(BaseHTTPRequestHandler):
 
                 try:
                     from .crm_service import get_or_create_lead, ingest_lead
-                    from .public_bot import generate_public_ai_reply
+                    from .public_bot import evaluate_pragya_funnel
                 except ImportError:
                     from crm_service import get_or_create_lead, ingest_lead
-                    from public_bot import generate_public_ai_reply
+                    from public_bot import evaluate_pragya_funnel
 
                 lead = get_or_create_lead(sid, client_name, "PUBLIC_WEB")
-                current_service = lead.get("service_category", "General")
-                existing_phone = lead.get("contact_info", "")
-
-                phone_match = re.search(r'\b(?:(?:\+91|0)?[6-9]\d{9})\b', msg)
-                extracted_phone = phone_match.group(0) if phone_match else None
-                contact_frozen = bool(existing_phone and re.search(r'\b[6-9]\d{9}\b', str(existing_phone)))
                 
-                reply_text = ""
-                if extracted_phone and not contact_frozen:
+                reply_text, updates = evaluate_pragya_funnel(msg, lead)
+                
+                # Apply updates from AI to CRM
+                if updates:
                     try:
-                        from .crm_service import freeze_lead_contact
+                        from .services import get_db_connection
                     except ImportError:
-                        from crm_service import freeze_lead_contact
-                    lead_id = lead["lead_id"]
-                    freeze_lead_contact(lead_id, extracted_phone)
-                    existing_phone = extracted_phone
-                    reply_text = f"धन्यवाद {client_name} जी! ✅ आपका मोबाइल नंबर सुरक्षित कर लिया गया है: {existing_phone}\nबताएं मैं आपकी कैसे सहायता कर सकती हूँ?"
-                else:
-                    if any(k in msg.lower() for k in ("aadhaar", "aadhar", "adhar", "uidai", "rashan", "ration", "driving license", "dl renewal")):
-                        reply_text = (
-                            f"नमस्ते {client_name} जी! अंशु कंप्यूटर एंड टैक्स कंसल्टेंसी में आधार कार्ड संशोधन (Aadhaar Card Update), "
-                            f"राशन कार्ड या ड्राइविंग लाइसेंस की सुविधा उपलब्ध नहीं है।\n\n"
-                            f"हमारी मुख्य सेवाएं PF, Income Tax, GST, और MSME/पैन कार्ड हैं। बताएं, इनमें से किस कार्य में आपकी सहायता कर सकते हैं?"
+                        from services import get_db_connection
+                    
+                    conn, is_pg = get_db_connection()
+                    if conn:
+                        cur = conn.cursor()
+                        # Extract updates
+                        new_name = updates.get("name")
+                        new_service = updates.get("service")
+                        new_phone = updates.get("phone")
+                        
+                        # Process state (mode, datetime) into notes
+                        notes = lead.get("notes", "") or ""
+                        state = {}
+                        try:
+                            import re
+                            match = re.search(r'\[PRAGYA_STATE:\s*({.*?})\]', notes)
+                            if match:
+                                state = json.loads(match.group(1))
+                                notes = notes.replace(match.group(0), "").strip()
+                        except:
+                            pass
+                        
+                        if "mode" in updates: state["mode"] = updates["mode"]
+                        if "datetime" in updates: state["datetime"] = updates["datetime"]
+                        
+                        new_notes = notes + f" [PRAGYA_STATE: {json.dumps(state)}]" if state else notes
+                        
+                        # Build UPDATE query dynamically
+                        set_clauses = []
+                        params = []
+                        if new_name and new_name.lower() not in ("customer", "user", "client"):
+                            set_clauses.append("name = %s" if is_pg else "name = ?")
+                            params.append(new_name)
+                            client_name = new_name
+                        if new_service and new_service != "MISSING":
+                            set_clauses.append("service_category = %s" if is_pg else "service_category = ?")
+                            params.append(new_service)
+                        if new_phone:
+                            set_clauses.append("contact_info = %s" if is_pg else "contact_info = ?")
+                            params.append(new_phone)
+                        
+                        set_clauses.append("notes = %s" if is_pg else "notes = ?")
+                        params.append(new_notes)
+                        
+                        if set_clauses:
+                            params.append(lead["lead_id"])
+                            query = f"UPDATE babu_leads SET {', '.join(set_clauses)} WHERE lead_id = {'%s' if is_pg else '?'}"
+                            cur.execute(query, tuple(params))
+                            conn.commit()
+                        cur.close()
+                        conn.close()
+                        
+                        # Check if all 5 requirements are met
+                        final_name = new_name or lead.get("name")
+                        final_service = new_service or lead.get("service_category")
+                        final_phone = new_phone or lead.get("contact_info")
+                        final_mode = state.get("mode")
+                        final_dt = state.get("datetime")
+                        
+                        is_complete = (
+                            final_name and final_name.lower() not in ("customer", "user", "client") and
+                            final_service and final_service not in ("MISSING", "Overview", "") and
+                            final_phone and re.search(r'\b[6-9]\d{9}\b', str(final_phone)) and
+                            final_mode and final_mode != "MISSING" and
+                            final_dt and final_dt != "MISSING"
                         )
-                    else:
-                        reply_text = generate_public_ai_reply(msg, client_name, current_service)
+                        
+                        if is_complete and not "appointment booked" in notes.lower():
+                            try:
+                                from .crm_service import commit_crm_appointment
+                            except ImportError:
+                                from crm_service import commit_crm_appointment
+                            
+                            # Default to next day 11 AM if exact parsing is complex, or let Babu's parse_ist_datetime handle it.
+                            # For simplicity, we just pass the string to commit_crm_appointment.
+                            try:
+                                from .crm_service import parse_ist_datetime
+                            except ImportError:
+                                from crm_service import parse_ist_datetime
+                                
+                            parsed_dt = parse_ist_datetime(final_dt, final_dt)
+                            date_val = parsed_dt.get("date_str") if parsed_dt.get("valid") else "2026-10-10"
+                            time_val = parsed_dt.get("time_str") if parsed_dt.get("valid") else "11:00"
+                            
+                            res = commit_crm_appointment(
+                                lead_id=lead["lead_id"],
+                                date_str=date_val,
+                                time_str=time_val,
+                                purpose=f"{final_mode} Consultation for {final_service}",
+                                notes=f"Pragya automated booking"
+                            )
+                            if res.get("status") == "SUCCESS":
+                                reply_text += f"\n\n🎉 आपकी अपॉइंटमेंट {final_dt} के लिए सफलतापूर्वक बुक हो गई है! कृपया समय पर उपस्थित हों।"
+                            else:
+                                reply_text += "\n\n⚠️ क्षमा करें, वह समय उपलब्ध नहीं है। कृपया कोई अन्य समय बताएं।"
+
                 
+                # Finally ingest the interaction
                 ingest_lead(
                     name=client_name, 
                     channel="PUBLIC_WEB", 
                     user_message=msg, 
                     assistant_reply=reply_text, 
-                    contact_info=existing_phone if existing_phone else None, 
+                    contact_info=updates.get("phone") or lead.get("contact_info"), 
                     source_ref=sid, 
-                    notes="Web Chat Interaction"
+                    notes="Web widget conversation step"
                 )
 
                 response = json.dumps({"reply": reply_text, "session_id": sid}).encode()
