@@ -130,16 +130,6 @@ def open_transports(state: BootstrapState) -> None:
     except Exception as pub_err:
         print(f"[BOOTSTRAP WARNING] Could not start public bot thread: {pub_err}", flush=True)
 
-    # Launch Pragya Web API for Website Integration
-    def start_web_api():
-        import uvicorn
-        port = int(os.environ.get("PORT", 8000))
-        print(f"[BOOTSTRAP] Starting Pragya Web API on port {port}...", flush=True)
-        uvicorn.run("web_api:app", host="0.0.0.0", port=port, log_level="warning")
-    
-    web_api_thread = threading.Thread(target=start_web_api, name="pragya_web_api_server", daemon=True)
-    web_api_thread.start()
-
     bot = ApplicationBuilder().token(bot_module.TELEGRAM_TOKEN).build()
     bot_module.tg_application = bot
     bot_module.start_social_scheduler(bot)

@@ -5374,6 +5374,83 @@ class HealthHandler(BaseHTTPRequestHandler):
                 self.wfile.write(err)
             return
 
+        elif self.path == "/api/public_chat":
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(length))
+                msg = str(body.get("message", "")).strip()
+                client_name = str(body.get("client_name", "Customer")).strip()
+                sid = str(body.get("session_id", "")).strip()
+                
+                if not sid:
+                    import uuid
+                    sid = f"web_{uuid.uuid4().hex[:12]}"
+
+                if not msg:
+                    raise ValueError("empty message")
+
+                try:
+                    from .crm_service import get_or_create_lead, ingest_lead
+                    from .public_bot import generate_public_ai_reply
+                except ImportError:
+                    from crm_service import get_or_create_lead, ingest_lead
+                    from public_bot import generate_public_ai_reply
+
+                lead = get_or_create_lead(sid, client_name, "PUBLIC_WEB")
+                current_service = lead.get("service_category", "General")
+                existing_phone = lead.get("contact_info", "")
+
+                phone_match = re.search(r'\b(?:(?:\+91|0)?[6-9]\d{9})\b', msg)
+                extracted_phone = phone_match.group(0) if phone_match else None
+                contact_frozen = bool(existing_phone and re.search(r'\b[6-9]\d{9}\b', str(existing_phone)))
+                
+                reply_text = ""
+                if extracted_phone and not contact_frozen:
+                    try:
+                        from .crm_service import freeze_lead_contact
+                    except ImportError:
+                        from crm_service import freeze_lead_contact
+                    lead_id = lead["lead_id"]
+                    freeze_lead_contact(lead_id, extracted_phone)
+                    existing_phone = extracted_phone
+                    reply_text = f"धन्यवाद {client_name} जी! ✅ आपका मोबाइल नंबर सुरक्षित कर लिया गया है: {existing_phone}\nबताएं मैं आपकी कैसे सहायता कर सकती हूँ?"
+                else:
+                    if any(k in msg.lower() for k in ("aadhaar", "aadhar", "adhar", "uidai", "rashan", "ration", "driving license", "dl renewal")):
+                        reply_text = (
+                            f"नमस्ते {client_name} जी! अंशु कंप्यूटर एंड टैक्स कंसल्टेंसी में आधार कार्ड संशोधन (Aadhaar Card Update), "
+                            f"राशन कार्ड या ड्राइविंग लाइसेंस की सुविधा उपलब्ध नहीं है।\n\n"
+                            f"हमारी मुख्य सेवाएं PF, Income Tax, GST, और MSME/पैन कार्ड हैं। बताएं, इनमें से किस कार्य में आपकी सहायता कर सकते हैं?"
+                        )
+                    else:
+                        reply_text = generate_public_ai_reply(msg, client_name, current_service)
+                
+                ingest_lead(
+                    name=client_name, 
+                    channel="PUBLIC_WEB", 
+                    user_message=msg, 
+                    assistant_reply=reply_text, 
+                    contact_info=existing_phone if existing_phone else None, 
+                    source_ref=sid, 
+                    notes="Web Chat Interaction"
+                )
+
+                response = json.dumps({"reply": reply_text, "session_id": sid}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(response)))
+                self._cors()
+                self.end_headers()
+                self.wfile.write(response)
+            except Exception as e:
+                err = json.dumps({"error": str(e)}).encode()
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(err)))
+                self._cors()
+                self.end_headers()
+                self.wfile.write(err)
+            return
+
         if self.path != "/api/chat":
             self.send_response(404)
             self.end_headers()
