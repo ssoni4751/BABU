@@ -5475,8 +5475,6 @@ class HealthHandler(BaseHTTPRequestHandler):
                             except ImportError:
                                 from crm_service import commit_crm_appointment
                             
-                            # Default to next day 11 AM if exact parsing is complex, or let Babu's parse_ist_datetime handle it.
-                            # For simplicity, we just pass the string to commit_crm_appointment.
                             try:
                                 from .crm_service import parse_ist_datetime
                             except ImportError:
@@ -5494,9 +5492,9 @@ class HealthHandler(BaseHTTPRequestHandler):
                                 notes=f"Pragya automated booking"
                             )
                             if res.get("status") == "SUCCESS":
-                                reply_text += f"\n\n🎉 आपकी अपॉइंटमेंट {final_dt} के लिए सफलतापूर्वक बुक हो गई है! कृपया समय पर उपस्थित हों।"
+                                reply_text = f"🎉 आपकी अपॉइंटमेंट {final_dt} के लिए सफलतापूर्वक बुक हो गई है! आपका मोबाइल नंबर ({final_phone}) सुरक्षित कर लिया गया है। कृपया समय पर उपस्थित हों।"
                             else:
-                                reply_text += "\n\n⚠️ क्षमा करें, वह समय उपलब्ध नहीं है। कृपया कोई अन्य समय बताएं।"
+                                reply_text = "⚠️ क्षमा करें, वह समय उपलब्ध नहीं है। कृपया कोई अन्य समय बताएं।"
 
                 
                 # Finally ingest the interaction

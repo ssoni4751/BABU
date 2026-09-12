@@ -309,7 +309,7 @@ def evaluate_pragya_funnel(client_text: str, lead: dict) -> tuple[str, dict]:
         pass
 
     # Ensure generic names are treated as missing
-    is_name_missing = not client_name or any(x in client_name.lower() for x in ("customer", "user", "client"))
+    is_name_missing = not client_name or any(x in client_name.lower() for x in ("customer", "user", "client", "visitor", "website"))
     
     # Check Aadhaar rejection first
     if any(k in client_text.lower() for k in ("aadhaar", "aadhar", "adhar", "uidai", "rashan", "ration", "driving license", "dl renewal")):
@@ -342,7 +342,7 @@ Only ask for the NEXT missing requirement. Always reply in polite conversational
    - If Office Visit: Tell them office timings (Mon-Sat, 11 AM - 6 PM) and ask for a preferred day & time.
    - *CRITICAL*: The office is CLOSED on Sundays. If they ask for Sunday, politely tell them we are closed and ask for a Mon-Sat slot.
 5. MOBILE NUMBER: *CRITICAL* ONLY ASK FOR THIS AFTER Date & Time are fixed! Ask for their 10-digit mobile number.
-6. CONFIRMATION: Once all 5 are collected, confirm the appointment!
+6. CONFIRMATION: If ALL 5 steps above are filled, just say: "धन्यवाद, आपकी जानकारी मिल गई है, मैं अभी अपॉइंटमेंट बुक कर रही हूँ।" DO NOT ask for anything else.
 
 {k_slice}
 ### CURRENT CRM STATE ###
