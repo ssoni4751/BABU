@@ -5421,7 +5421,6 @@ class HealthHandler(BaseHTTPRequestHandler):
                         notes = lead.get("notes", "") or ""
                         state = {}
                         try:
-                            import re
                             matches = list(re.finditer(r'\[PRAGYA_STATE:\s*({.*?})\]', notes))
                             if matches:
                                 # Always use the LAST state block as it has the most updated data
@@ -5521,7 +5520,6 @@ class HealthHandler(BaseHTTPRequestHandler):
                                 reply_text = parsed_dt.get("message", "⚠️ कृपया एक वैध दिन और समय बताएं।")
                                 if "datetime" in state:
                                     del state["datetime"]
-                                    import json, re
                                     clean_notes = re.sub(r'\[PRAGYA_STATE:\s*({.*?})\]', '', notes).strip()
                                     new_notes = clean_notes + f" [PRAGYA_STATE: {json.dumps(state)}]" if state else clean_notes
                                     cur = conn.cursor()
