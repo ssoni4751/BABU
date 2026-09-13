@@ -440,227 +440,158 @@ def generate_public_ai_reply(text: str, client_name: str, service: str) -> str:
         print(f"[AI REPLY ERROR] {e}", flush=True)
         return ""
 
-async def on_public_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Handle all incoming client messages on the public bot using a strict stateful funnel:
-    1. Service Category Selection & Freeze: Force client to choose from 4 authorized categories.
-    2. Contact Collection & Freeze: Focus on securing 10-digit mobile number in CRM.
-    3. Slot-Checked Appointment Booking: Parse preferred day/time (Mon-Sat, 11 AM - 6 PM), check conflicts, commit to CRM/Babu, and dispatch alerts + document checklist.
-    """
-    if not update.message or not update.message.text:
-        return
-        
+async def on_public_message(update, context):
+    if not update.message or not update.message.text: return
     user = update.effective_user
     client_name = user.full_name or user.first_name or "Client"
     username = user.username or ""
     sender_id = f"tg_{user.id}"
-    text = update.message.text.strip()
+    user_text = update.message.text.strip()
     
-    # Check for Aadhaar / Unsupported services first (Fast Intercept)
-    extracted_intent = extract_lead_intent_and_service(text)
-    if extracted_intent.get("is_unsupported") or any(k in text.lower() for k in ("aadhaar", "aadhar", "adhar", "uidai", "rashan", "ration", "driving license", "dl renewal")):
-        reply = (
-            f"नमस्ते {client_name} जी! अंशु कंप्यूटर एंड टैक्स कंसल्टेंसी में आधार कार्ड संशोधन (Aadhaar Card Update), राशन कार्ड या ड्राइविंग लाइसेंस की सुविधा उपलब्ध नहीं है।\n\n"
-            f"कृपया हमारी 4 मुख्य सेवाओं में से चयन करें:\n"
-            f"1. 🏢 **PF Consultancy (Primary Specialization)** - क्लेम, KYC सुधार, UAN ट्रांसफर\n"
-            f"2. 📑 **Tax Services** - इनकम टैक्स रिटर्न (ITR) फाइलिंग व टैक्स कम्प्यूटेशन\n"
-            f"3. 📊 **GST Services** - नया रजिस्ट्रेशन व मासिक रिटर्न (GSTR-1, 3B)\n"
-            f"4. 🌐 **General Services** - MSME उद्यम, जीवन प्रमाण पत्र, पासपोर्ट, पैन कार्ड\n\n"
-            f"नीचे दिए गए बटन पर क्लिक करके अपनी सेवा चुनें:"
-        )
-        await update.message.reply_text(reply, reply_markup=SERVICE_SELECTION_KEYBOARD, parse_mode="Markdown")
-        ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=f"@{username}" if username else None, source_ref=sender_id, notes="Public bot: Unsupported service inquiry")
-        return
-
-    # 1. Fetch or initialize persistent lead state from CRM
+    from crm_service import get_or_create_lead, get_db_connection, ingest_lead, commit_crm_appointment, parse_ist_datetime, REQUIRED_DOCS_BY_SERVICE
+    import re, json
+    
     lead = get_or_create_lead(sender_id, client_name, "PUBLIC_TELEGRAM")
-    lead_id = lead["lead_id"]
-    current_service = lead.get("service_category", "")
-    lead_status = lead.get("status", "AWAITING_SERVICE")
-    existing_phone = lead.get("contact_info", "")
-
-    # Check for 10-digit mobile number in incoming message
-    phone_match = re.search(r'\b(?:(?:\+91|0)?[6-9]\d{9})\b', text)
-    extracted_phone = phone_match.group(0) if phone_match else None
-
-    # Determine if service is currently frozen
-    service_is_frozen = current_service in ("PF", "Tax", "GST", "General") and lead_status not in ("AWAITING_SERVICE", "NEW", "DISCOVERY")
-
-    # STEP 1: SERVICE CATEGORY SELECTION & FREEZE
-    if not service_is_frozen:
-        detected_service = extracted_intent.get("service_category")
-        if detected_service in ("PF", "Tax", "GST", "General"):
-            # Customer mentioned a valid service in text; freeze it now!
-            freeze_lead_service(lead_id, detected_service)
-            current_service = detected_service
-            service_is_frozen = True
-            lead = get_or_create_lead(sender_id, client_name, "PUBLIC_TELEGRAM")
-            lead_status = lead.get("status", "AWAITING_CONTACT")
-            existing_phone = lead.get("contact_info", "")
-        else:
-            # Service not selected yet -> Force selection via 4 catalog buttons
-            reply = (
-                f"नमस्ते {client_name} जी! **{OFFICE_NAME}**, उरई में आपका स्वागत है।\n\n"
-                f"कंसल्टेंट **{CONSULTANT_NAME}** से परामर्श व सेवा शुरू करने के लिए कृपया सबसे पहले अपनी **सेवा श्रेणी** चुनें:\n\n"
-                f"1. 🏢 **PF Consultancy (Primary Specialization)** - क्लेम (Form 19/10C/31), UAN, KYC/DOB सुधार\n"
-                f"2. 📑 **Tax Services** - इनकम टैक्स रिटर्न (ITR-1, 2, 4) फाइलिंग व टैक्स कम्प्यूटेशन\n"
-                f"3. 📊 **GST Services** - नया रजिस्ट्रेशन व मासिक रिटर्न (GSTR-1, 3B)\n"
-                f"4. 🌐 **General Services** - MSME उद्यम, जीवन प्रमाण पत्र, पासपोर्ट, पैन कार्ड\n\n"
-                f"👉 कृपया नीचे दिए गए विकल्पों में से चयन करें:"
-            )
-            await update.message.reply_text(reply, reply_markup=SERVICE_SELECTION_KEYBOARD, parse_mode="Markdown")
-            ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=f"@{username}" if username else None, source_ref=sender_id, notes="Public bot: Awaiting service category")
-            return
-
-    # STEP 2: CONTACT INTAKE & FREEZE
-    phone_is_frozen = bool(existing_phone and re.search(r'\b[6-9]\d{9}\b', str(existing_phone)))
-
-    # If the user provides a phone number in this message:
-    if extracted_phone and not phone_is_frozen:
-        freeze_lead_contact(lead_id, extracted_phone)
-        lead = get_lead_by_source_ref(sender_id) or lead
-        existing_phone = lead.get("contact_info", extracted_phone)
-        phone_is_frozen = True
-        lead_status = "AWAITING_APPOINTMENT"
-
-        # Check if the user ALSO explicitly specified an appointment slot in this message
-        dt_res = parse_ist_datetime(text, text)
-        if not dt_res.get("valid"):
-            # User just sent their contact number! Prompt for appointment day and time, and wait!
-            svc_name = SERVICE_TITLES.get(current_service, current_service)
-            reply = (
-                f"धन्यवाद {client_name} जी! ✅ **आपका मोबाइल नंबर सुरक्षित कर लिया गया है:** `{existing_phone}`\n"
-                f"💼 **सेवा श्रेणी:** **{svc_name}**\n\n"
-                f"📅 **परामर्श अपॉइंटमेंट बुकिंग:**\n"
-                f"कृपया कार्यालय आने के लिए अपना पसंदीदा **दिन और समय** बताएं।\n"
-                f"(कार्यालय समय: सोमवार से शनिवार, सुबह 11:00 बजे से शाम 6:00 बजे तक, कौशल मार्केट, राठ रोड, उरई)\n\n"
-                f"उदाहरण: *कल दोपहर 2 बजे*, *सोमवार शाम 4 बजे*, आदि।"
-            )
-            await update.message.reply_text(reply, parse_mode="Markdown")
-            ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=existing_phone, source_ref=sender_id, notes=f"Public bot: Contact frozen, asked for slot for {current_service}")
-            return
-
-    if not phone_is_frozen:
-        # Service is frozen, but phone number is still missing
-        svc_name = SERVICE_TITLES.get(current_service, current_service)
-        ai_reply = generate_public_ai_reply(text, client_name, current_service)
-        reply = (
-            f"नमस्ते {client_name} जी!\n\n"
-            f"{ai_reply}\n\n"
-            f"──────────────────────────────\n"
-            f"💼 **चयनित सेवा:** {svc_name}\n\n"
-            f"👉 **आवश्यक विवरण:** आपकी फाइल तैयार करने व परामर्श अपॉइंटमेंट दर्ज करने के लिए कृपया अपना **10 अंकों का मोबाइल नंबर** (Mobile Number) यहाँ लिखकर भेजें।"
-        )
-        await update.message.reply_text(reply, parse_mode="Markdown")
-        ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=f"@{username}" if username else None, source_ref=sender_id, notes=f"Public bot: Awaiting mobile number for {current_service}")
-        return
-
-    # STEP 3: APPOINTMENT SCHEDULING (Both Service & Mobile are frozen)
-    svc_name = SERVICE_TITLES.get(current_service, current_service)
+    notes = lead.get("notes") or ""
     
-    # Try parsing date/time from the client's message
-    dt_res = parse_ist_datetime(text, text)
+    state = {}
+    matches = list(re.finditer(r'\[PRAGYA_STATE:\s*({.*?})\]', notes))
+    if matches:
+        try:
+            state = json.loads(matches[-1].group(1))
+        except:
+            pass
+    reply_text, updates = evaluate_pragya_funnel(user_text, lead)
     
-    if not dt_res.get("valid"):
-        reason = dt_res.get("reason")
-        if reason == "SUNDAY_CLOSED":
-            reply = (
-                f"⚠️ **क्षमा करें, रविवार (Sunday) को हमारा कार्यालय बंद रहता है।**\n\n"
-                f"🕒 **कार्यालय समय:** सोमवार से शनिवार, सुबह 11:00 बजे से शाम 6:00 बजे तक।\n"
-                f"📍 स्थान: कौशल मार्केट, राठ रोड, उरई।\n\n"
-                f"कृपया सोमवार से शनिवार के बीच कोई अन्य दिन या समय बताएं (जैसे *सोमवार दोपहर 2:00 बजे*)।"
-            )
-            await update.message.reply_text(reply, parse_mode="Markdown")
-            ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=existing_phone, source_ref=sender_id, notes="Public bot: Sunday appointment rejected")
-            return
-        elif reason == "OUTSIDE_WORKING_HOURS":
-            req_time = dt_res.get("time_str", "")
-            reply = (
-                f"⚠️ **कार्यालय समय सुबह 11:00 बजे से शाम 6:00 बजे तक ही है।**\n\n"
-                f"आपके द्वारा चुना गया समय ({req_time}) कार्यालय समय के बाहर है।\n"
-                f"कृपया 11:00 AM से 6:00 PM के बीच का कोई समय बताएं (उदा. *सोमवार 12:00 PM* या *कल 3:30 PM*)।"
-            )
-            await update.message.reply_text(reply, parse_mode="Markdown")
-            ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=existing_phone, source_ref=sender_id, notes=f"Public bot: Outside hours rejected ({req_time})")
-            return
-        elif reason == "DATE_ONLY_NEED_TIME":
-            display_date = dt_res.get("display_date", "उक्त तिथि")
-            reply = (
-                f"📅 {client_name} जी, आपने **{display_date}** का दिन चुना है।\n\n"
-                f"👉 कृपया बताएं आप **किस समय** आना चाहते हैं?\n"
-                f"(कार्यालय समय: सुबह 11:00 बजे से शाम 6:00 बजे के बीच, जैसे *दोपहर 2:00 बजे* या *शाम 4 PM*)"
-            )
-            await update.message.reply_text(reply, parse_mode="Markdown")
-            ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=existing_phone, source_ref=sender_id, notes=f"Public bot: Prompted time for {display_date}")
-            return
-        else:
-            # Client did not provide a specific date/time expression; answer query and prompt for appointment
-            ai_reply = generate_public_ai_reply(text, client_name, current_service)
-            reply = (
-                f"नमस्ते {client_name} जी!\n\n"
-                f"{ai_reply}\n\n"
-                f"──────────────────────────────\n"
-                f"💼 **सेवा:** {svc_name}\n"
-                f"📞 **दर्ज मोबाइल:** `{existing_phone}`\n\n"
-                f"📅 **कार्यालय परामर्श अपॉइंटमेंट:**\n"
-                f"कंसल्टेंट शुभम जी से मिलने हेतु कृपया अपना पसंदीदा **दिन और समय** बताएं (सोम-शनि, 11 AM - 6 PM)।\n"
-                f"उदाहरण: *कल दोपहर 2 बजे*, *सोमवार शाम 4 बजे*।"
-            )
-            await update.message.reply_text(reply, parse_mode="Markdown")
-            ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=existing_phone, source_ref=sender_id, notes=f"Public bot: Prompted appointment slot for {current_service}")
-            return
-
-    # Valid datetime parsed! Check slot availability
-    avail_ok, alt_slots = check_slot_availability(dt_res["date_str"], dt_res["time_str"])
-    if not avail_ok:
-        alt_str = ", ".join(alt_slots) if alt_slots else "सुबह 11:00 से शाम 6:00 बजे के बीच कोई अन्य समय"
-        reply = (
-            f"⚠️ {client_name} जी, क्षमा करें, {dt_res['display_date']} को {dt_res['display_time']} का स्लॉट पहले से व्यस्त (आरक्षित) है।\n\n"
-            f"उपलब्ध समय विकल्प:\n• {alt_str}\n\n"
-            f"कृपया बताएं, क्या आप इनमें से किसी समय आना चाहेंगे?"
-        )
-        await update.message.reply_text(reply, parse_mode="Markdown")
-        ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=existing_phone, source_ref=sender_id, notes=f"Public bot: Slot conflict at {dt_res['iso_timestamp']}")
-        return
-
-    # Slot is available! Commit appointment to CRM & Babu Central Brain
-    commit_res = commit_crm_appointment(
-        lead_id=lead_id,
-        date_str=dt_res["date_str"],
-        time_str=dt_res["time_str"],
-        purpose=f"{current_service} Consultation ({text[:50]})",
-        notes=f"Public bot booking by {client_name} (@{username})"
+    if updates:
+        if "mode" in updates: state["mode"] = updates["mode"]
+        dt_val = (updates.get("datetime") or updates.get("date") or updates.get("time") or updates.get("appointment") or updates.get("appointment_time") or updates.get("Date & Time"))
+        if dt_val: state["datetime"] = dt_val
+        ph_val = updates.get("phone") or updates.get("mobile") or updates.get("phone_number")
+        if ph_val: updates["phone"] = ph_val
+        
+        new_name = updates.get("name")
+        new_service = updates.get("service")
+        new_phone = updates.get("phone")
+        
+        new_notes = re.sub(r'\[PRAGYA_STATE:\s*({.*?})\]', '', notes).strip()
+        new_notes = new_notes + f" [PRAGYA_STATE: {json.dumps(state)}]" if state else new_notes
+        
+        conn, is_pg = get_db_connection()
+        if conn:
+            cur = conn.cursor()
+            set_clauses = []
+            params = []
+            if new_name and new_name.lower() not in ("customer", "user", "client"):
+                set_clauses.append("name = %s" if is_pg else "name = ?")
+                params.append(new_name)
+            if new_service and new_service not in ("MISSING", "Overview", ""):
+                set_clauses.append("service_category = %s" if is_pg else "service_category = ?")
+                params.append(new_service)
+            if new_phone:
+                set_clauses.append("contact_info = %s" if is_pg else "contact_info = ?")
+                params.append(new_phone)
+            set_clauses.append("notes = %s" if is_pg else "notes = ?")
+            params.append(new_notes)
+            
+            if set_clauses:
+                params.append(lead["lead_id"])
+                query = f"UPDATE babu_leads SET {', '.join(set_clauses)} WHERE lead_id = {'%s' if is_pg else '?'}"
+                cur.execute(query, tuple(params))
+                conn.commit()
+            cur.close()
+            conn.close()
+            
+            lead = get_or_create_lead(sender_id, client_name, "PUBLIC_TELEGRAM") # refresh lead
+            notes = lead.get("notes") or ""
+            
+    final_name = lead.get("name")
+    final_service = lead.get("service_category")
+    final_phone = lead.get("contact_info")
+    final_mode = state.get("mode")
+    final_dt = state.get("datetime")
+    
+    is_complete = (
+        final_name and final_name.lower() not in ("customer", "user", "client", "visitor", "website", "website visitor") and
+        final_service and final_service not in ("MISSING", "Overview", "Unclassified", "") and
+        final_phone and re.search(r'[6-9]\d{9}', str(final_phone)) and
+        final_mode and final_mode != "MISSING" and
+        final_dt and final_dt != "MISSING"
     )
     
-    if commit_res.get("status") == "SUCCESS":
-        doc_checklist = REQUIRED_DOCS_BY_SERVICE.get(current_service, REQUIRED_DOCS_BY_SERVICE["General"])
-        reply = (
-            f"🎉 **{client_name} जी, आपकी अपॉइंटमेंट सफलतापूर्वक बुक हो गई है!**\n\n"
-            f"👤 **ग्राहक का नाम:** {client_name}\n"
-            f"💼 **सेवा:** {svc_name}\n"
-            f"🗓️ **दिनांक:** {dt_res['display_date']}\n"
-            f"⏰ **समय:** {dt_res['display_time']}\n"
-            f"📞 **मोबाइल नंबर:** `{existing_phone}`\n"
-            f"📍 **स्थान:** {OFFICE_ADDRESS}\n\n"
-            f"📋 **साथ लाने हेतु आवश्यक दस्तावेज़:**\n{doc_checklist}\n\n"
-            f"कंसल्टेंट **{CONSULTANT_NAME}** जी को आपकी अपॉइंटमेंट की सूचना प्रेषित कर दी गई है। नियत समय पर पधारें, धन्यवाद!"
-        )
-        await update.message.reply_text(reply, parse_mode="Markdown")
-        ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=text, assistant_reply=reply, contact_info=existing_phone, source_ref=sender_id, notes=f"Booked: {dt_res['iso_timestamp']}")
-        return
-    elif commit_res.get("status") == "SLOT_CONFLICT":
-        alt_str = ", ".join(commit_res.get("alternatives", [])) or "11:00 AM, 03:00 PM"
-        reply = (
-            f"⚠️ {client_name} जी, क्षमा करें, यह समय अभी-अभी किसी अन्य ग्राहक द्वारा बुक कर लिया गया है।\n\n"
-            f"वैकल्पिक उपलब्ध स्लॉट्स:\n• {alt_str}\n\n"
-            f"कृपया इनमें से कोई समय बताएं।"
-        )
-        await update.message.reply_text(reply, parse_mode="Markdown")
-        return
-    else:
-        reply = "अपॉइंटमेंट दर्ज करते समय एक तकनीकी समस्या आई। कृपया कुछ क्षण पश्चात पुनः प्रयास करें।"
-        await update.message.reply_text(reply)
-        return
+    if is_complete and not "appointment booked" in notes.lower():
+        parsed_dt = parse_ist_datetime(final_dt, final_dt)
+        if parsed_dt.get("valid"):
+            res = commit_crm_appointment(
+                lead_id=lead["lead_id"],
+                date_str=parsed_dt.get("date_str"),
+                time_str=parsed_dt.get("time_str"),
+                purpose=f"{final_mode} Consultation for {final_service}",
+                notes=f"Pragya automated booking via Telegram"
+            )
+            if res.get("status") == "SUCCESS":
+                doc_checklist = REQUIRED_DOCS_BY_SERVICE.get(final_service, REQUIRED_DOCS_BY_SERVICE.get("General", ""))
+                if "online" in str(final_mode).lower():
+                    reply_text = (
+                        f"🎉 **{final_name} जी, आपका ऑनलाइन अपॉइंटमेंट सफलतापूर्वक बुक हो गया है!**\n\n"
+                        f"📅 **तारीख:** {parsed_dt.get('display_date')}\n"
+                        f"⏰ **समय:** {parsed_dt.get('display_time')}\n"
+                        f"📱 **मोबाइल नंबर:** {final_phone}\n\n"
+                        f"⚠️ **ज़रूरी सूचना:** ऑनलाइन प्रोसेस के दौरान OTP (वन-टाइम पासवर्ड) की आवश्यकता होगी। कृपया तय समय पर अपना मोबाइल फोन अपने पास रखें।"
+                    )
+                else:
+                    reply_text = (
+                        f"🎉 **{final_name} जी, आपका ऑफिस विज़िट अपॉइंटमेंट सफलतापूर्वक बुक हो गया है!**\n\n"
+                        f"📅 **तारीख:** {parsed_dt.get('display_date')}\n"
+                        f"⏰ **समय:** {parsed_dt.get('display_time')}\n"
+                        f"📱 **मोबाइल नंबर:** {final_phone}\n"
+                        f"📍 **पता:** {OFFICE_ADDRESS}\n\n"
+                        f"📄 **कृपया अपने साथ निम्नलिखित दस्तावेज़ (Documents) लाएँ:**\n{doc_checklist}"
+                    )
+                new_notes = notes + "\n[APPOINTMENT BOOKED]"
+                conn, is_pg = get_db_connection()
+                if conn:
+                    cur = conn.cursor()
+                    cur.execute("UPDATE babu_leads SET notes = %s WHERE lead_id = %s" if is_pg else "UPDATE babu_leads SET notes = ? WHERE lead_id = ?", (new_notes, lead["lead_id"]))
+                    conn.commit()
+                    cur.close()
+                    conn.close()
+            else:
+                alt_slots = res.get('alternatives', [])
+                alt_str = ", ".join(alt_slots) if alt_slots else "कोई अन्य समय"
+                reply_text = f"⚠️ क्षमा करें, यह समय पहले से बुक है। कृपया {alt_str} में से कोई अन्य समय चुनें।"
+                if "datetime" in state:
+                    del state["datetime"]
+                    clean_notes = re.sub(r'\[PRAGYA_STATE:\s*({.*?})\]', '', notes).strip()
+                    new_notes = clean_notes + f" [PRAGYA_STATE: {json.dumps(state)}]" if state else clean_notes
+                    conn, is_pg = get_db_connection()
+                    if conn:
+                        cur = conn.cursor()
+                        cur.execute("UPDATE babu_leads SET notes = %s WHERE lead_id = %s" if is_pg else "UPDATE babu_leads SET notes = ? WHERE lead_id = ?", (new_notes, lead["lead_id"]))
+                        conn.commit()
+                        cur.close()
+                        conn.close()
+        else:
+            reply_text = parsed_dt.get("message", "⚠️ कृपया एक वैध दिन और समय बताएं।")
+            if "datetime" in state:
+                del state["datetime"]
+                clean_notes = re.sub(r'\[PRAGYA_STATE:\s*({.*?})\]', '', notes).strip()
+                new_notes = clean_notes + f" [PRAGYA_STATE: {json.dumps(state)}]" if state else clean_notes
+                conn, is_pg = get_db_connection()
+                if conn:
+                    cur = conn.cursor()
+                    cur.execute("UPDATE babu_leads SET notes = %s WHERE lead_id = %s" if is_pg else "UPDATE babu_leads SET notes = ? WHERE lead_id = ?", (new_notes, lead["lead_id"]))
+                    conn.commit()
+                    cur.close()
+                    conn.close()
+
+    if reply_text:
+        # Strip code blocks and json markers
+        clean_reply = re.sub(r'`json\s*\{.*?\}\s*`', '', reply_text, flags=re.DOTALL)
+        clean_reply = re.sub(r'\[CRM_UPDATE:\s*\{.*?\}\]', '', clean_reply, flags=re.DOTALL).strip()
+        await update.message.reply_text(clean_reply, parse_mode="Markdown")
+        ingest_lead(name=client_name, channel="PUBLIC_TELEGRAM", user_message=user_text, assistant_reply=clean_reply, contact_info=final_phone, source_ref=sender_id, notes="Public bot: AI response")
+
 
 
 async def on_public_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
