@@ -1097,7 +1097,7 @@ def ingest_lead(
             """, (lead_id, channel, str(source_ref or ""), name, user_message, assistant_reply, service_cat, meta))
 
         conn.commit()
-        cursor.close()
+        conn.commit()
 
         if existing:
             # Re-fetch the updated row to print accurate logs
@@ -1112,6 +1112,7 @@ def ingest_lead(
         else:
             print(f"[CRM INGESTION] Created new lead {lead_id} ({name} | {service_cat})", flush=True)
 
+        cursor.close()
         conn.close()
 
         return {
