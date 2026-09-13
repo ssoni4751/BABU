@@ -5522,11 +5522,20 @@ class HealthHandler(BaseHTTPRequestHandler):
                                     del state["datetime"]
                                     clean_notes = re.sub(r'\[PRAGYA_STATE:\s*({.*?})\]', '', notes).strip()
                                     new_notes = clean_notes + f" [PRAGYA_STATE: {json.dumps(state)}]" if state else clean_notes
-                                    cur = conn.cursor()
-                                    query = "UPDATE babu_leads SET notes = %s WHERE lead_id = %s" if is_pg else "UPDATE babu_leads SET notes = ? WHERE lead_id = ?"
-                                    cur.execute(query, (new_notes, lead["lead_id"]))
-                                    conn.commit()
-                                    cur.close()
+                                    
+                                    try:
+                                        from .services import get_db_connection
+                                    except ImportError:
+                                        from services import get_db_connection
+                                        
+                                    f_conn, f_pg = get_db_connection()
+                                    if f_conn:
+                                        f_cur = f_conn.cursor()
+                                        query = "UPDATE babu_leads SET notes = %s WHERE lead_id = %s" if f_pg else "UPDATE babu_leads SET notes = ? WHERE lead_id = ?"
+                                        f_cur.execute(query, (new_notes, lead["lead_id"]))
+                                        f_conn.commit()
+                                        f_cur.close()
+                                        f_conn.close()
 
                 
                 # Finally ingest the interaction
