@@ -5433,7 +5433,21 @@ class HealthHandler(BaseHTTPRequestHandler):
                             pass
                         
                         if "mode" in updates: state["mode"] = updates["mode"]
-                        if "datetime" in updates: state["datetime"] = updates["datetime"]
+                        
+                        # AI hallucination defense for datetime
+                        dt_val = (
+                            updates.get("datetime") or updates.get("date") or 
+                            updates.get("time") or updates.get("appointment") or 
+                            updates.get("appointment_time") or updates.get("Date & Time")
+                        )
+                        if dt_val: state["datetime"] = dt_val
+                        
+                        # AI hallucination defense for phone
+                        ph_val = updates.get("phone") or updates.get("mobile") or updates.get("phone_number")
+                        if ph_val: updates["phone"] = ph_val
+                        
+                        new_phone = updates.get("phone")
+                        new_service = updates.get("service")
                         
                         new_notes = notes + f" [PRAGYA_STATE: {json.dumps(state)}]" if state else notes
                         
@@ -5461,7 +5475,6 @@ class HealthHandler(BaseHTTPRequestHandler):
                             conn.commit()
                         cur.close()
                         conn.close()
-                        
                         # Check if all 5 requirements are met
                         final_name = new_name or lead.get("name")
                         final_service = new_service or lead.get("service_category")

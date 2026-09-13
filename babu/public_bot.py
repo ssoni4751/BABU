@@ -359,7 +359,8 @@ INSTRUCTIONS:
 - DO NOT ask for mobile number until Date & Time are confirmed.
 - At the VERY END of your reply, you MUST output a JSON block updating the state. 
 - *CRITICAL RULE*: ONLY include fields in the JSON block that the user JUST PROVIDED in this exact turn. DO NOT include fields that are already known/filled in the CURRENT CRM STATE above. For example, if Name is already known, NEVER output "name" in the JSON.
-- Format: [CRM_UPDATE: {{"service": "PF", "mode": "Online"}}]
+- *CRITICAL RULE*: You MUST use EXACTLY these keys in the JSON block: "name", "service", "mode", "datetime", "phone". Do NOT invent other keys like "mobile" or "appointment".
+- Format: [CRM_UPDATE: {{"datetime": "kal 4 bje", "phone": "9876543210"}}]
 - If they ask general questions, answer them briefly but steer them back to the funnel.
 - Do not output markdown asterisks (*).
 """
@@ -406,8 +407,9 @@ INSTRUCTIONS:
     clean_text = content
     if match:
         try:
-            updates = json.loads(match.group(1))
-            clean_text = clean_text.replace(match.group(0), "").strip()
+            json_str = match.group(1).replace("```json", "").replace("```", "").strip()
+            updates = json.loads(json_str)
+            clean_text = content.replace(match.group(0), "").strip()
         except Exception as e:
             print(f"Error parsing JSON block: {e}")
 
