@@ -5514,10 +5514,11 @@ class HealthHandler(BaseHTTPRequestHandler):
                                 )
                                 if res.get("status") == "SUCCESS":
                                     try:
-                                        from .crm_service import REQUIRED_DOCS_BY_SERVICE, OFFICE_ADDRESS
+                                        from .crm_service import REQUIRED_DOCS_BY_SERVICE
                                     except ImportError:
-                                        from crm_service import REQUIRED_DOCS_BY_SERVICE, OFFICE_ADDRESS
+                                        from crm_service import REQUIRED_DOCS_BY_SERVICE
                                         
+                                    OFFICE_ADDRESS = "Kaushal Market, Rath Road, Orai, Uttar Pradesh"
                                     doc_checklist = REQUIRED_DOCS_BY_SERVICE.get(final_service, REQUIRED_DOCS_BY_SERVICE.get("General", ""))
                                     
                                     if "online" in final_mode.lower():
