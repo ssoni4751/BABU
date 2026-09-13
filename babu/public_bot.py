@@ -520,7 +520,7 @@ async def on_public_message(update, context):
     is_complete = (
         final_name and final_name.lower() not in ("customer", "user", "client", "visitor", "website", "website visitor") and
         final_service and final_service not in ("MISSING", "Overview", "Unclassified", "") and
-        final_phone and re.search(r'[6-9]\d{9}', str(final_phone)) and
+        final_phone and re.search(r'\b[6-9]\d{9}\b', str(final_phone)) and
         final_mode and final_mode != "MISSING" and
         final_dt and final_dt != "MISSING"
     )
@@ -542,7 +542,7 @@ async def on_public_message(update, context):
                         f"🎉 **{final_name} जी, आपका ऑनलाइन अपॉइंटमेंट सफलतापूर्वक बुक हो गया है!**\n\n"
                         f"📅 **तारीख:** {parsed_dt.get('display_date')}\n"
                         f"⏰ **समय:** {parsed_dt.get('display_time')}\n"
-                        f"📱 **मोबाइल नंबर:** {final_phone}\n\n"
+                        f"📱 **मोबाइल नंबर:** `{final_phone}`\n\n"
                         f"⚠️ **ज़रूरी सूचना:** ऑनलाइन प्रोसेस के दौरान OTP (वन-टाइम पासवर्ड) की आवश्यकता होगी। कृपया तय समय पर अपना मोबाइल फोन अपने पास रखें।"
                     )
                 else:
@@ -550,7 +550,7 @@ async def on_public_message(update, context):
                         f"🎉 **{final_name} जी, आपका ऑफिस विज़िट अपॉइंटमेंट सफलतापूर्वक बुक हो गया है!**\n\n"
                         f"📅 **तारीख:** {parsed_dt.get('display_date')}\n"
                         f"⏰ **समय:** {parsed_dt.get('display_time')}\n"
-                        f"📱 **मोबाइल नंबर:** {final_phone}\n"
+                        f"📱 **मोबाइल नंबर:** `{final_phone}`\n"
                         f"📍 **पता:** {OFFICE_ADDRESS}\n\n"
                         f"📄 **कृपया अपने साथ निम्नलिखित दस्तावेज़ (Documents) लाएँ:**\n{doc_checklist}"
                     )
