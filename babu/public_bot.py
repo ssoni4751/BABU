@@ -422,7 +422,10 @@ INSTRUCTIONS:
 def generate_public_ai_reply(text: str, client_name: str, service: str) -> str:
     """Generate a brief contextual answer for general questions using the LLM."""
     try:
-        from crm_service import get_selective_knowledge_slice
+        try:
+            from .crm_service import get_selective_knowledge_slice
+        except ImportError:
+            from crm_service import get_selective_knowledge_slice
         from langchain_groq import ChatGroq
         from langchain.schema import HumanMessage, SystemMessage
         
@@ -448,7 +451,10 @@ async def on_public_message(update, context):
     sender_id = f"tg_{user.id}"
     user_text = update.message.text.strip()
     
-    from crm_service import get_or_create_lead, get_db_connection, ingest_lead, commit_crm_appointment, parse_ist_datetime, REQUIRED_DOCS_BY_SERVICE
+    try:
+        from .crm_service import get_or_create_lead, get_db_connection, ingest_lead, commit_crm_appointment, parse_ist_datetime, REQUIRED_DOCS_BY_SERVICE
+    except ImportError:
+        from crm_service import get_or_create_lead, get_db_connection, ingest_lead, commit_crm_appointment, parse_ist_datetime, REQUIRED_DOCS_BY_SERVICE
     import re, json
     
     lead = get_or_create_lead(sender_id, client_name, "PUBLIC_TELEGRAM")
