@@ -1037,7 +1037,7 @@ def ingest_lead(
                     SET updated_at = CURRENT_TIMESTAMP,
                         status = %s,
                         urgency_score = GREATEST(urgency_score, %s),
-                        service_category = CASE WHEN %s NOT IN ('Overview', 'Unclassified') THEN %s ELSE service_category END
+                        service_category = CASE WHEN service_category IN ('Overview', 'Unclassified') AND %s NOT IN ('Overview', 'Unclassified') THEN %s ELSE service_category END
                     WHERE lead_id = %s
                 """, (new_status, urgency, service_cat, service_cat, lead_id))
             else:
@@ -1046,7 +1046,7 @@ def ingest_lead(
                     SET updated_at = CURRENT_TIMESTAMP,
                         status = ?,
                         urgency_score = MAX(urgency_score, ?),
-                        service_category = CASE WHEN ? NOT IN ('Overview', 'Unclassified') THEN ? ELSE service_category END
+                        service_category = CASE WHEN service_category IN ('Overview', 'Unclassified') AND ? NOT IN ('Overview', 'Unclassified') THEN ? ELSE service_category END
                     WHERE lead_id = ?
                 """, (new_status, urgency, service_cat, service_cat, lead_id))
         else:
@@ -1098,8 +1098,21 @@ def ingest_lead(
 
         conn.commit()
         cursor.close()
+
+        if existing:
+            # Re-fetch the updated row to print accurate logs
+            if is_pg:
+                cursor.execute("SELECT name, service_category FROM babu_leads WHERE lead_id = %s", (lead_id,))
+            else:
+                cursor.execute("SELECT name, service_category FROM babu_leads WHERE lead_id = ?", (lead_id,))
+            updated_row = cursor.fetchone()
+            actual_name = updated_row[0] if updated_row and updated_row[0] else name
+            actual_service = updated_row[1] if updated_row and updated_row[1] else service_cat
+            print(f"[CRM INGESTION] Updated existing lead {lead_id} ({actual_name} | {actual_service})", flush=True)
+        else:
+            print(f"[CRM INGESTION] Created new lead {lead_id} ({name} | {service_cat})", flush=True)
+
         conn.close()
-        print(f"[CRM INGESTION] {'Created new lead' if is_new else 'Updated existing lead'} {lead_id} ({name} | {service_cat})", flush=True)
 
         return {
             "status": "SUCCESS",

@@ -5470,12 +5470,13 @@ class HealthHandler(BaseHTTPRequestHandler):
                         final_dt = state.get("datetime")
                         
                         is_complete = (
-                            final_name and final_name.lower() not in ("customer", "user", "client") and
+                            final_name and final_name.lower() not in ("customer", "user", "client", "visitor", "website", "website visitor") and
                             final_service and final_service not in ("MISSING", "Overview", "") and
                             final_phone and re.search(r'\b[6-9]\d{9}\b', str(final_phone)) and
                             final_mode and final_mode != "MISSING" and
                             final_dt and final_dt != "MISSING"
                         )
+                        print(f"DEBUG is_complete: {is_complete} | name={final_name} | svc={final_service} | phone={final_phone} | mode={final_mode} | dt={final_dt}", flush=True)
                         
                         if is_complete and not "appointment booked" in notes.lower():
                             try:
