@@ -243,7 +243,7 @@ def parse_ist_datetime(
     # a) "2:30 pm", "2 pm", "11 am", "11:00 am"
     m_ampm = re.search(r'\b(\d{1,2})(?::([0-5]\d))?\s*(am|pm)\b', combined)
     # b) "2 baje", "11 baje", "12 baje", "2 बजे"
-    m_baje = re.search(r'\b(\d{1,2})\s*(?:baje|बजे)\b', combined)
+    m_baje = re.search(r'\b(\d{1,2})\s*(?:baje|bje|bj)\b', combined)
     # c) Standard HH:MM 24hr or 12hr e.g. "14:00", "11:30"
     m_colon = re.search(r'\b([01]?\d|2[0-3]):([0-5]\d)\b', combined)
     # d) Prefix indicator e.g. "dopehar 2", "shaam 4", "subah 11", "at 3", "slot 2"

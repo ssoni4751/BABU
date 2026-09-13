@@ -5503,20 +5503,32 @@ class HealthHandler(BaseHTTPRequestHandler):
                                 from crm_service import parse_ist_datetime
                                 
                             parsed_dt = parse_ist_datetime(final_dt, final_dt)
-                            date_val = parsed_dt.get("date_str") if parsed_dt.get("valid") else "2026-10-10"
-                            time_val = parsed_dt.get("time_str") if parsed_dt.get("valid") else "11:00"
-                            
-                            res = commit_crm_appointment(
-                                lead_id=lead["lead_id"],
-                                date_str=date_val,
-                                time_str=time_val,
-                                purpose=f"{final_mode} Consultation for {final_service}",
-                                notes=f"Pragya automated booking"
-                            )
-                            if res.get("status") == "SUCCESS":
-                                reply_text = f"🎉 आपकी अपॉइंटमेंट {final_dt} के लिए सफलतापूर्वक बुक हो गई है! आपका मोबाइल नंबर ({final_phone}) सुरक्षित कर लिया गया है। कृपया समय पर उपस्थित हों।"
+                            if parsed_dt.get("valid"):
+                                date_val = parsed_dt.get("date_str")
+                                time_val = parsed_dt.get("time_str")
+                                res = commit_crm_appointment(
+                                    lead_id=lead["lead_id"],
+                                    date_str=date_val,
+                                    time_str=time_val,
+                                    purpose=f"{final_mode} Consultation for {final_service}",
+                                    notes=f"Pragya automated booking"
+                                )
+                                if res.get("status") == "SUCCESS":
+                                    reply_text = f"🎉 धन्यवाद! आपका अपॉइंटमेंट {parsed_dt.get('display_date')} को {parsed_dt.get('display_time')} के लिए सफलतापूर्वक बुक हो गया है।"
+                                else:
+                                    reply_text = f"⚠️ क्षमा करें, आपका अपॉइंटमेंट बुक नहीं हो सका: {res.get('error')}"
                             else:
-                                reply_text = "⚠️ क्षमा करें, वह समय उपलब्ध नहीं है। कृपया कोई अन्य समय बताएं।"
+                                reply_text = parsed_dt.get("message", "⚠️ कृपया एक वैध दिन और समय बताएं।")
+                                if "datetime" in state:
+                                    del state["datetime"]
+                                    import json, re
+                                    clean_notes = re.sub(r'\[PRAGYA_STATE:\s*({.*?})\]', '', notes).strip()
+                                    new_notes = clean_notes + f" [PRAGYA_STATE: {json.dumps(state)}]" if state else clean_notes
+                                    cur = conn.cursor()
+                                    query = "UPDATE babu_leads SET notes = %s WHERE lead_id = %s" if is_pg else "UPDATE babu_leads SET notes = ? WHERE lead_id = ?"
+                                    cur.execute(query, (new_notes, lead["lead_id"]))
+                                    conn.commit()
+                                    cur.close()
 
                 
                 # Finally ingest the interaction
