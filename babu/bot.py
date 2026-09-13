@@ -5515,7 +5515,28 @@ class HealthHandler(BaseHTTPRequestHandler):
                                 if res.get("status") == "SUCCESS":
                                     reply_text = f"🎉 धन्यवाद! आपका अपॉइंटमेंट {parsed_dt.get('display_date')} को {parsed_dt.get('display_time')} के लिए सफलतापूर्वक बुक हो गया है।"
                                 else:
-                                    reply_text = f"⚠️ क्षमा करें, आपका अपॉइंटमेंट बुक नहीं हो सका: {res.get('error')}"
+                                    alt_slots = res.get('alternatives', [])
+                                    alt_str = ", ".join(alt_slots) if alt_slots else "कोई अन्य समय"
+                                    reply_text = f"⚠️ क्षमा करें, यह समय पहले से बुक है। कृपया {alt_str} में से कोई अन्य समय चुनें।"
+                                    
+                                    if "datetime" in state:
+                                        del state["datetime"]
+                                        clean_notes = re.sub(r'\[PRAGYA_STATE:\s*({.*?})\]', '', notes).strip()
+                                        new_notes = clean_notes + f" [PRAGYA_STATE: {json.dumps(state)}]" if state else clean_notes
+                                        
+                                        try:
+                                            from .services import get_db_connection
+                                        except ImportError:
+                                            from services import get_db_connection
+                                            
+                                        f_conn, f_pg = get_db_connection()
+                                        if f_conn:
+                                            f_cur = f_conn.cursor()
+                                            query = "UPDATE babu_leads SET notes = %s WHERE lead_id = %s" if f_pg else "UPDATE babu_leads SET notes = ? WHERE lead_id = ?"
+                                            f_cur.execute(query, (new_notes, lead["lead_id"]))
+                                            f_conn.commit()
+                                            f_cur.close()
+                                            f_conn.close()
                             else:
                                 reply_text = parsed_dt.get("message", "⚠️ कृपया एक वैध दिन और समय बताएं।")
                                 if "datetime" in state:

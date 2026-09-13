@@ -360,7 +360,8 @@ INSTRUCTIONS:
 - At the VERY END of your reply, you MUST output a JSON block updating the state. 
 - *CRITICAL RULE*: ONLY include fields in the JSON block that the user JUST PROVIDED in this exact turn. DO NOT include fields that are already known/filled in the CURRENT CRM STATE above. For example, if Name is already known, NEVER output "name" in the JSON.
 - *CRITICAL RULE*: You MUST use EXACTLY these keys in the JSON block: "name", "service", "mode", "datetime", "phone". Do NOT invent other keys like "mobile" or "appointment".
-- Format: [CRM_UPDATE: {{"datetime": "kal 4 bje", "phone": "9876543210"}}]
+- *CRITICAL RULE*: Always extract datetime in simple English terms (e.g., "Monday 3 PM", "Tomorrow 4 PM", "2026-09-15 14:00") even if the user replies in Hindi.
+- Format: [CRM_UPDATE: {{"datetime": "Tomorrow 4 PM", "phone": "9876543210"}}]
 - If they ask general questions, answer them briefly but steer them back to the funnel.
 - Do not output markdown asterisks (*).
 """
