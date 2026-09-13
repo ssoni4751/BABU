@@ -629,6 +629,20 @@ async def on_public_document(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
 
 
+async def public_telegram_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    from telegram.error import Conflict
+    if isinstance(context.error, Conflict):
+        print("\n" + "="*80, flush=True)
+        print("⚠️  CRITICAL CONFLICT DETECTED (PUBLIC BOT)", flush=True)
+        print("Another instance of the public bot is already running.", flush=True)
+        print("Deployment rollover buffer: sleeping 15s before retrying...", flush=True)
+        print("="*80 + "\n", flush=True)
+        import asyncio
+        await asyncio.sleep(15)
+        return
+    import traceback
+    traceback.print_exception(type(context.error), context.error, context.error.__traceback__)
+
 def build_public_bot() -> Optional[Any]:
     """Construct the Application instance for the Public Client Desk Bot."""
     token = os.environ.get("TELEGRAM_PUBLIC_BOT_TOKEN", "").strip()
@@ -648,6 +662,7 @@ def build_public_bot() -> Optional[Any]:
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), on_public_message))
     app.add_handler(MessageHandler(filters.Document.ALL | filters.PHOTO, on_public_document))
     
+    app.add_error_handler(public_telegram_error_handler)
     return app
 
 
