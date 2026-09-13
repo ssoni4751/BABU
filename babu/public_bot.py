@@ -419,6 +419,27 @@ INSTRUCTIONS:
 
 
 
+def generate_public_ai_reply(text: str, client_name: str, service: str) -> str:
+    """Generate a brief contextual answer for general questions using the LLM."""
+    try:
+        from crm_service import get_selective_knowledge_slice
+        from langchain_groq import ChatGroq
+        from langchain.schema import HumanMessage, SystemMessage
+        
+        groq_key = os.environ.get("GROQ_API_KEY")
+        if not groq_key:
+            return ""
+            
+        k_slice = get_selective_knowledge_slice(service) if service not in ("MISSING", "Overview", "") else get_selective_knowledge_slice("General")
+        sys_prompt = f"You are Pragya, a polite digital assistant for Anshu Computer & Tax Consultancy. Answer the user's question briefly in 1-2 sentences in conversational Hindi (Devanagari). Use this knowledge:\n{k_slice}"
+        
+        llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0.3, api_key=groq_key)
+        resp = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=text)])
+        return resp.content.strip()
+    except Exception as e:
+        print(f"[AI REPLY ERROR] {e}", flush=True)
+        return ""
+
 async def on_public_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Handle all incoming client messages on the public bot using a strict stateful funnel:
