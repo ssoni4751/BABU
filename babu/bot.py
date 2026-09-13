@@ -5513,7 +5513,24 @@ class HealthHandler(BaseHTTPRequestHandler):
                                     notes=f"Pragya automated booking"
                                 )
                                 if res.get("status") == "SUCCESS":
-                                    reply_text = f"🎉 धन्यवाद! आपका अपॉइंटमेंट {parsed_dt.get('display_date')} को {parsed_dt.get('display_time')} के लिए सफलतापूर्वक बुक हो गया है।"
+                                    try:
+                                        from .crm_service import REQUIRED_DOCS_BY_SERVICE, OFFICE_ADDRESS
+                                    except ImportError:
+                                        from crm_service import REQUIRED_DOCS_BY_SERVICE, OFFICE_ADDRESS
+                                        
+                                    doc_checklist = REQUIRED_DOCS_BY_SERVICE.get(final_service, REQUIRED_DOCS_BY_SERVICE.get("General", ""))
+                                    
+                                    if "online" in final_mode.lower():
+                                        reply_text = (
+                                            f"🎉 धन्यवाद! आपका **ऑनलाइन** अपॉइंटमेंट {parsed_dt.get('display_date')} को {parsed_dt.get('display_time')} के लिए सफलतापूर्वक बुक हो गया है।\n\n"
+                                            f"⚠️ **ज़रूरी सूचना:** ऑनलाइन प्रोसेस के दौरान OTP (वन-टाइम पासवर्ड) की आवश्यकता होगी। कृपया तय समय पर अपना मोबाइल फोन (नंबर {final_phone}) अपने पास रखें।"
+                                        )
+                                    else:
+                                        reply_text = (
+                                            f"🎉 धन्यवाद! आपका **ऑफिस विज़िट** अपॉइंटमेंट {parsed_dt.get('display_date')} को {parsed_dt.get('display_time')} के लिए सफलतापूर्वक बुक हो गया है।\n\n"
+                                            f"📍 **पता:** {OFFICE_ADDRESS}\n\n"
+                                            f"📄 **कृपया अपने साथ निम्नलिखित दस्तावेज़ (Documents) लाएँ:**\n{doc_checklist}"
+                                        )
                                 else:
                                     alt_slots = res.get('alternatives', [])
                                     alt_str = ", ".join(alt_slots) if alt_slots else "कोई अन्य समय"
