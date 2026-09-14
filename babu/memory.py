@@ -38,6 +38,46 @@ WORKFLOW_LOGS_PATH = os.path.join(LAYERED_MEMORY_DIR, "orchestration", "workflow
 # Thread Locks for Atomic Writing
 PROFILE_LOCK = threading.Lock()
 FAILURES_LOCK = threading.Lock()
+import os
+import sys
+import json
+import threading
+import re
+from datetime import datetime, timezone, timedelta
+from typing import Optional, Dict, List, Any
+from dotenv import load_dotenv
+
+# Ensure environment variables are loaded
+load_dotenv()
+
+# Force UTF-8 encoding for Windows standard streams to prevent emoji/unicode logging crashes
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
+# Core Paths
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROFILE_PATH = os.path.join(CURRENT_DIR, "user_profile.json")
+# Dynamic Test Path isolation to avoid polluting failures.json during unit tests
+is_testing = (
+    "unittest" in sys.modules 
+    or "pytest" in sys.modules 
+    or any("test" in arg.lower() for arg in sys.argv)
+    or os.environ.get("TESTING") == "true"
+)
+
+if is_testing:
+    FAILURES_PATH = os.path.join(CURRENT_DIR, "memory", "failures_test.json")
+else:
+    FAILURES_PATH = os.path.join(CURRENT_DIR, "memory", "failures.json")
+FAILURES_TEST_PATH = os.path.join(CURRENT_DIR, "memory", "failures_test.json")
+LAYERED_MEMORY_DIR = os.path.join(CURRENT_DIR, "memory")
+ROUTING_STATS_PATH = os.path.join(LAYERED_MEMORY_DIR, "routing", "routing_stats.json")
+WORKFLOW_LOGS_PATH = os.path.join(LAYERED_MEMORY_DIR, "orchestration", "workflows.json")
+
+# Thread Locks for Atomic Writing
+PROFILE_LOCK = threading.Lock()
+FAILURES_LOCK = threading.Lock()
 ROUTING_LOCK = threading.Lock()
 WORKFLOW_LOCK = threading.Lock()
 
@@ -46,104 +86,106 @@ GROQ_KEY = os.environ.get("GROQ_API_KEY", "")
 
 def append_to_profile_ledger(category: str, entry_data: dict) -> bool:
     """
-    Safely reads user_profile.json, appends a structured entry to the
-    specified dynamic_memory_ledger category, and flushes it back to disk atomically.
-    
-    :param category: 'chat_summaries' or 'work_summaries'
-    :param entry_data: A structured dictionary matching the ledger schema
+    Safely appends a structured entry to the specified dynamic_memory_ledger category,
+    now using the PostgreSQL/SQLite `system_memory` table instead of the static JSON file.
     """
-    if not os.path.exists(PROFILE_PATH):
-        print(f"[MEMORY ERROR] Profile file not found at: {PROFILE_PATH}", flush=True)
-        return False
-
-    with PROFILE_LOCK:
-        try:
-            # 1. Read existing state
-            with open(PROFILE_PATH, "r", encoding="utf-8") as f:
-                profile = json.load(f)
-
-            # 2. Ensure target dynamic keys exist safely
-            if "dynamic_memory_ledger" not in profile:
-                profile["dynamic_memory_ledger"] = {}
-            if category not in profile["dynamic_memory_ledger"]:
-                profile["dynamic_memory_ledger"][category] = []
-
-            # 3. Inject automatic system processing timestamps
-            if "timestamp" not in entry_data:
-                entry_data["timestamp"] = datetime.now(timezone.utc).isoformat()
-
-            # 4. Append entry to the list & keep strictly bounded (last 10 items max)
-            profile["dynamic_memory_ledger"][category].append(entry_data)
-            profile["dynamic_memory_ledger"][category] = profile["dynamic_memory_ledger"][category][-10:]
-
-            # 5. Atomic Writeback to prevent data corruption
-            temp_path = PROFILE_PATH + ".tmp"
-            with open(temp_path, "w", encoding="utf-8") as f:
-                json.dump(profile, f, indent=2, ensure_ascii=False)
+    try:
+        from services import get_db_connection
+        import json
+        conn, is_pg = get_db_connection()
+        cursor = conn.cursor()
+        
+        key = f"ledger_{category}"
+        
+        if is_pg:
+            cursor.execute("SELECT data FROM system_memory WHERE key = %s", (key,))
+        else:
+            cursor.execute("SELECT data FROM system_memory WHERE key = ?", (key,))
             
-            os.replace(temp_path, PROFILE_PATH)
-            print(f"[MEMORY RETENTION] Successfully logged new entry under '{category}'.", flush=True)
-            return True
-
-        except Exception as e:
-            print(f"[MEMORY EXCEPTION] Failed to commit to profile ledger: {e}", flush=True)
-            if os.path.exists(PROFILE_PATH + ".tmp"):
-                try:
-                    os.remove(PROFILE_PATH + ".tmp")
-                except Exception:
-                    pass
-            return False
+        row = cursor.fetchone()
+        ledger = json.loads(row[0]) if row and row[0] else []
+        
+        if "timestamp" not in entry_data:
+            entry_data["timestamp"] = datetime.now(timezone.utc).isoformat()
+            
+        ledger.append(entry_data)
+        ledger = ledger[-10:]
+        
+        val = json.dumps(ledger)
+        
+        if is_pg:
+            cursor.execute("""
+                INSERT INTO system_memory (key, data) VALUES (%s, %s)
+                ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data
+            """, (key, val))
+        else:
+            cursor.execute("INSERT OR REPLACE INTO system_memory (key, data) VALUES (?, ?)", (key, val))
+            
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        print(f"[MEMORY RETENTION] Successfully logged new entry under '{category}' in DB.", flush=True)
+        return True
+    except Exception as e:
+        print(f"[MEMORY ERROR] Failed to append to DB ledger '{category}': {e}", flush=True)
+        return False
 
 
 def revoke_from_profile_ledger(category: str, entry_index: int = -1) -> bool:
     """
-    EGI CT-R1 (Mandatory Revocability): Safely reads user_profile.json, removes a structured entry 
-    from the specified dynamic_memory_ledger category, and flushes it back to disk atomically.
-    
-    :param category: 'chat_summaries' or 'work_summaries'
-    :param entry_index: The index of the entry to revoke (defaults to -1, the most recent entry)
+    EGI CT-R1 (Mandatory Revocability): Safely removes a structured entry 
+    from the specified dynamic_memory_ledger category in the database.
     """
-    if not os.path.exists(PROFILE_PATH):
-        print(f"[MEMORY ERROR] Profile file not found at: {PROFILE_PATH}", flush=True)
-        return False
-
-    with PROFILE_LOCK:
-        try:
-            with open(PROFILE_PATH, "r", encoding="utf-8") as f:
-                profile = json.load(f)
-
-            if "dynamic_memory_ledger" not in profile or category not in profile["dynamic_memory_ledger"]:
-                print(f"[MEMORY REVOCATION] Category '{category}' not found in ledger.", flush=True)
-                return False
-
-            ledger = profile["dynamic_memory_ledger"][category]
-            if not ledger:
-                print(f"[MEMORY REVOCATION] Ledger '{category}' is empty. Nothing to revoke.", flush=True)
-                return False
-
-            try:
-                revoked_item = ledger.pop(entry_index)
-                profile["dynamic_memory_ledger"][category] = ledger
-            except IndexError:
-                print(f"[MEMORY REVOCATION] Index {entry_index} out of bounds for ledger '{category}'.", flush=True)
-                return False
-
-            temp_path = PROFILE_PATH + ".tmp"
-            with open(temp_path, "w", encoding="utf-8") as f:
-                json.dump(profile, f, indent=2, ensure_ascii=False)
+    try:
+        from services import get_db_connection
+        import json
+        conn, is_pg = get_db_connection()
+        cursor = conn.cursor()
+        
+        key = f"ledger_{category}"
+        
+        if is_pg:
+            cursor.execute("SELECT data FROM system_memory WHERE key = %s", (key,))
+        else:
+            cursor.execute("SELECT data FROM system_memory WHERE key = ?", (key,))
             
-            os.replace(temp_path, PROFILE_PATH)
-            print(f"[MEMORY REVOCATION] Successfully revoked entry from '{category}'. Revoked: {revoked_item.get('topic', 'Unknown')}", flush=True)
-            return True
-
-        except Exception as e:
-            print(f"[MEMORY EXCEPTION] Failed to revoke from profile ledger: {e}", flush=True)
-            if os.path.exists(PROFILE_PATH + ".tmp"):
-                try:
-                    os.remove(PROFILE_PATH + ".tmp")
-                except Exception:
-                    pass
+        row = cursor.fetchone()
+        ledger = json.loads(row[0]) if row and row[0] else []
+        
+        if not ledger:
+            print(f"[MEMORY REVOCATION] Ledger '{category}' is empty. Nothing to revoke.", flush=True)
+            cursor.close()
+            conn.close()
             return False
+            
+        try:
+            revoked_item = ledger.pop(entry_index)
+        except IndexError:
+            print(f"[MEMORY REVOCATION] Index {entry_index} out of bounds for ledger '{category}'.", flush=True)
+            cursor.close()
+            conn.close()
+            return False
+            
+        val = json.dumps(ledger)
+        
+        if is_pg:
+            cursor.execute("""
+                INSERT INTO system_memory (key, data) VALUES (%s, %s)
+                ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data
+            """, (key, val))
+        else:
+            cursor.execute("INSERT OR REPLACE INTO system_memory (key, data) VALUES (?, ?)", (key, val))
+            
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        print(f"[MEMORY REVOCATION] Successfully revoked entry from '{category}' in DB.", flush=True)
+        return True
+    except Exception as e:
+        print(f"[MEMORY ERROR] Failed to revoke from DB ledger '{category}': {e}", flush=True)
+        return False
 
 
 def send_immune_rule_email(new_rule: dict, all_rules: list) -> None:
