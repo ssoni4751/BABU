@@ -630,6 +630,34 @@ def is_epoch_sealed(epoch_id: str) -> bool:
             except Exception:
                 pass
 
+
+def generate_contextual_minimum(session_id: str):
+    """
+    EGI Axiom T1 (Transition Contract): Generates a 'Contextual Minimum' summary 
+    of the sealed epoch to prevent implicit Temporal Shadowing in the next epoch.
+    """
+    global _histories
+    with _memory_lock:
+        h = list(_histories[session_id])
+        if not h:
+            return
+            
+    # Normally we'd use the LLM to summarize h, but to avoid blocking DB transactions
+    # and latency, we create a structured handoff note.
+    # In a full LLM implementation, we would call Groq here.
+    summary_text = "[CONTEXTUAL MINIMUM HANDOFF]\n"
+    summary_text += "The previous epoch was sealed. Key interactions:\n"
+    for msg in h[-3:]: # Take the last 3 exchanges as the contextual minimum
+        role = msg.get("role", "user")
+        text = msg.get("content", "")[:100] # Truncated
+        summary_text += f"- {role}: {text}...\n"
+        
+    with _memory_lock:
+        _histories[session_id].clear()
+        _histories[session_id].append({"role": "system", "content": summary_text})
+        print(f"[GOVERNANCE] Contextual Minimum generated for session '{session_id}'.", flush=True)
+
+
 def seal_epoch(epoch_id: str):
     conn = None
     cursor = None
@@ -1937,6 +1965,7 @@ def invoke_babu(message: str, session_id: str = "default", goal_id: Optional[str
         if status in ("COMPLETED", "FAILED", "CANCELLED"):
             t_seal_start = time.time()
             seal_epoch(epoch_id)
+            generate_contextual_minimum(session_id)
             t_seal_duration = round(time.time() - t_seal_start, 4)
             t_seal_ms = round(t_seal_duration * 1000, 2)
             tracker = output.get("execution_tracker") or {}

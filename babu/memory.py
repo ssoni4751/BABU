@@ -95,6 +95,57 @@ def append_to_profile_ledger(category: str, entry_data: dict) -> bool:
             return False
 
 
+def revoke_from_profile_ledger(category: str, entry_index: int = -1) -> bool:
+    """
+    EGI CT-R1 (Mandatory Revocability): Safely reads user_profile.json, removes a structured entry 
+    from the specified dynamic_memory_ledger category, and flushes it back to disk atomically.
+    
+    :param category: 'chat_summaries' or 'work_summaries'
+    :param entry_index: The index of the entry to revoke (defaults to -1, the most recent entry)
+    """
+    if not os.path.exists(PROFILE_PATH):
+        print(f"[MEMORY ERROR] Profile file not found at: {PROFILE_PATH}", flush=True)
+        return False
+
+    with PROFILE_LOCK:
+        try:
+            with open(PROFILE_PATH, "r", encoding="utf-8") as f:
+                profile = json.load(f)
+
+            if "dynamic_memory_ledger" not in profile or category not in profile["dynamic_memory_ledger"]:
+                print(f"[MEMORY REVOCATION] Category '{category}' not found in ledger.", flush=True)
+                return False
+
+            ledger = profile["dynamic_memory_ledger"][category]
+            if not ledger:
+                print(f"[MEMORY REVOCATION] Ledger '{category}' is empty. Nothing to revoke.", flush=True)
+                return False
+
+            try:
+                revoked_item = ledger.pop(entry_index)
+                profile["dynamic_memory_ledger"][category] = ledger
+            except IndexError:
+                print(f"[MEMORY REVOCATION] Index {entry_index} out of bounds for ledger '{category}'.", flush=True)
+                return False
+
+            temp_path = PROFILE_PATH + ".tmp"
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump(profile, f, indent=2, ensure_ascii=False)
+            
+            os.replace(temp_path, PROFILE_PATH)
+            print(f"[MEMORY REVOCATION] Successfully revoked entry from '{category}'. Revoked: {revoked_item.get('topic', 'Unknown')}", flush=True)
+            return True
+
+        except Exception as e:
+            print(f"[MEMORY EXCEPTION] Failed to revoke from profile ledger: {e}", flush=True)
+            if os.path.exists(PROFILE_PATH + ".tmp"):
+                try:
+                    os.remove(PROFILE_PATH + ".tmp")
+                except Exception:
+                    pass
+            return False
+
+
 def send_immune_rule_email(new_rule: dict, all_rules: list) -> None:
     """
     Compiles and sends a structured, concise plain-text report of BABU's active immune rules
@@ -868,4 +919,5 @@ try:
     threading.Thread(target=prune_expired_memory_entries, daemon=True).start()
 except Exception as e:
     print(f"[MEMORY PRUNING] Failed to spawn background pruning thread: {e}", flush=True)
+
 
