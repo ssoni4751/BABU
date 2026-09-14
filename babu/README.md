@@ -46,6 +46,20 @@ The system is hard-partitioned into a **Dual-Bot Architecture**:
 
 ---
 
+## 🧠 Epoch-Governed Intelligence (EGI) Reference Implementation
+
+**Project BABU** serves as the official, production-ready reference implementation of the **Epoch-Governed Intelligence (EGI)** architectural framework. It is built to physically prove the core philosophical invariant of EGI: *"Intelligence does not equal Authority."*
+
+Unlike standard LLM agents that implicitly trust their own outputs and treat time as a continuous flow, BABU enforces strict structural boundaries:
+
+- **Axiom U1 (Audit Non-Cognitive):** Implemented in [`auditor.py`](auditor.py). The auditor strictly checks if the worker completed the execution checklist (Pass/Fail) and is structurally forbidden from evaluating "truth" or hallucination.
+- **Axiom T1 (Transition Contracts & Sealed Epochs):** Implemented in [`bot.py`](bot.py). Time is treated as an external layer. When a task completes, the epoch is "sealed", raw history is wiped, and only a `Contextual Minimum` is passed forward to prevent Temporal Shadowing.
+- **Axiom CT-R1 (Retention Without Truth / Mandatory Revocability):** Implemented in [`memory.py`](memory.py). Dynamic memory is treated as *Contextual Truth*, not *Invariant Truth*, featuring explicit revocation methods so memory does not silently convert into authority.
+
+**Read the formal EGI philosophical and architectural drafts on OSF:** [osf.io/r9g5h/](https://osf.io/r9g5h/)
+
+---
+
 ## 🏛️ 9-Layer Cognitive OS Architecture
 
 The core engine follows a strict separation of concerns (*Understanding $\neq$ Authorization $\neq$ Execution*):
