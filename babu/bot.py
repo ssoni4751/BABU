@@ -5216,7 +5216,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 mode = query_params.get("hub.mode", [""])[0]
                 token = query_params.get("hub.verify_token", [""])[0]
                 challenge = query_params.get("hub.challenge", [""])[0]
-                expected_token = os.environ.get("FACEBOOK_VERIFY_TOKEN", "anshu_tax_webhook_secret_2026")
+                expected_token = os.environ.get("FACEBOOK_VERIFY_TOKEN", "your_secret_here")
                 
                 if mode == "subscribe" and token == expected_token:
                     print(f"[FACEBOOK WEBHOOK VERIFICATION SUCCESS] Verified challenge for token '{token}'", flush=True)
