@@ -648,13 +648,18 @@ def generate_contextual_minimum(session_id: str):
     summary_text = "[CONTEXTUAL MINIMUM HANDOFF]\n"
     summary_text += "The previous epoch was sealed. Key interactions:\n"
     for msg in h[-3:]: # Take the last 3 exchanges as the contextual minimum
-        role = msg.get("role", "user")
-        text = msg.get("content", "")[:100] # Truncated
+        if isinstance(msg, tuple) and len(msg) >= 2:
+            role, text = msg[0], str(msg[1])[:100]
+        elif isinstance(msg, dict):
+            role = msg.get("role", "user")
+            text = str(msg.get("content", ""))[:100]
+        else:
+            continue
         summary_text += f"- {role}: {text}...\n"
         
     with _memory_lock:
         _histories[session_id].clear()
-        _histories[session_id].append({"role": "system", "content": summary_text})
+        _histories[session_id].append(("system", summary_text))
         print(f"[GOVERNANCE] Contextual Minimum generated for session '{session_id}'.", flush=True)
 
 
