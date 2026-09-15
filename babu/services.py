@@ -795,7 +795,7 @@ def get_profile_fact_answer(query: str) -> str:
     q = query.lower().strip()
     
     # 1. Nickname
-    if any(k in q for k in ("your name", "my nickname", "what is my name", "who am i", "who i am", "my name", "what do you call me")):
+    if any(k in q for k in ("your name", "my nickname", "what is my name", "who am i", "who i am", "who i m", "who m i", "my name", "what do you call me")):
         details = profile.get("personal_details", {})
         nickname = details.get("primary_nickname", "") or details.get("full_name", "")
         if nickname:
@@ -867,7 +867,7 @@ def search_profile(query: str, bypass_filter: bool = False) -> str:
     q = cleaned.lower().strip()
     
     personal_pronouns = {
-        "myself", "who am i", "who i am", "my journey", "my background", "tell me about me", 
+        "myself", "who am i", "who i am", "who i m", "who m i", "my journey", "my background", "tell me about me", 
         "my profile", "my biography", "my bio", "who is talk", "who is speak",
         "user profile", "profile information", "gather user profile", "know about me",
         "about me", "personal details", "profile data"

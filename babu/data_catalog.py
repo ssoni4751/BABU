@@ -102,7 +102,7 @@ def resolve_knowledge_class_for_query(query: str) -> str:
         return "K2_RUNTIME_TELEMETRY"
         
     # 3. Personal Identity / Family / Private Facts (K1)
-    if any(k in q for k in ("who am i", "my name", "my father", "my mother", "my wife", "my education", "my nickname")):
+    if any(k in q for k in ("who am i", "who i am", "who i m", "who m i", "my name", "my father", "my mother", "my wife", "my education", "my nickname")):
         return "K1_IDENTITY"
         
     # 4. Consultancy / Business / Pricing / ITR / GST / PF (K3)
