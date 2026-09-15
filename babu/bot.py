@@ -6608,8 +6608,10 @@ async def run_babu(update: Update, msg: str, session_id: str):
         if tokens and tokens.get("total", 0) > 0:
             reply += f"\n\n[Tokens: {tokens['total']}]"
     except Exception as e:
+        import traceback
+        tb_str = traceback.format_exc()
         traceback.print_exc(file=sys.stdout)
-        reply = f"BABU error: {e}"
+        reply = f"BABU error: {e}\n\nTraceback:\n{tb_str}"
     finally:
         stop_typing.set()
         typing_task.cancel()
