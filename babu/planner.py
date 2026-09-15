@@ -664,7 +664,7 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
         lowered = query.lower()
         if packet.system_query or any(k in lowered for k in ("failures", "uptime", "upgrades", "upgrade", "adr", "tradeoff", "tradeoffs", "health dashboard")):
             packet.query_category = "SYSTEM_INFORMATION"
-        elif any(k in lowered for k in ("anshu", "shubham", "swarnkar", "ash", "ssoni", "who am i", "my father", "my mother", "my brother", "my sibling", "my parents", "my cousin", "my background", "my journey", "my education", "my career", "my email", "my phone", "my number", "my address", "my location", "where i live", "tell me about me", "my profile", "my biography", "my bio", "about me", "know about me")):
+        elif any(k in lowered for k in ("anshu", "shubham", "swarnkar", "ash", "ssoni", "who am i", "who i am", "my father", "my mother", "my brother", "my sibling", "my parents", "my cousin", "my background", "my journey", "my education", "my career", "my email", "my phone", "my number", "my address", "my location", "where i live", "tell me about me", "my profile", "my biography", "my bio", "about me", "know about me")):
             packet.query_category = "PERSONAL_INFORMATION"
         elif any(k in lowered for k in ("email", "gmail", "mail", "inbox")) and any(k in lowered for k in ("send", "draft", "write", "check", "search", "read", "fetch", "reply", "to", "regarding")):
             packet.query_category = "COMMUNICATION"
@@ -706,7 +706,7 @@ def classify_intent(query: str, history_text: str = "", model_name: str = "groq/
         lowered = query.lower()
         if is_sys or any(k in lowered for k in ("failures", "uptime", "upgrades", "upgrade", "adr", "tradeoff", "tradeoffs", "health dashboard")):
             packet.query_category = "SYSTEM_INFORMATION"
-        elif _force_lookup or any(k in lowered for k in ("anshu", "shubham", "swarnkar", "ash", "ssoni", "who am i", "my father", "my mother", "my brother", "my sibling", "my parents", "my cousin", "my background", "my journey", "my education", "my career", "my email", "my phone", "my number", "my address", "my location", "where i live", "tell me about me", "my profile", "my biography", "my bio", "about me", "know about me")):
+        elif _force_lookup or any(k in lowered for k in ("anshu", "shubham", "swarnkar", "ash", "ssoni", "who am i", "who i am", "my father", "my mother", "my brother", "my sibling", "my parents", "my cousin", "my background", "my journey", "my education", "my career", "my email", "my phone", "my number", "my address", "my location", "where i live", "tell me about me", "my profile", "my biography", "my bio", "about me", "know about me")):
             packet.query_category = "PERSONAL_INFORMATION"
         elif any(k in lowered for k in ("email", "gmail", "mail", "inbox")):
             packet.query_category = "COMMUNICATION"
