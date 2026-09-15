@@ -301,7 +301,7 @@ KNOWLEDGE_BASE = {
     ),
 }
 
-USER_PROFILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "user_profile.json")
+USER_PROFILE_PATH = "/etc/secrets/user_profile.json" if os.path.exists("/etc/secrets/user_profile.json") else os.path.join(os.path.dirname(os.path.abspath(__file__)), "user_profile.json")
 _profile_lock = threading.Lock()
 _PG_FAILED = False
 _PG_LAST_RETRY = 0
@@ -662,7 +662,7 @@ def load_user_profile() -> dict:
 
 USER_PROFILE = load_user_profile()
 
-BUSINESS_PROFILE_PATH = os.path.join(os.path.dirname(__file__), "business_profile.json")
+BUSINESS_PROFILE_PATH = "/etc/secrets/business_profile.json" if os.path.exists("/etc/secrets/business_profile.json") else os.path.join(os.path.dirname(__file__), "business_profile.json")
 
 def load_business_profile() -> dict:
     if os.path.exists(BUSINESS_PROFILE_PATH):

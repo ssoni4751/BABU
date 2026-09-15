@@ -17,7 +17,7 @@ if sys.platform == "win32":
 
 # Core Paths
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROFILE_PATH = os.path.join(CURRENT_DIR, "user_profile.json")
+PROFILE_PATH = "/etc/secrets/user_profile.json" if os.path.exists("/etc/secrets/user_profile.json") else os.path.join(CURRENT_DIR, "user_profile.json")
 # Dynamic Test Path isolation to avoid polluting failures.json during unit tests
 is_testing = (
     "unittest" in sys.modules 
@@ -57,7 +57,7 @@ if sys.platform == "win32":
 
 # Core Paths
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROFILE_PATH = os.path.join(CURRENT_DIR, "user_profile.json")
+PROFILE_PATH = "/etc/secrets/user_profile.json" if os.path.exists("/etc/secrets/user_profile.json") else os.path.join(CURRENT_DIR, "user_profile.json")
 # Dynamic Test Path isolation to avoid polluting failures.json during unit tests
 is_testing = (
     "unittest" in sys.modules 

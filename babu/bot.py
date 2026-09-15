@@ -899,7 +899,7 @@ def invoke_with_fallback(messages, model_name: str, temp: float):
     # Last model in chain — propagate the last exception
     raise last_exc
 
-USER_PROFILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "user_profile.json")
+USER_PROFILE_PATH = "/etc/secrets/user_profile.json" if os.path.exists("/etc/secrets/user_profile.json") else os.path.join(os.path.dirname(os.path.abspath(__file__)), "user_profile.json")
 _profile_lock = threading.Lock()
 
 
