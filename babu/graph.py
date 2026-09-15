@@ -1602,7 +1602,7 @@ def pa_node(state: BabuState):
         from bot import CURRENT_PA_MODEL, build_llm, retrieve_k0_memory, tg_application, LAST_TELEGRAM_SUCCESS_TIME, LAST_FB_SUCCESS_TIME, LAST_GOOGLE_SUCCESS_TIME, LAST_WEB_SUCCESS_TIME, BOT_START_TIME
 
     final_brief = state.get("final_brief")
-    if final_brief and "Respond directly to user query" in final_brief:
+    if final_brief and ("Respond directly to user query" in final_brief or "Goal executed successfully, but no department brief was generated." in final_brief):
         final_brief = None
     research      = final_brief or state.get("compressed_research") or "\n\n".join(state.get("research_data", []))
     history       = state.get("history_text", "")
