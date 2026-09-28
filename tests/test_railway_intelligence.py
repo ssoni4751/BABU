@@ -175,3 +175,83 @@ class TestNaturalLanguageIntercept:
         assert try_handle_railway_natural_query("hi babu how are you") is None
         assert try_handle_railway_natural_query("what is my current bank balance") is None
         assert try_handle_railway_natural_query("post on facebook page") is None
+
+    def test_intercept_slash_trains_and_explicit_date(self):
+        res1 = try_handle_railway_natural_query("/trains jhansi delhi 05-10-2026")
+        assert res1 is not None
+        assert res1["type"] == "train_search"
+        assert res1["src_code"] == "VGLJ"
+        assert res1["dest_code"] == "NDLS"
+        assert res1["date"] == "2026-10-05"
+
+        res2 = try_handle_railway_natural_query("/train jhansi delhi 05-10-2026")
+        assert res2 is not None
+        assert res2["type"] == "train_search"
+        assert res2["src_code"] == "VGLJ"
+        assert res2["dest_code"] == "NDLS"
+
+        res3 = try_handle_railway_natural_query("/seats 12279 CC")
+        assert res3 is not None
+        assert res3["type"] == "seats"
+        assert res3["train_no"] == "12279"
+        assert res3["class"] == "CC"
+
+
+class TestDateChangeMenuMarkup:
+    def test_build_train_search_reply_markup_direct_route(self):
+        from babu.bot import build_train_search_reply_markup
+        res = {
+            "success": True,
+            "src_code": "VGLJ",
+            "dest_code": "NDLS",
+            "date": "2026-10-05",
+            "is_connecting": False,
+            "trains": [
+                {"train_no": "12279", "train_name": "TAJ EXPRESS", "classes": ["CC", "2S"]},
+                {"train_no": "12001", "train_name": "SHATABDI", "classes": ["CC", "EC"]}
+            ]
+        }
+        markup = build_train_search_reply_markup(res)
+        keyboard = markup.inline_keyboard
+        assert len(keyboard) >= 3
+
+        # Row 1: Date Stepper
+        stepper_row = keyboard[0]
+        assert len(stepper_row) == 3
+        assert "rail_search|VGLJ|NDLS|2026-10-04" in stepper_row[0].callback_data
+        assert "rail_noop|2026-10-05" in stepper_row[1].callback_data
+        assert "rail_search|VGLJ|NDLS|2026-10-06" in stepper_row[2].callback_data
+
+        # Row 2: Quick Dates
+        quick_dates_row = keyboard[1]
+        assert len(quick_dates_row) == 3
+        assert "rail_search|VGLJ|NDLS|" in quick_dates_row[0].callback_data
+        assert "rail_search|VGLJ|NDLS|" in quick_dates_row[1].callback_data
+        assert "rail_search|VGLJ|NDLS|" in quick_dates_row[2].callback_data
+
+        # Row 3: Train seat buttons
+        train_row = keyboard[2]
+        assert any("rail_seats|12279|VGLJ|NDLS|2026-10-05" in btn.callback_data for btn in train_row)
+
+    def test_build_train_search_reply_markup_connecting_route(self):
+        from babu.bot import build_train_search_reply_markup
+        res = {
+            "success": True,
+            "src_code": "ORAI",
+            "dest_code": "NDLS",
+            "date": "2026-10-05",
+            "is_connecting": True,
+            "trains": []
+        }
+        markup = build_train_search_reply_markup(res)
+        keyboard = markup.inline_keyboard
+        assert len(keyboard) == 4  # Stepper + Quick Dates + 2 Connecting Leg Rows
+
+        # Check connecting leg buttons carrying the forward date
+        leg_row1 = keyboard[2]
+        leg_row2 = keyboard[3]
+        assert "rail_search|ORAI|VGLJ|2026-10-05" in leg_row1[0].callback_data
+        assert "rail_search|VGLJ|NDLS|2026-10-05" in leg_row1[1].callback_data
+        assert "rail_search|ORAI|CNB|2026-10-05" in leg_row2[0].callback_data
+        assert "rail_search|CNB|NDLS|2026-10-05" in leg_row2[1].callback_data
+

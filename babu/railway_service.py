@@ -1397,10 +1397,25 @@ def try_handle_railway_natural_query(query: str) -> Optional[Dict[str, Any]]:
                 "success": res.get("success", False)
             }
 
-    # 2. Seat Availability Check (e.g. "12555 me 3AC seat", "check seat in 12555", "12555 seat availability")
+    # 2. Seat Availability Check (e.g. "/seats 12279 CC", "12555 me 3AC seat", "check seat in 12555", "12555 seat availability")
+    m_seat_cmd = re.search(r'^/?seats?(?:@\w+)?\s+(\d{4,5})(?:\s+([a-zA-Z0-9]+))?(?:\s+([a-zA-Z]+))?(?:\s+([a-zA-Z]+))?(?:\s+(.+))?', raw_lower)
     train_num_match = re.search(r'\b([1-2]\d{4})\b', raw)
-    if train_num_match:
-        if any(w in raw_lower for w in ("seat", "सीट", "berth", "बर्थ", "availab", "3a", "2a", "1a", "sl", "sleeper", "ac")):
+    if m_seat_cmd:
+        train_no = m_seat_cmd.group(1)
+        travel_class = m_seat_cmd.group(2).upper() if m_seat_cmd.group(2) else "3A"
+        src_c = m_seat_cmd.group(3)
+        dest_c = m_seat_cmd.group(4)
+        date_c = m_seat_cmd.group(5)
+        res = check_seat_availability(train_no, src_query=src_c, dest_query=dest_c, date_query=date_c, travel_class=travel_class)
+        return {
+            "type": "seats",
+            "train_no": train_no,
+            "class": travel_class,
+            "text": res.get("formatted_text", ""),
+            "success": res.get("success", False)
+        }
+    elif train_num_match:
+        if any(w in raw_lower for w in ("seat", "सीट", "berth", "बर्थ", "availab", "3a", "2a", "1a", "sl", "sleeper", "ac", "cc", "ec", "2s")):
             train_no = train_num_match.group(1)
             # Detect class
             travel_class = "3A"
@@ -1409,12 +1424,16 @@ def try_handle_railway_natural_query(query: str) -> Optional[Dict[str, Any]]:
                     travel_class = cls
                     break
             
-            # Check for date keywords
+            # Check for date keywords or explicit dates
             date_val = None
-            for d_word in ("today", "aaj", "tomorrow", "kal", "parso", "next monday", "monday", "somwar"):
-                if d_word in raw_lower:
-                    date_val = d_word
-                    break
+            m_d = re.search(r'\b(\d{1,2}[-/]\d{1,2}[-/]\d{4}|\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\b', raw_lower)
+            if m_d:
+                date_val = m_d.group(1)
+            else:
+                for d_word in ("today", "aaj", "tomorrow", "kal", "parso", "next monday", "monday", "somwar"):
+                    if d_word in raw_lower:
+                        date_val = d_word
+                        break
 
             res = check_seat_availability(train_no, travel_class=travel_class, date_query=date_val)
             return {
@@ -1429,13 +1448,22 @@ def try_handle_railway_natural_query(query: str) -> Optional[Dict[str, Any]]:
     # Pattern A: "... se ... (ki / ke liye) train ..." (e.g. "orai se delhi train", "उरई से दिल्ली ट्रेन")
     m_hin = re.search(r'([a-zA-Z\u0900-\u097F]+)\s+(?:se|to|-)\s+([a-zA-Z\u0900-\u097F]+)(?:\s+(?:ki|ke\s+liye))?\s+(?:train|ट्रेन|rail|seats|गाड़ी)', raw_lower)
     # Pattern B: "train from ... to ..."
-    m_eng = re.search(r'trains?\s+(?:from\s+)?([a-zA-Z]+)\s+to\s+([a-zA-Z]+)', raw_lower)
-    
-    src_cand, dest_cand = None, None
-    if m_hin:
+    m_eng = re.search(r'trains?\s+(?:from\s+)?([a-zA-Z\u0900-\u097F]+)\s+to\s+([a-zA-Z\u0900-\u097F]+)', raw_lower)
+    # Pattern C: "/train ...", "/trains ...", "train jhansi delhi 05-10-2026"
+    m_cmd = re.search(r'^/?trains?(?:@\w+)?\s+([a-zA-Z\u0900-\u097F]+)(?:\s+(?:to|se|-))?\s+([a-zA-Z\u0900-\u097F]+)(?:\s+(.+))?', raw_lower)
+    # Pattern D: "train between ... and ..."
+    m_btw = re.search(r'trains?\s+between\s+([a-zA-Z\u0900-\u097F]+)\s+and\s+([a-zA-Z\u0900-\u097F]+)', raw_lower)
+
+    src_cand, dest_cand, date_cand = None, None, None
+    if m_cmd:
+        src_cand, dest_cand = m_cmd.group(1).strip(), m_cmd.group(2).strip()
+        date_cand = m_cmd.group(3).strip() if m_cmd.group(3) else None
+    elif m_hin:
         src_cand, dest_cand = m_hin.group(1).strip(), m_hin.group(2).strip()
     elif m_eng:
         src_cand, dest_cand = m_eng.group(1).strip(), m_eng.group(2).strip()
+    elif m_btw:
+        src_cand, dest_cand = m_btw.group(1).strip(), m_btw.group(2).strip()
 
     if src_cand and dest_cand:
         # Avoid false positives with common stopwords
@@ -1444,13 +1472,18 @@ def try_handle_railway_natural_query(query: str) -> Optional[Dict[str, Any]]:
             src_res = resolve_station_code(src_cand)
             dest_res = resolve_station_code(dest_cand)
             if src_res and dest_res:
-                # Check for date keywords
-                date_val = None
-                for d_word in ("today", "aaj", "tomorrow", "kal", "parso", "next monday", "monday", "somwar", "friday", "shukrawar"):
-                    if d_word in raw_lower:
-                        date_val = d_word
-                        break
-                
+                date_val = date_cand
+                if not date_val:
+                    # Check for explicit dates e.g. 05-10-2026, 2026-10-05, 15 Oct, 5/10/2026
+                    m_d = re.search(r'\b(\d{1,2}[-/]\d{1,2}[-/]\d{4}|\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\b', raw_lower)
+                    if m_d:
+                        date_val = m_d.group(1)
+                    else:
+                        for d_word in ("today", "aaj", "tomorrow", "kal", "parso", "next monday", "monday", "somwar", "friday", "shukrawar", "sunday", "saturday"):
+                            if d_word in raw_lower:
+                                date_val = d_word
+                                break
+
                 res = search_trains(src_cand, dest_cand, date_val)
                 return {
                     "type": "train_search",
@@ -1458,7 +1491,7 @@ def try_handle_railway_natural_query(query: str) -> Optional[Dict[str, Any]]:
                     "dest": dest_cand,
                     "src_code": res.get("src_code"),
                     "dest_code": res.get("dest_code"),
-                    "date": date_val,
+                    "date": res.get("date"),
                     "text": res.get("formatted_text", ""),
                     "trains": res.get("trains", []),
                     "is_connecting": res.get("is_connecting", False),
