@@ -98,9 +98,13 @@ class TestRailwayService:
         assert res["success"] is True
         assert res["train_no"] == "12555"
         assert res["class"] == "3A"
-        assert res["badge"] in ("🟢", "🟡", "🔴")
+        assert res["badge"] in ("🟢", "🟡", "🔴", "⚪")
         assert res["fare"] > 0
         assert "GORAKHDHAM" in res["formatted_text"]
+
+        # Future date should have active booking status badge
+        res_future = check_seat_availability("12555", "orai", "delhi", "2026-10-15", travel_class="3A")
+        assert res_future["badge"] in ("🟢", "🟡", "🔴")
 
     def test_get_pnr_status_valid(self):
         res = get_pnr_status("2458963214")
@@ -254,4 +258,55 @@ class TestDateChangeMenuMarkup:
         assert "rail_search|VGLJ|NDLS|2026-10-05" in leg_row1[1].callback_data
         assert "rail_search|ORAI|CNB|2026-10-05" in leg_row2[0].callback_data
         assert "rail_search|CNB|NDLS|2026-10-05" in leg_row2[1].callback_data
+
+
+class TestDynamicSeatAvailability:
+    def test_taj_express_seats_differ_across_dates(self):
+        from babu.railway_service import check_seat_availability
+        res_sep30 = check_seat_availability("12279", "VGLJ", "NDLS", "2026-09-30", travel_class="2S")
+        res_oct05 = check_seat_availability("12279", "VGLJ", "NDLS", "2026-10-05", travel_class="2S")
+        res_nov01 = check_seat_availability("12279", "VGLJ", "NDLS", "2026-11-01", travel_class="2S")
+
+        assert res_sep30["success"] is True
+        assert res_oct05["success"] is True
+        assert res_nov01["success"] is True
+
+        # Crucial check: verify they are NOT all stuck on RAC 11!
+        statuses = [res_sep30["status"], res_oct05["status"], res_nov01["status"]]
+        assert len(set(statuses)) > 1, f"Expected varied availability statuses, got identical: {statuses}"
+        assert res_sep30["available_classes"] == ["CC", "2S"]
+
+    def test_build_seat_check_reply_markup(self):
+        from babu.bot import build_seat_check_reply_markup
+        res = {
+            "success": True,
+            "train_no": "12279",
+            "train_name": "TAJ EXPRESS",
+            "src_code": "VGLJ",
+            "dest_code": "NDLS",
+            "date": "2026-10-05",
+            "class": "2S",
+            "available_classes": ["CC", "2S"],
+            "status": "AVAILABLE 34",
+            "probability": "Confirmed (100%)",
+            "badge": "🟢"
+        }
+        markup = build_seat_check_reply_markup(res)
+        keyboard = markup.inline_keyboard
+
+        # Row 1: Class switcher
+        assert len(keyboard[0]) == 2
+        assert "rail_seats|12279|VGLJ|NDLS|2026-10-05|CC" in keyboard[0][0].callback_data
+        assert "rail_noop|" in keyboard[0][1].callback_data
+
+        # Row 2: Date stepper
+        assert len(keyboard[1]) == 3
+        assert "rail_seats|12279|VGLJ|NDLS|2026-10-04|2S" in keyboard[1][0].callback_data
+        assert "rail_noop|2026-10-05" in keyboard[1][1].callback_data
+        assert "rail_seats|12279|VGLJ|NDLS|2026-10-06|2S" in keyboard[1][2].callback_data
+
+        # Row 3: Back to train list
+        assert len(keyboard[2]) == 1
+        assert "rail_search|VGLJ|NDLS|2026-10-05" in keyboard[2][0].callback_data
+
 

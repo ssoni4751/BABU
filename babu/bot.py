@@ -6918,6 +6918,68 @@ def build_train_search_reply_markup(res: Dict[str, Any]) -> InlineKeyboardMarkup
     return InlineKeyboardMarkup(keyboard)
 
 
+def build_seat_check_reply_markup(res: Dict[str, Any]) -> InlineKeyboardMarkup:
+    """
+    Build interactive keyboard for single train seat availability card:
+    Row 1: Class switcher for this train [ ✅ 2S ] [ 💺 CC ]
+    Row 2: Date Stepper [ ◀️ Prev Date ] [ 📅 Current Date ] [ Next Date ▶️ ]
+    Row 3: Back to Train List [ 🔙 ट्रेन लिस्ट ]
+    """
+    keyboard = []
+    t_no = str(res.get("train_no") or "")
+    src = str(res.get("src_code") or "")
+    dest = str(res.get("dest_code") or "")
+    cur_cls = str(res.get("class") or "3A").upper()
+    d_val = res.get("date") or ""
+
+    ist_tz = timezone(timedelta(hours=5, minutes=30))
+    today_dt = datetime.now(timezone.utc).astimezone(ist_tz).date()
+
+    try:
+        cur_dt = datetime.strptime(d_val, "%Y-%m-%d").date() if d_val else today_dt
+    except Exception:
+        cur_dt = today_dt
+
+    prev_dt = cur_dt - timedelta(days=1)
+    next_dt = cur_dt + timedelta(days=1)
+
+    cur_str = cur_dt.strftime("%Y-%m-%d")
+    prev_str = prev_dt.strftime("%Y-%m-%d")
+    next_str = next_dt.strftime("%Y-%m-%d")
+
+    # Row 1: Other classes for this train
+    avail_classes = res.get("available_classes") or [cur_cls]
+    if len(avail_classes) > 1 or (avail_classes and avail_classes[0] != cur_cls):
+        class_row = []
+        for c in avail_classes:
+            c_upper = c.upper()
+            if c_upper == cur_cls:
+                class_row.append(InlineKeyboardButton(f"✅ {c_upper}", callback_data=f"rail_noop|{cur_str}"))
+            else:
+                class_row.append(InlineKeyboardButton(f"💺 {c_upper}", callback_data=f"rail_seats|{t_no}|{src}|{dest}|{cur_str}|{c_upper}"))
+        keyboard.append(class_row)
+
+    # Row 2: Date Stepper
+    prev_label = f"◀️ {prev_dt.strftime('%d %b')}"
+    cur_label = f"📅 {cur_dt.strftime('%d %b')}"
+    next_label = f"{next_dt.strftime('%d %b')} ▶️"
+
+    date_stepper_row = [
+        InlineKeyboardButton(prev_label, callback_data=f"rail_seats|{t_no}|{src}|{dest}|{prev_str}|{cur_cls}"),
+        InlineKeyboardButton(cur_label, callback_data=f"rail_noop|{cur_str}"),
+        InlineKeyboardButton(next_label, callback_data=f"rail_seats|{t_no}|{src}|{dest}|{next_str}|{cur_cls}")
+    ]
+    keyboard.append(date_stepper_row)
+
+    # Row 3: Back to Trains List
+    if src and dest:
+        keyboard.append([
+            InlineKeyboardButton(f"🔙 ट्रेन लिस्ट ({src} ➔ {dest})", callback_data=f"rail_search|{src}|{dest}|{cur_str}")
+        ])
+
+    return InlineKeyboardMarkup(keyboard)
+
+
 async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global LAST_TELEGRAM_SUCCESS_TIME
     LAST_TELEGRAM_SUCCESS_TIME = time.time()
@@ -7304,6 +7366,8 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ]])
             elif rail_res.get("type") == "train_search":
                 reply_markup = build_train_search_reply_markup(rail_res)
+            elif rail_res.get("type") == "seats":
+                reply_markup = build_seat_check_reply_markup(rail_res)
             text_content = rail_res.get("text") or rail_res.get("formatted_text") or ""
             await send_long_telegram_message(update, text_content, reply_markup=reply_markup, parse_mode="Markdown")
             return
@@ -7809,7 +7873,8 @@ async def cmd_seats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             from railway_service import check_seat_availability
 
         res = check_seat_availability(train_no, src, dest, date_val, travel_class=travel_class)
-        await update.message.reply_text(res.get("formatted_text", "सीट जानकारी उपलब्ध नहीं है।"), parse_mode="Markdown")
+        reply_markup = build_seat_check_reply_markup(res)
+        await send_long_telegram_message(update, res.get("formatted_text", "सीट जानकारी उपलब्ध नहीं है।"), reply_markup=reply_markup, parse_mode="Markdown")
     except Exception as e:
         print(f"[CMD_SEATS ERROR] {e}", flush=True)
         await update.message.reply_text(f"❌ सीट अवेलेबिलिटी जांच विफल: {e}")
@@ -7875,7 +7940,18 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except ImportError:
                         from railway_service import check_seat_availability
                     res = check_seat_availability(t_no, src_c, dest_c, d_val, travel_class=cls_val)
-                    await query.message.reply_text(res.get("formatted_text", "सीट स्टेटस उपलब्ध नहीं है।"), parse_mode="Markdown")
+                    reply_markup = build_seat_check_reply_markup(res)
+                    card_txt = res.get("formatted_text", "सीट स्टेटस उपलब्ध नहीं है।")
+
+                    # If already viewing a seat availability card, update in-place smoothly
+                    if query.message.text and "Seat Availability" in query.message.text:
+                        try:
+                            await query.edit_message_text(card_txt, reply_markup=reply_markup, parse_mode="Markdown")
+                        except Exception as edit_err:
+                            if "Message is not modified" not in str(edit_err):
+                                await query.message.reply_text(card_txt, reply_markup=reply_markup, parse_mode="Markdown")
+                    else:
+                        await query.message.reply_text(card_txt, reply_markup=reply_markup, parse_mode="Markdown")
                 except Exception as e:
                     print(f"[CALLBACK RAIL_SEATS ERROR] {e}", flush=True)
                     await query.message.reply_text(f"❌ सीट अवेलेबिलिटी जांच में त्रुटि: {e}")

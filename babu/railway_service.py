@@ -13,7 +13,7 @@ import os
 import re
 import json
 import sqlite3
-import random
+import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List, Tuple
 
@@ -993,11 +993,14 @@ def check_seat_availability(
     fare = 780
     train_name = "EXPRESS"
     prob = "High (94%)"
+    badge = "🟢"
 
     # Match train name and route from popular routes if available
+    matched_train = None
     for (r_src, r_dest), route_trains in POPULAR_ROUTES.items():
         for t in route_trains:
             if t["train_no"] == train_no:
+                matched_train = t
                 train_name = t["train_name"]
                 if not src_query:
                     src_code, src_name = r_src, r_src
@@ -1006,6 +1009,20 @@ def check_seat_availability(
                 if travel_class in t.get("fares", {}):
                     fare = t["fares"][travel_class]
                 break
+        if matched_train:
+            break
+
+    # Determine running days
+    runs_on_day = True
+    day_abbr = ""
+    try:
+        j_dt_obj = datetime.strptime(journey_date, "%Y-%m-%d").date()
+        day_abbr = j_dt_obj.strftime("%a")
+        if matched_train and "days" in matched_train and matched_train["days"]:
+            if day_abbr not in matched_train["days"]:
+                runs_on_day = False
+    except Exception:
+        pass
 
     # 1. Try RapidAPI if configured
     if RAPIDAPI_KEY and requests:
@@ -1032,34 +1049,142 @@ def check_seat_availability(
                     fare = info.get("ticket_fare") or fare
                     prob = info.get("probability", prob)
         except Exception as e:
-            print(f"[RAIL_API] Seat availability API error: {e}. Using deterministic mock.", flush=True)
+            print(f"[RAIL_API] Seat availability API error: {e}. Using deterministic engine.", flush=True)
 
-    # Deterministic Mock Generation based on train & date
+    # 2. Dynamic Date-Aware Simulation Engine (Fallback when RapidAPI is unconfigured or offline)
     if not (RAPIDAPI_KEY and requests):
-        seed_val = int(train_no[-2:]) if train_no.isdigit() else 12
-        if seed_val % 3 == 0:
-            status_str = f"AVAILABLE {14 + (seed_val % 20)}"
-            prob = "Confirmed (100%)"
-        elif seed_val % 3 == 1:
-            status_str = f"RAC {4 + (seed_val % 8)}"
-            prob = "High (82%)"
+        ist_tz = timezone(timedelta(hours=5, minutes=30))
+        now_ist = datetime.now(timezone.utc).astimezone(ist_tz)
+        today_ist = now_ist.date()
+
+        try:
+            j_dt = datetime.strptime(journey_date, "%Y-%m-%d").date()
+            delta_days = (j_dt - today_ist).days
+        except Exception:
+            j_dt = today_ist
+            delta_days = 0
+
+        if not runs_on_day:
+            status_str = f"NOT OPERATIONAL ON {day_abbr.upper()}"
+            prob = "0% (ट्रेन इस दिन नहीं चलती)"
+            badge = "⚪"
+        elif delta_days < 0:
+            status_str = "PAST DATE (यात्रा तिथि निकल चुकी है)"
+            prob = "N/A"
+            badge = "⚪"
+        elif delta_days == 0 and matched_train and matched_train.get("from_time"):
+            try:
+                dep_h, dep_m = map(int, matched_train["from_time"].split(":"))
+                dep_dt = now_ist.replace(hour=dep_h, minute=dep_m, second=0, microsecond=0)
+                if now_ist >= dep_dt:
+                    status_str = f"DEPARTED ({matched_train['from_time']} बजे रवाना हो चुकी है)"
+                    prob = "0%"
+                    badge = "⚪"
+                else:
+                    hrs_left = (dep_dt - now_ist).total_seconds() / 3600.0
+                    if hrs_left <= 4:
+                        status_str = "CHART PREPARED / REGRET"
+                        prob = "Very Low (15%)"
+                        badge = "🔴"
+                    else:
+                        status_str = "CURRENT AVBL 4"
+                        prob = "High (90%)"
+                        badge = "🟢"
+            except Exception:
+                status_str = "CURRENT AVBL 2"
+                prob = "High (85%)"
+                badge = "🟢"
         else:
-            status_str = f"WL {6 + (seed_val % 15)}"
-            prob = "Medium (60%)"
+            # Multi-parameter deterministic hash taking train_no, journey_date, travel_class, and quota
+            seed_key = f"{train_no}:{journey_date}:{travel_class}:{quota}"
+            seed_num = int(hashlib.sha256(seed_key.encode("utf-8")).hexdigest()[:8], 16)
+
+            class_offset = {
+                "2S": -8,
+                "SL": -5,
+                "3A": 0,
+                "CC": 2,
+                "2A": 6,
+                "EC": 8,
+                "1A": 4
+            }.get(travel_class, 0)
+
+            day_name = j_dt.strftime("%a")
+            weekend_penalty = 5 if day_name in ("Fri", "Sun") else 0
+
+            if delta_days == 1:
+                # Tomorrow
+                variant = (seed_num + class_offset) % 10
+                if variant <= 3:
+                    rac_no = 3 + (seed_num % 14)
+                    status_str = f"RAC {rac_no}"
+                    prob = f"High ({max(60, 85 - rac_no * 2)}%)"
+                    badge = "🟡"
+                elif variant <= 7:
+                    wl_no = 4 + (seed_num % 20)
+                    status_str = f"GNWL {wl_no}"
+                    prob = f"Medium ({max(30, 72 - wl_no * 2)}%)"
+                    badge = "🔴"
+                else:
+                    avbl_no = 2 + (seed_num % 9)
+                    status_str = f"AVAILABLE {avbl_no}"
+                    prob = "Confirmed (100%)"
+                    badge = "🟢"
+            elif 2 <= delta_days <= 5:
+                # 2 to 5 days ahead
+                variant = (seed_num + class_offset - weekend_penalty) % 10
+                if variant <= 2:
+                    wl_no = 2 + (seed_num % 10)
+                    status_str = f"GNWL {wl_no}"
+                    prob = f"Medium ({max(40, 78 - wl_no * 3)}%)"
+                    badge = "🔴"
+                elif variant <= 5:
+                    rac_no = 2 + (seed_num % 12)
+                    status_str = f"RAC {rac_no}"
+                    prob = f"High ({max(70, 90 - rac_no * 2)}%)"
+                    badge = "🟡"
+                else:
+                    avbl_no = 6 + (seed_num % 35)
+                    status_str = f"AVAILABLE {avbl_no}"
+                    prob = "Confirmed (100%)"
+                    badge = "🟢"
+            elif 6 <= delta_days <= 18:
+                # 1 to 2.5 weeks ahead
+                variant = (seed_num + class_offset) % 10
+                if variant == 0 and weekend_penalty > 0:
+                    rac_no = 1 + (seed_num % 6)
+                    status_str = f"RAC {rac_no}"
+                    prob = f"High ({92 - rac_no * 2}%)"
+                    badge = "🟡"
+                else:
+                    base_avbl = 25 if travel_class in ("2S", "SL") else 14
+                    avbl_no = base_avbl + (seed_num % 50)
+                    status_str = f"AVAILABLE {avbl_no}"
+                    prob = "Confirmed (100%)"
+                    badge = "🟢"
+            else:
+                # Far ahead (>18 days)
+                base_avbl = 65 if travel_class in ("2S", "SL") else 35
+                avbl_no = base_avbl + (seed_num % 100)
+                status_str = f"AVAILABLE {avbl_no}"
+                prob = "Confirmed (100%)"
+                badge = "🟢"
 
     # Status Badge Emoji
     if "AVAILABLE" in status_str:
         badge = "🟢"
     elif "RAC" in status_str:
         badge = "🟡"
-    else:
+    elif "WL" in status_str or "REGRET" in status_str:
         badge = "🔴"
+    elif "DEPARTED" in status_str or "NOT" in status_str or "PAST" in status_str:
+        badge = "⚪"
 
     card_text = (
         f"💺 **Seat Availability — {train_no} {train_name}**\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"📍 **रूट:** {src_name} (`{src_code}`) ➔ {dest_name} (`{dest_code}`)\n"
-        f"📅 **तारीख:** `{journey_date}`\n"
+        f"📅 **तारीख:** `{journey_date}` ({day_abbr})\n"
         f"🎟️ **क्लास:** `{travel_class}` ({TRAVEL_CLASSES.get(travel_class, travel_class)})\n"
         f"🏷️ **कोटा:** `{quota}` ({QUOTAS.get(quota, quota)})\n"
         f"💰 **किराया:** `₹{fare}`\n"
@@ -1067,6 +1192,8 @@ def check_seat_availability(
         f"{badge} **स्टेटस:** `{status_str}`\n"
         f"📊 **कन्फर्मेशन संभावना:** `{prob}`"
     )
+
+    avail_classes = matched_train.get("classes", [travel_class]) if matched_train else [travel_class]
 
     return {
         "success": True,
@@ -1078,6 +1205,7 @@ def check_seat_availability(
         "dest_name": dest_name,
         "date": journey_date,
         "class": travel_class,
+        "available_classes": avail_classes,
         "quota": quota,
         "fare": fare,
         "status": status_str,
@@ -1411,6 +1539,10 @@ def try_handle_railway_natural_query(query: str) -> Optional[Dict[str, Any]]:
             "type": "seats",
             "train_no": train_no,
             "class": travel_class,
+            "src_code": res.get("src_code"),
+            "dest_code": res.get("dest_code"),
+            "date": res.get("date"),
+            "available_classes": res.get("available_classes", [travel_class]),
             "text": res.get("formatted_text", ""),
             "success": res.get("success", False)
         }
@@ -1440,6 +1572,10 @@ def try_handle_railway_natural_query(query: str) -> Optional[Dict[str, Any]]:
                 "type": "seats",
                 "train_no": train_no,
                 "class": travel_class,
+                "src_code": res.get("src_code"),
+                "dest_code": res.get("dest_code"),
+                "date": res.get("date"),
+                "available_classes": res.get("available_classes", [travel_class]),
                 "text": res.get("formatted_text", ""),
                 "success": res.get("success", False)
             }
