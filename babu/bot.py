@@ -6338,11 +6338,34 @@ async def scheduler_async_loop(application):
                         print(f"[SCHEDULER ERROR] Failed to send cancel notification: {err}", flush=True)
                     PENDING_POSTS.pop(p_chat_id, None)
                     WAITING_FOR_TOPIC.pop(p_chat_id, None)
-            
+
+            # ── Autonomous PNR Status Tracker Polling ─────────────────
+            try:
+                try:
+                    from .railway_service import poll_tracked_pnrs
+                except ImportError:
+                    from railway_service import poll_tracked_pnrs
+
+                pnr_alerts = await asyncio.to_thread(poll_tracked_pnrs)
+                for alert in pnr_alerts:
+                    target_chat = alert.get("chat_id")
+                    if target_chat and application and application.bot:
+                        try:
+                            await application.bot.send_message(
+                                chat_id=target_chat,
+                                text=alert["text"],
+                                parse_mode="Markdown"
+                            )
+                            print(f"[PNR_TRACKER] Dispatched status alert for PNR {alert.get('pnr')} to chat {target_chat}", flush=True)
+                        except Exception as pnr_send_err:
+                            print(f"[PNR_TRACKER ERROR] Failed to send PNR alert: {pnr_send_err}", flush=True)
+            except Exception as pnr_poll_err:
+                print(f"[PNR_TRACKER POLLING ERROR] {pnr_poll_err}", flush=True)
+
         except Exception as e:
             print(f"[SCHEDULER ERROR] Exception in loop: {e}", flush=True)
             traceback.print_exc(file=sys.stdout)
-            
+
         # Wake up and check every 15 minutes (900 seconds)
         await asyncio.sleep(900)
 
@@ -7155,6 +7178,38 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Please reply with your new custom topic (e.g. Epf claims, Gst registration, Income tax returns) to regenerate the post.")
         return
 
+    # ── Natural Language Railway Intelligence Intercept ──────────────
+    try:
+        try:
+            from .railway_service import try_handle_railway_natural_query
+        except ImportError:
+            from railway_service import try_handle_railway_natural_query
+
+        rail_res = try_handle_railway_natural_query(msg)
+        if rail_res and rail_res.get("success"):
+            reply_markup = None
+            if rail_res.get("type") == "pnr":
+                reply_markup = InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔔 Auto-Track PNR (बैकग्राउंड ट्रैकिंग)", callback_data=f"track_pnr|{rail_res['pnr']}")
+                ]])
+            elif rail_res.get("type") == "train_search":
+                trains = rail_res.get("trains", [])[:3]
+                if trains:
+                    keyboard = []
+                    for t in trains:
+                        t_no = t.get("train_no")
+                        row = [
+                            InlineKeyboardButton(f"💺 {t_no} (3A)", callback_data=f"rail_seats|{t_no}|{rail_res['src']}|{rail_res['dest']}|{rail_res.get('date') or ''}|3A"),
+                            InlineKeyboardButton(f"💺 {t_no} (2A)", callback_data=f"rail_seats|{t_no}|{rail_res['src']}|{rail_res['dest']}|{rail_res.get('date') or ''}|2A"),
+                            InlineKeyboardButton(f"💺 {t_no} (SL)", callback_data=f"rail_seats|{t_no}|{rail_res['src']}|{rail_res['dest']}|{rail_res.get('date') or ''}|SL")
+                        ]
+                        keyboard.append(row)
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+            await send_long_telegram_message(update, rail_res["text"], reply_markup=reply_markup)
+            return
+    except Exception as rail_err:
+        print(f"[RAIL_NATURAL_INTERCEPT WARNING] {rail_err}", flush=True)
+
     await run_babu(update, msg, session_id)
 
 
@@ -7571,6 +7626,139 @@ async def cmd_update_lead(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Error updating lead: {e}")
 
 
+# ── Railway Intelligence & PNR Commands ─────────────────────────────────────
+
+async def cmd_train(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Search trains between stations. Syntax: /train [from] [to] [date]"""
+    if not is_telegram_operator(update):
+        await update.message.reply_text("🔒 Railway intelligence restricted to the authorized operator.")
+        return
+    args = context.args or []
+    try:
+        try:
+            from .railway_service import search_trains
+        except ImportError:
+            from railway_service import search_trains
+
+        if not args:
+            help_text = (
+                "🚆 **Indian Railways Train Search**\n\n"
+                "**उपयोग (Usage):**\n"
+                "• `/train <स्टेशन1> <स्टेशन2> [तारीख]`\n\n"
+                "**उदाहरण (Examples):**\n"
+                "• `/train orai delhi tomorrow`\n"
+                "• `/train cnb ndls 2026-10-15`\n"
+                "• `/train orai kanpur kal`\n"
+                "• `/train jhansi lucknow`"
+            )
+            await update.message.reply_text(help_text, parse_mode="Markdown")
+            return
+
+        if len(args) == 1:
+            src = "ORAI"
+            dest = args[0]
+            date_val = None
+        elif len(args) == 2:
+            src = args[0]
+            dest = args[1]
+            date_val = None
+        else:
+            src = args[0]
+            dest = args[1]
+            date_val = " ".join(args[2:])
+
+        res = search_trains(src, dest, date_val)
+        if not res.get("success"):
+            await update.message.reply_text(res.get("error", "ट्रेन सर्च में त्रुटि हुई।"), parse_mode="Markdown")
+            return
+
+        # Build inline keyboard for quick seat checks of top trains
+        keyboard = []
+        trains = res.get("trains", [])[:3]
+        for t in trains:
+            t_no = t.get("train_no")
+            row = [
+                InlineKeyboardButton(f"💺 {t_no} (3A)", callback_data=f"rail_seats|{t_no}|{res['src_code']}|{res['dest_code']}|{res['date']}|3A"),
+                InlineKeyboardButton(f"💺 {t_no} (2A)", callback_data=f"rail_seats|{t_no}|{res['src_code']}|{res['dest_code']}|{res['date']}|2A"),
+                InlineKeyboardButton(f"💺 {t_no} (SL)", callback_data=f"rail_seats|{t_no}|{res['src_code']}|{res['dest_code']}|{res['date']}|SL")
+            ]
+            keyboard.append(row)
+
+        reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
+        await send_long_telegram_message(update, res["formatted_text"], reply_markup=reply_markup)
+    except Exception as e:
+        print(f"[CMD_TRAIN ERROR] {e}", flush=True)
+        await update.message.reply_text(f"❌ ट्रेन सर्च विफल: {e}")
+
+
+async def cmd_seats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Check seat availability for a train. Syntax: /seats <train_no> [class] [from] [to] [date]"""
+    if not is_telegram_operator(update):
+        await update.message.reply_text("🔒 Railway intelligence restricted to the authorized operator.")
+        return
+    args = context.args or []
+    if not args:
+        await update.message.reply_text(
+            "💺 **Live Seat Availability**\n\n"
+            "**उपयोग:** `/seats <ट्रेन_नंबर> [क्लास (3A/2A/SL)] [स्टेशन1] [स्टेशन2] [तारीख]`\n"
+            "• `/seats 12555`\n"
+            "• `/seats 12555 3A`\n"
+            "• `/seats 12555 2A orai delhi tomorrow`",
+            parse_mode="Markdown"
+        )
+        return
+
+    train_no = args[0]
+    travel_class = args[1] if len(args) > 1 else "3A"
+    src = args[2] if len(args) > 2 else "ORAI"
+    dest = args[3] if len(args) > 3 else "NDLS"
+    date_val = " ".join(args[4:]) if len(args) > 4 else None
+
+    try:
+        try:
+            from .railway_service import check_seat_availability
+        except ImportError:
+            from railway_service import check_seat_availability
+
+        res = check_seat_availability(train_no, src, dest, date_val, travel_class=travel_class)
+        await update.message.reply_text(res.get("formatted_text", "सीट जानकारी उपलब्ध नहीं है।"), parse_mode="Markdown")
+    except Exception as e:
+        print(f"[CMD_SEATS ERROR] {e}", flush=True)
+        await update.message.reply_text(f"❌ सीट अवेलेबिलिटी जांच विफल: {e}")
+
+
+async def cmd_pnr(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Check PNR status and optionally subscribe to autonomous tracking. Syntax: /pnr <10-digit-pnr>"""
+    if not is_telegram_operator(update):
+        await update.message.reply_text("🔒 Railway intelligence restricted to the authorized operator.")
+        return
+    args = context.args or []
+    if not args:
+        await update.message.reply_text("🎫 **PNR Status & Auto-Tracker**\n\n**उपयोग:** `/pnr <10-अंकों_का_PNR>`\n*उदा:* `/pnr 2458963214`", parse_mode="Markdown")
+        return
+
+    pnr_val = args[0].strip()
+    try:
+        try:
+            from .railway_service import get_pnr_status
+        except ImportError:
+            from railway_service import get_pnr_status
+
+        res = get_pnr_status(pnr_val)
+        if not res.get("success"):
+            await update.message.reply_text(res.get("error", "अमान्य PNR!"), parse_mode="Markdown")
+            return
+
+        keyboard = [[
+            InlineKeyboardButton("🔔 Auto-Track PNR (बैकग्राउंड ट्रैकिंग)", callback_data=f"track_pnr|{pnr_val}")
+        ]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(res.get("formatted_text", ""), reply_markup=reply_markup, parse_mode="Markdown")
+    except Exception as e:
+        print(f"[CMD_PNR ERROR] {e}", flush=True)
+        await update.message.reply_text(f"❌ PNR जांच विफल: {e}")
+
+
 async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle callback button clicks (Approve, Change Topic, Cancel) for social post reviews."""
     query = update.callback_query
@@ -7587,6 +7775,39 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = query.message.chat.id
         data = query.data
         print(f"[CALLBACK UPDATE] received callback_data='{data}' for chat_id={chat_id}", flush=True)
+
+        # ── Railway Seat Check Callback ──────────────────────────────
+        if data.startswith("rail_seats|"):
+            parts = data.split("|")
+            if len(parts) >= 6:
+                _, t_no, src_c, dest_c, d_val, cls_val = parts[:6]
+                try:
+                    try:
+                        from .railway_service import check_seat_availability
+                    except ImportError:
+                        from railway_service import check_seat_availability
+                    res = check_seat_availability(t_no, src_c, dest_c, d_val, travel_class=cls_val)
+                    await query.message.reply_text(res.get("formatted_text", "सीट स्टेटस उपलब्ध नहीं है।"), parse_mode="Markdown")
+                except Exception as e:
+                    print(f"[CALLBACK RAIL_SEATS ERROR] {e}", flush=True)
+                    await query.message.reply_text(f"❌ सीट अवेलेबिलिटी जांच में त्रुटि: {e}")
+            return
+
+        # ── Railway PNR Tracking Callback ─────────────────────────────
+        if data.startswith("track_pnr|"):
+            pnr_val = data.split("|", 1)[1].strip()
+            try:
+                try:
+                    from .railway_service import register_tracked_pnr
+                except ImportError:
+                    from railway_service import register_tracked_pnr
+                ok, msg_txt = register_tracked_pnr(pnr_val, chat_id)
+                await query.answer("PNR Tracking Activated!" if ok else "Tracking Error", show_alert=True)
+                await query.message.reply_text(msg_txt, parse_mode="Markdown")
+            except Exception as e:
+                print(f"[CALLBACK TRACK_PNR ERROR] {e}", flush=True)
+                await query.message.reply_text(f"❌ PNR ट्रैकिंग रजिस्टर करने में त्रुटि: {e}")
+            return
 
         if data.startswith("action_approve|"):
             session_id = data.split("|", 1)[1].strip()

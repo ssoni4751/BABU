@@ -241,6 +241,24 @@ def _ensure_sqlite_schema(conn):
     except Exception:
         pass
 
+    # Railway PNR Autonomous Tracking Table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS babu_tracked_pnrs (
+            pnr TEXT PRIMARY KEY,
+            chat_id INTEGER NOT NULL,
+            train_no TEXT,
+            train_name TEXT,
+            date_of_journey TEXT,
+            from_station TEXT,
+            to_station TEXT,
+            last_status TEXT,
+            is_charted INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_tracked_pnrs_chat_id ON babu_tracked_pnrs (chat_id);")
+
     # Bootstrap initial seed data for empty databases (e.g. fresh Render deployments)
     try:
         cursor.execute("SELECT COUNT(*) FROM babu_temporal_timeline")

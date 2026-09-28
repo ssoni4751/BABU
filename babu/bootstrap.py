@@ -148,7 +148,10 @@ def open_transports(state: BootstrapState) -> None:
         ("followups", bot_module.cmd_followups),
         ("follow_lead", bot_module.cmd_followups),
         ("update_lead", bot_module.cmd_update_lead),
-        ("add_lead", bot_module.cmd_add_lead)
+        ("add_lead", bot_module.cmd_add_lead),
+        ("train", bot_module.cmd_train),
+        ("seats", bot_module.cmd_seats),
+        ("pnr", bot_module.cmd_pnr)
     ):
         bot.add_handler(CommandHandler(command, handler))
     bot.add_handler(MessageHandler((filters.TEXT | filters.VOICE | filters.Document.ALL) & (~filters.COMMAND), bot_module.on_message))

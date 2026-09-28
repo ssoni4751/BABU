@@ -58,6 +58,7 @@ __pycache__/
 .env
 credentials.json
 token.json
+babu/user_profile.json
 
 # Databases & Local Memory
 *.db
