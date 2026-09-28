@@ -7193,15 +7193,20 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     InlineKeyboardButton("🔔 Auto-Track PNR (बैकग्राउंड ट्रैकिंग)", callback_data=f"track_pnr|{rail_res['pnr']}")
                 ]])
             elif rail_res.get("type") == "train_search":
-                trains = rail_res.get("trains", [])[:3]
+                trains = rail_res.get("trains", [])[:5]
                 if trains:
                     keyboard = []
                     for t in trains:
                         t_no = t.get("train_no")
+                        avail_classes = [c for c in ["3A", "2A", "SL", "CC", "EC", "1A", "2S"] if c in t.get("classes", [])][:3]
+                        if not avail_classes:
+                            avail_classes = ["3A", "2A", "SL"]
                         row = [
-                            InlineKeyboardButton(f"💺 {t_no} (3A)", callback_data=f"rail_seats|{t_no}|{rail_res['src']}|{rail_res['dest']}|{rail_res.get('date') or ''}|3A"),
-                            InlineKeyboardButton(f"💺 {t_no} (2A)", callback_data=f"rail_seats|{t_no}|{rail_res['src']}|{rail_res['dest']}|{rail_res.get('date') or ''}|2A"),
-                            InlineKeyboardButton(f"💺 {t_no} (SL)", callback_data=f"rail_seats|{t_no}|{rail_res['src']}|{rail_res['dest']}|{rail_res.get('date') or ''}|SL")
+                            InlineKeyboardButton(
+                                f"💺 {t_no} ({c})",
+                                callback_data=f"rail_seats|{t_no}|{rail_res['src']}|{rail_res['dest']}|{rail_res.get('date') or ''}|{c}"
+                            )
+                            for c in avail_classes
                         ]
                         keyboard.append(row)
                     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -7674,13 +7679,18 @@ async def cmd_train(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Build inline keyboard for quick seat checks of top trains
         keyboard = []
-        trains = res.get("trains", [])[:3]
+        trains = res.get("trains", [])[:5]
         for t in trains:
             t_no = t.get("train_no")
+            avail_classes = [c for c in ["3A", "2A", "SL", "CC", "EC", "1A", "2S"] if c in t.get("classes", [])][:3]
+            if not avail_classes:
+                avail_classes = ["3A", "2A", "SL"]
             row = [
-                InlineKeyboardButton(f"💺 {t_no} (3A)", callback_data=f"rail_seats|{t_no}|{res['src_code']}|{res['dest_code']}|{res['date']}|3A"),
-                InlineKeyboardButton(f"💺 {t_no} (2A)", callback_data=f"rail_seats|{t_no}|{res['src_code']}|{res['dest_code']}|{res['date']}|2A"),
-                InlineKeyboardButton(f"💺 {t_no} (SL)", callback_data=f"rail_seats|{t_no}|{res['src_code']}|{res['dest_code']}|{res['date']}|SL")
+                InlineKeyboardButton(
+                    f"💺 {t_no} ({c})",
+                    callback_data=f"rail_seats|{t_no}|{res['src_code']}|{res['dest_code']}|{res['date']}|{c}"
+                )
+                for c in avail_classes
             ]
             keyboard.append(row)
 

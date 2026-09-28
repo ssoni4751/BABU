@@ -116,13 +116,63 @@ POPULAR_ROUTES: Dict[Tuple[str, str], List[Dict[str, Any]]] = {
         },
         {
             "train_no": "12595",
-            "train_name": "HUMSAFAR EXPRESS",
+            "train_name": "GKP ANVT HUMSAFAR",
             "from_time": "02:10",
             "to_time": "08:25",
             "duration": "6h 15m",
             "days": ["Tue", "Thu", "Sun"],
             "classes": ["3A", "3E"],
             "fares": {"3A": 910, "3E": 830}
+        },
+        {
+            "train_no": "12571",
+            "train_name": "ANVT HUMSAFAR EXP",
+            "from_time": "04:15",
+            "to_time": "10:30",
+            "duration": "6h 15m",
+            "days": ["Wed", "Fri", "Sat", "Sun"],
+            "classes": ["3A", "3E"],
+            "fares": {"3A": 910, "3E": 830}
+        },
+        {
+            "train_no": "02563",
+            "train_name": "BJU NDLS CLONE SPL",
+            "from_time": "01:25",
+            "to_time": "06:45",
+            "duration": "5h 20m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["3A", "SL"],
+            "fares": {"3A": 880, "SL": 340}
+        },
+        {
+            "train_no": "02569",
+            "train_name": "DBG NDLS CLONE SPL",
+            "from_time": "03:40",
+            "to_time": "09:15",
+            "duration": "5h 35m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["3A", "SL"],
+            "fares": {"3A": 880, "SL": 340}
+        },
+        {
+            "train_no": "11123",
+            "train_name": "GWL BJU MAIL",
+            "from_time": "14:10",
+            "to_time": "21:30",
+            "duration": "7h 20m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["2A", "3A", "SL"],
+            "fares": {"2A": 1050, "3A": 740, "SL": 275}
+        },
+        {
+            "train_no": "12419",
+            "train_name": "GOMTI EXPRESS (via CNB)",
+            "from_time": "07:35",
+            "to_time": "15:00",
+            "duration": "7h 25m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["CC", "2S"],
+            "fares": {"CC": 650, "2S": 190}
         }
     ],
     ("NDLS", "ORAI"): [
@@ -145,6 +195,56 @@ POPULAR_ROUTES: Dict[Tuple[str, str], List[Dict[str, Any]]] = {
             "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
             "classes": ["2A", "3A", "SL"],
             "fares": {"2A": 1120, "3A": 790, "SL": 295}
+        },
+        {
+            "train_no": "12596",
+            "train_name": "ANVT GKP HUMSAFAR",
+            "from_time": "20:00",
+            "to_time": "01:55",
+            "duration": "5h 55m",
+            "days": ["Tue", "Thu", "Sun"],
+            "classes": ["3A", "3E"],
+            "fares": {"3A": 910, "3E": 830}
+        },
+        {
+            "train_no": "12572",
+            "train_name": "ANVT GKP HUMSAFAR",
+            "from_time": "20:00",
+            "to_time": "01:55",
+            "duration": "5h 55m",
+            "days": ["Mon", "Wed", "Fri", "Sat"],
+            "classes": ["3A", "3E"],
+            "fares": {"3A": 910, "3E": 830}
+        },
+        {
+            "train_no": "02564",
+            "train_name": "NDLS BJU CLONE SPL",
+            "from_time": "17:55",
+            "to_time": "23:30",
+            "duration": "5h 35m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["3A", "SL"],
+            "fares": {"3A": 880, "SL": 340}
+        },
+        {
+            "train_no": "02570",
+            "train_name": "NDLS DBG CLONE SPL",
+            "from_time": "12:15",
+            "to_time": "17:40",
+            "duration": "5h 25m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["3A", "SL"],
+            "fares": {"3A": 880, "SL": 340}
+        },
+        {
+            "train_no": "11124",
+            "train_name": "BJU GWL MAIL",
+            "from_time": "06:30",
+            "to_time": "14:05",
+            "duration": "7h 35m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["2A", "3A", "SL"],
+            "fares": {"2A": 1050, "3A": 740, "SL": 275}
         }
     ],
     ("ORAI", "CNB"): [
@@ -157,6 +257,16 @@ POPULAR_ROUTES: Dict[Tuple[str, str], List[Dict[str, Any]]] = {
             "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
             "classes": ["1A", "2A", "3A", "SL"],
             "fares": {"1A": 1175, "2A": 710, "3A": 505, "SL": 145}
+        },
+        {
+            "train_no": "22538",
+            "train_name": "KUSHINAGAR EXP",
+            "from_time": "00:15",
+            "to_time": "02:30",
+            "duration": "2h 15m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["2A", "3A", "SL"],
+            "fares": {"2A": 710, "3A": 505, "SL": 145}
         },
         {
             "train_no": "11109",
@@ -177,6 +287,36 @@ POPULAR_ROUTES: Dict[Tuple[str, str], List[Dict[str, Any]]] = {
             "days": ["Tue", "Wed", "Fri", "Sun"],
             "classes": ["2A", "3A", "SL"],
             "fares": {"2A": 710, "3A": 505, "SL": 145}
+        },
+        {
+            "train_no": "19165",
+            "train_name": "ADI DARBHANGA EXP",
+            "from_time": "20:50",
+            "to_time": "23:25",
+            "duration": "2h 35m",
+            "days": ["Mon", "Thu", "Sat"],
+            "classes": ["2A", "3A", "SL"],
+            "fares": {"2A": 710, "3A": 505, "SL": 145}
+        },
+        {
+            "train_no": "12143",
+            "train_name": "LTT SLN SF EXP",
+            "from_time": "09:12",
+            "to_time": "11:45",
+            "duration": "2h 33m",
+            "days": ["Mon"],
+            "classes": ["2A", "3A", "SL"],
+            "fares": {"2A": 760, "3A": 555, "SL": 175}
+        },
+        {
+            "train_no": "04154",
+            "train_name": "CNB MEMU SPECIAL",
+            "from_time": "08:30",
+            "to_time": "11:15",
+            "duration": "2h 45m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["2S"],
+            "fares": {"2S": 55}
         }
     ],
     ("CNB", "ORAI"): [
@@ -191,6 +331,16 @@ POPULAR_ROUTES: Dict[Tuple[str, str], List[Dict[str, Any]]] = {
             "fares": {"1A": 1175, "2A": 710, "3A": 505, "SL": 145}
         },
         {
+            "train_no": "22537",
+            "train_name": "KUSHINAGAR EXP",
+            "from_time": "01:10",
+            "to_time": "03:13",
+            "duration": "2h 03m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["2A", "3A", "SL"],
+            "fares": {"2A": 710, "3A": 505, "SL": 145}
+        },
+        {
             "train_no": "11110",
             "train_name": "LKO VGLJ INTERCITY",
             "from_time": "18:15",
@@ -199,6 +349,36 @@ POPULAR_ROUTES: Dict[Tuple[str, str], List[Dict[str, Any]]] = {
             "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
             "classes": ["CC", "2S"],
             "fares": {"CC": 360, "2S": 85}
+        },
+        {
+            "train_no": "19168",
+            "train_name": "SABARMATI EXPRESS",
+            "from_time": "02:05",
+            "to_time": "04:20",
+            "duration": "2h 15m",
+            "days": ["Mon", "Tue", "Thu", "Sat"],
+            "classes": ["2A", "3A", "SL"],
+            "fares": {"2A": 710, "3A": 505, "SL": 145}
+        },
+        {
+            "train_no": "19166",
+            "train_name": "SABARMATI EXPRESS",
+            "from_time": "02:05",
+            "to_time": "04:20",
+            "duration": "2h 15m",
+            "days": ["Wed", "Fri", "Sun"],
+            "classes": ["2A", "3A", "SL"],
+            "fares": {"2A": 710, "3A": 505, "SL": 145}
+        },
+        {
+            "train_no": "12144",
+            "train_name": "SLN LTT SF EXP",
+            "from_time": "08:30",
+            "to_time": "10:42",
+            "duration": "2h 12m",
+            "days": ["Tue"],
+            "classes": ["2A", "3A", "SL"],
+            "fares": {"2A": 760, "3A": 555, "SL": 175}
         }
     ],
     ("CNB", "NDLS"): [
@@ -223,6 +403,16 @@ POPULAR_ROUTES: Dict[Tuple[str, str], List[Dict[str, Any]]] = {
             "fares": {"EC": 2420, "CC": 1280}
         },
         {
+            "train_no": "22439",
+            "train_name": "VANDE BHARAT EXP",
+            "from_time": "14:15",
+            "to_time": "18:30",
+            "duration": "4h 15m",
+            "days": ["Mon", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["EC", "CC"],
+            "fares": {"EC": 2420, "CC": 1280}
+        },
+        {
             "train_no": "12417",
             "train_name": "PRAYAGRAJ EXP",
             "from_time": "00:35",
@@ -241,6 +431,36 @@ POPULAR_ROUTES: Dict[Tuple[str, str], List[Dict[str, Any]]] = {
             "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
             "classes": ["CC", "2S"],
             "fares": {"CC": 650, "2S": 190}
+        },
+        {
+            "train_no": "12451",
+            "train_name": "SHIV GANGA EXP",
+            "from_time": "03:40",
+            "to_time": "08:25",
+            "duration": "4h 45m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["1A", "2A", "3A", "SL"],
+            "fares": {"1A": 2150, "2A": 1290, "3A": 910, "SL": 340}
+        },
+        {
+            "train_no": "12555",
+            "train_name": "GORAKHDHAM EXP",
+            "from_time": "00:50",
+            "to_time": "05:35",
+            "duration": "4h 45m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["1A", "2A", "3A", "SL"],
+            "fares": {"1A": 1950, "2A": 1180, "3A": 830, "SL": 315}
+        },
+        {
+            "train_no": "12301",
+            "train_name": "HOWRAH RAJDHANI",
+            "from_time": "04:45",
+            "to_time": "10:05",
+            "duration": "5h 20m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+            "classes": ["1A", "2A", "3A"],
+            "fares": {"1A": 2580, "2A": 1640, "3A": 1190}
         }
     ],
     ("VGLJ", "NDLS"): [
@@ -273,6 +493,118 @@ POPULAR_ROUTES: Dict[Tuple[str, str], List[Dict[str, Any]]] = {
             "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sun"],
             "classes": ["EC", "CC"],
             "fares": {"EC": 2420, "CC": 1280}
+        },
+        {
+            "train_no": "22221",
+            "train_name": "NZM RAJDHANI",
+            "from_time": "05:00",
+            "to_time": "09:55",
+            "duration": "4h 55m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["1A", "2A", "3A"],
+            "fares": {"1A": 2350, "2A": 1490, "3A": 1050}
+        },
+        {
+            "train_no": "12625",
+            "train_name": "KERALA EXPRESS",
+            "from_time": "07:30",
+            "to_time": "13:45",
+            "duration": "6h 15m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["2A", "3A", "SL"],
+            "fares": {"2A": 1150, "3A": 810, "SL": 305}
+        },
+        {
+            "train_no": "12615",
+            "train_name": "GRAND TRUNK (GT) EXP",
+            "from_time": "00:40",
+            "to_time": "06:35",
+            "duration": "5h 55m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["1A", "2A", "3A", "SL"],
+            "fares": {"1A": 1950, "2A": 1150, "3A": 810, "SL": 305}
+        },
+        {
+            "train_no": "12723",
+            "train_name": "TELANGANA EXP",
+            "from_time": "01:25",
+            "to_time": "07:40",
+            "duration": "6h 15m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["1A", "2A", "3A", "SL"],
+            "fares": {"1A": 1950, "2A": 1150, "3A": 810, "SL": 305}
+        },
+        {
+            "train_no": "12621",
+            "train_name": "TAMIL NADU EXP",
+            "from_time": "00:20",
+            "to_time": "06:30",
+            "duration": "6h 10m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["1A", "2A", "3A", "SL"],
+            "fares": {"1A": 1950, "2A": 1150, "3A": 810, "SL": 305}
+        }
+    ],
+    ("LKO", "NDLS"): [
+        {
+            "train_no": "12003",
+            "train_name": "LUCKNOW SHATABDI",
+            "from_time": "15:30",
+            "to_time": "22:25",
+            "duration": "6h 55m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["EC", "CC"],
+            "fares": {"EC": 2320, "CC": 1280}
+        },
+        {
+            "train_no": "22425",
+            "train_name": "VANDE BHARAT EXP",
+            "from_time": "15:20",
+            "to_time": "21:50",
+            "duration": "6h 30m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sun"],
+            "classes": ["EC", "CC"],
+            "fares": {"EC": 2480, "CC": 1360}
+        },
+        {
+            "train_no": "12429",
+            "train_name": "LUCKNOW AC EXP",
+            "from_time": "23:30",
+            "to_time": "07:30",
+            "duration": "8h 00m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["1A", "2A", "3A"],
+            "fares": {"1A": 2250, "2A": 1350, "3A": 960}
+        },
+        {
+            "train_no": "12229",
+            "train_name": "LUCKNOW MAIL",
+            "from_time": "22:00",
+            "to_time": "06:55",
+            "duration": "8h 55m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["1A", "2A", "3A", "SL"],
+            "fares": {"1A": 2250, "2A": 1350, "3A": 960, "SL": 365}
+        },
+        {
+            "train_no": "82501",
+            "train_name": "IRCTC TEJAS EXP",
+            "from_time": "06:10",
+            "to_time": "12:25",
+            "duration": "6h 15m",
+            "days": ["Mon", "Tue", "Wed", "Fri", "Sat", "Sun"],
+            "classes": ["EC", "CC"],
+            "fares": {"EC": 2410, "CC": 1320}
+        },
+        {
+            "train_no": "12419",
+            "train_name": "GOMTI EXPRESS",
+            "from_time": "05:45",
+            "to_time": "15:00",
+            "duration": "9h 15m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["CC", "2S"],
+            "fares": {"CC": 710, "2S": 210}
         }
     ]
 }
@@ -350,11 +682,21 @@ def search_trains(src_query: str, dest_query: str, date_query: Optional[str] = N
                     "train_no": "12555",
                     "train_name": f"{src_name} - {dest_name} SF EXP",
                     "from_time": "06:15",
-                    "to_time": "12:30",
-                    "duration": "6h 15m",
+                    "to_time": "11:45",
+                    "duration": "5h 30m",
+                    "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+                    "classes": ["1A", "2A", "3A", "SL"],
+                    "fares": {"1A": 1850, "2A": 1120, "3A": 790, "SL": 295}
+                },
+                {
+                    "train_no": "14217",
+                    "train_name": f"{src_name} EXPRESS",
+                    "from_time": "10:30",
+                    "to_time": "16:50",
+                    "duration": "6h 20m",
                     "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
                     "classes": ["2A", "3A", "SL"],
-                    "fares": {"2A": 1050, "3A": 750, "SL": 280}
+                    "fares": {"2A": 1050, "3A": 740, "SL": 275}
                 },
                 {
                     "train_no": "22436",
@@ -365,6 +707,36 @@ def search_trains(src_query: str, dest_query: str, date_query: Optional[str] = N
                     "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
                     "classes": ["CC", "2S"],
                     "fares": {"CC": 580, "2S": 165}
+                },
+                {
+                    "train_no": "20172",
+                    "train_name": f"{dest_name} VANDE BHARAT",
+                    "from_time": "17:40",
+                    "to_time": "22:15",
+                    "duration": "4h 35m",
+                    "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sun"],
+                    "classes": ["EC", "CC"],
+                    "fares": {"EC": 2350, "CC": 1240}
+                },
+                {
+                    "train_no": "12452",
+                    "train_name": f"{src_name} SF EXPRESS",
+                    "from_time": "21:15",
+                    "to_time": "04:30",
+                    "duration": "7h 15m",
+                    "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+                    "classes": ["1A", "2A", "3A", "SL"],
+                    "fares": {"1A": 1950, "2A": 1180, "3A": 830, "SL": 315}
+                },
+                {
+                    "train_no": "19168",
+                    "train_name": f"{dest_name} OVERNIGHT MAIL",
+                    "from_time": "23:50",
+                    "to_time": "07:15",
+                    "duration": "7h 25m",
+                    "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+                    "classes": ["2A", "3A", "SL"],
+                    "fares": {"2A": 1050, "3A": 740, "SL": 275}
                 }
             ]
 
