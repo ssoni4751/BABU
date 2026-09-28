@@ -93,170 +93,140 @@ def ensure_railway_tables(conn, is_pg: bool = False):
 # ── Route Mock Data for Real-World Fallbacks ───────────────────────────────────
 
 POPULAR_ROUTES: Dict[Tuple[str, str], List[Dict[str, Any]]] = {
-    ("ORAI", "NDLS"): [
+    ("ORAI", "VGLJ"): [
         {
-            "train_no": "12555",
-            "train_name": "GORAKHDHAM EXP",
-            "from_time": "00:50",
-            "to_time": "05:35",
-            "duration": "4h 45m",
+            "train_no": "11110",
+            "train_name": "LKO VGLJ INTERCITY",
+            "from_time": "20:58",
+            "to_time": "22:35",
+            "duration": "1h 37m",
             "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-            "classes": ["1A", "2A", "3A", "SL"],
-            "fares": {"1A": 1950, "2A": 1180, "3A": 830, "SL": 315}
+            "classes": ["CC", "2S"],
+            "fares": {"CC": 315, "2S": 75}
         },
         {
             "train_no": "22537",
             "train_name": "KUSHINAGAR EXP",
-            "from_time": "03:15",
-            "to_time": "08:50",
-            "duration": "5h 35m",
+            "from_time": "03:13",
+            "to_time": "05:20",
+            "duration": "2h 07m",
             "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
             "classes": ["2A", "3A", "SL"],
-            "fares": {"2A": 1120, "3A": 790, "SL": 295}
+            "fares": {"2A": 710, "3A": 505, "SL": 145}
         },
         {
-            "train_no": "12595",
-            "train_name": "GKP ANVT HUMSAFAR",
-            "from_time": "02:10",
-            "to_time": "08:25",
-            "duration": "6h 15m",
-            "days": ["Tue", "Thu", "Sun"],
-            "classes": ["3A", "3E"],
-            "fares": {"3A": 910, "3E": 830}
-        },
-        {
-            "train_no": "12571",
-            "train_name": "ANVT HUMSAFAR EXP",
-            "from_time": "04:15",
-            "to_time": "10:30",
-            "duration": "6h 15m",
-            "days": ["Wed", "Fri", "Sat", "Sun"],
-            "classes": ["3A", "3E"],
-            "fares": {"3A": 910, "3E": 830}
-        },
-        {
-            "train_no": "02563",
-            "train_name": "BJU NDLS CLONE SPL",
-            "from_time": "01:25",
-            "to_time": "06:45",
-            "duration": "5h 20m",
-            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-            "classes": ["3A", "SL"],
-            "fares": {"3A": 880, "SL": 340}
-        },
-        {
-            "train_no": "02569",
-            "train_name": "DBG NDLS CLONE SPL",
-            "from_time": "03:40",
-            "to_time": "09:15",
-            "duration": "5h 35m",
-            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-            "classes": ["3A", "SL"],
-            "fares": {"3A": 880, "SL": 340}
-        },
-        {
-            "train_no": "11123",
-            "train_name": "GWL BJU MAIL",
-            "from_time": "14:10",
-            "to_time": "21:30",
-            "duration": "7h 20m",
-            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "train_no": "19168",
+            "train_name": "SABARMATI EXPRESS",
+            "from_time": "04:20",
+            "to_time": "06:15",
+            "duration": "1h 55m",
+            "days": ["Mon", "Tue", "Thu", "Sat"],
             "classes": ["2A", "3A", "SL"],
-            "fares": {"2A": 1050, "3A": 740, "SL": 275}
+            "fares": {"2A": 710, "3A": 505, "SL": 145}
         },
         {
-            "train_no": "12419",
-            "train_name": "GOMTI EXPRESS (via CNB)",
-            "from_time": "07:35",
-            "to_time": "15:00",
-            "duration": "7h 25m",
-            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-            "classes": ["CC", "2S"],
-            "fares": {"CC": 650, "2S": 190}
-        }
-    ],
-    ("NDLS", "ORAI"): [
-        {
-            "train_no": "12556",
-            "train_name": "GORAKHDHAM EXP",
-            "from_time": "21:25",
-            "to_time": "02:40",
-            "duration": "5h 15m",
-            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-            "classes": ["1A", "2A", "3A", "SL"],
-            "fares": {"1A": 1950, "2A": 1180, "3A": 830, "SL": 315}
-        },
-        {
-            "train_no": "22538",
-            "train_name": "KUSHINAGAR EXP",
-            "from_time": "18:45",
-            "to_time": "00:12",
-            "duration": "5h 27m",
-            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "train_no": "19166",
+            "train_name": "SABARMATI EXPRESS",
+            "from_time": "04:20",
+            "to_time": "06:15",
+            "duration": "1h 55m",
+            "days": ["Wed", "Fri", "Sun"],
             "classes": ["2A", "3A", "SL"],
-            "fares": {"2A": 1120, "3A": 790, "SL": 295}
+            "fares": {"2A": 710, "3A": 505, "SL": 145}
         },
         {
-            "train_no": "12596",
-            "train_name": "ANVT GKP HUMSAFAR",
-            "from_time": "20:00",
-            "to_time": "01:55",
-            "duration": "5h 55m",
-            "days": ["Tue", "Thu", "Sun"],
-            "classes": ["3A", "3E"],
-            "fares": {"3A": 910, "3E": 830}
-        },
-        {
-            "train_no": "12572",
-            "train_name": "ANVT GKP HUMSAFAR",
-            "from_time": "20:00",
-            "to_time": "01:55",
-            "duration": "5h 55m",
-            "days": ["Mon", "Wed", "Fri", "Sat"],
-            "classes": ["3A", "3E"],
-            "fares": {"3A": 910, "3E": 830}
-        },
-        {
-            "train_no": "02564",
-            "train_name": "NDLS BJU CLONE SPL",
-            "from_time": "17:55",
-            "to_time": "23:30",
-            "duration": "5h 35m",
-            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-            "classes": ["3A", "SL"],
-            "fares": {"3A": 880, "SL": 340}
-        },
-        {
-            "train_no": "02570",
-            "train_name": "NDLS DBG CLONE SPL",
-            "from_time": "12:15",
-            "to_time": "17:40",
-            "duration": "5h 25m",
-            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-            "classes": ["3A", "SL"],
-            "fares": {"3A": 880, "SL": 340}
+            "train_no": "12144",
+            "train_name": "SLN LTT SF EXP",
+            "from_time": "10:42",
+            "to_time": "12:30",
+            "duration": "1h 48m",
+            "days": ["Tue"],
+            "classes": ["2A", "3A", "SL"],
+            "fares": {"2A": 760, "3A": 555, "SL": 175}
         },
         {
             "train_no": "11124",
             "train_name": "BJU GWL MAIL",
-            "from_time": "06:30",
-            "to_time": "14:05",
-            "duration": "7h 35m",
+            "from_time": "14:05",
+            "to_time": "16:15",
+            "duration": "2h 10m",
             "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
             "classes": ["2A", "3A", "SL"],
-            "fares": {"2A": 1050, "3A": 740, "SL": 275}
+            "fares": {"2A": 710, "3A": 505, "SL": 145}
+        }
+    ],
+    ("VGLJ", "ORAI"): [
+        {
+            "train_no": "11109",
+            "train_name": "VGLJ LKO INTERCITY",
+            "from_time": "06:10",
+            "to_time": "07:38",
+            "duration": "1h 28m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["CC", "2S"],
+            "fares": {"CC": 315, "2S": 75}
+        },
+        {
+            "train_no": "22538",
+            "train_name": "KUSHINAGAR EXP",
+            "from_time": "22:05",
+            "to_time": "00:10",
+            "duration": "2h 05m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["2A", "3A", "SL"],
+            "fares": {"2A": 710, "3A": 505, "SL": 145}
+        },
+        {
+            "train_no": "19167",
+            "train_name": "SABARMATI EXPRESS",
+            "from_time": "17:45",
+            "to_time": "19:35",
+            "duration": "1h 50m",
+            "days": ["Mon", "Tue", "Thu", "Sat"],
+            "classes": ["2A", "3A", "SL"],
+            "fares": {"2A": 710, "3A": 505, "SL": 145}
+        },
+        {
+            "train_no": "19165",
+            "train_name": "SABARMATI EXPRESS",
+            "from_time": "17:45",
+            "to_time": "19:35",
+            "duration": "1h 50m",
+            "days": ["Wed", "Fri", "Sun"],
+            "classes": ["2A", "3A", "SL"],
+            "fares": {"2A": 710, "3A": 505, "SL": 145}
+        },
+        {
+            "train_no": "12143",
+            "train_name": "LTT SLN SF EXP",
+            "from_time": "08:50",
+            "to_time": "10:40",
+            "duration": "1h 50m",
+            "days": ["Mon"],
+            "classes": ["2A", "3A", "SL"],
+            "fares": {"2A": 760, "3A": 555, "SL": 175}
+        },
+        {
+            "train_no": "11123",
+            "train_name": "GWL BJU MAIL",
+            "from_time": "12:05",
+            "to_time": "14:08",
+            "duration": "2h 03m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["2A", "3A", "SL"],
+            "fares": {"2A": 710, "3A": 505, "SL": 145}
         }
     ],
     ("ORAI", "CNB"): [
         {
-            "train_no": "12556",
-            "train_name": "GORAKHDHAM EXP",
-            "from_time": "02:42",
-            "to_time": "04:55",
-            "duration": "2h 13m",
+            "train_no": "11123",
+            "train_name": "GWL BJU MAIL",
+            "from_time": "14:10",
+            "to_time": "16:20",
+            "duration": "2h 10m",
             "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-            "classes": ["1A", "2A", "3A", "SL"],
-            "fares": {"1A": 1175, "2A": 710, "3A": 505, "SL": 145}
+            "classes": ["2A", "3A", "SL"],
+            "fares": {"2A": 710, "3A": 505, "SL": 145}
         },
         {
             "train_no": "22538",
@@ -321,14 +291,14 @@ POPULAR_ROUTES: Dict[Tuple[str, str], List[Dict[str, Any]]] = {
     ],
     ("CNB", "ORAI"): [
         {
-            "train_no": "12555",
-            "train_name": "GORAKHDHAM EXP",
-            "from_time": "22:45",
-            "to_time": "00:48",
-            "duration": "2h 03m",
+            "train_no": "11124",
+            "train_name": "BJU GWL MAIL",
+            "from_time": "11:30",
+            "to_time": "14:03",
+            "duration": "2h 33m",
             "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-            "classes": ["1A", "2A", "3A", "SL"],
-            "fares": {"1A": 1175, "2A": 710, "3A": 505, "SL": 145}
+            "classes": ["2A", "3A", "SL"],
+            "fares": {"2A": 710, "3A": 505, "SL": 145}
         },
         {
             "train_no": "22537",
@@ -606,8 +576,201 @@ POPULAR_ROUTES: Dict[Tuple[str, str], List[Dict[str, Any]]] = {
             "classes": ["CC", "2S"],
             "fares": {"CC": 710, "2S": 210}
         }
+    ],
+    ("NDLS", "VGLJ"): [
+        {
+            "train_no": "12002",
+            "train_name": "BHOPAL SHATABDI",
+            "from_time": "06:00",
+            "to_time": "10:45",
+            "duration": "4h 45m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sun"],
+            "classes": ["EC", "CC"],
+            "fares": {"EC": 2240, "CC": 1215}
+        },
+        {
+            "train_no": "12050",
+            "train_name": "GATIMAAN EXP (NZM)",
+            "from_time": "08:10",
+            "to_time": "12:35",
+            "duration": "4h 25m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Sat", "Sun"],
+            "classes": ["EC", "CC"],
+            "fares": {"EC": 2380, "CC": 1290}
+        },
+        {
+            "train_no": "20172",
+            "train_name": "VANDE BHARAT EXP",
+            "from_time": "17:40",
+            "to_time": "22:15",
+            "duration": "4h 35m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sun"],
+            "classes": ["EC", "CC"],
+            "fares": {"EC": 2420, "CC": 1280}
+        },
+        {
+            "train_no": "22222",
+            "train_name": "NZM RAJDHANI",
+            "from_time": "16:55",
+            "to_time": "21:30",
+            "duration": "4h 35m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["1A", "2A", "3A"],
+            "fares": {"1A": 2350, "2A": 1490, "3A": 1050}
+        },
+        {
+            "train_no": "12280",
+            "train_name": "TAJ EXPRESS",
+            "from_time": "06:55",
+            "to_time": "14:00",
+            "duration": "7h 05m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["CC", "2S"],
+            "fares": {"CC": 650, "2S": 190}
+        },
+        {
+            "train_no": "12626",
+            "train_name": "KERALA EXPRESS",
+            "from_time": "20:10",
+            "to_time": "02:40",
+            "duration": "6h 30m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["2A", "3A", "SL"],
+            "fares": {"2A": 1150, "3A": 810, "SL": 305}
+        }
+    ],
+    ("NDLS", "CNB"): [
+        {
+            "train_no": "22436",
+            "train_name": "VANDE BHARAT EXP",
+            "from_time": "06:00",
+            "to_time": "10:08",
+            "duration": "4h 08m",
+            "days": ["Tue", "Wed", "Fri", "Sat", "Sun"],
+            "classes": ["EC", "CC"],
+            "fares": {"EC": 2420, "CC": 1280}
+        },
+        {
+            "train_no": "22440",
+            "train_name": "VANDE BHARAT EXP",
+            "from_time": "15:00",
+            "to_time": "19:15",
+            "duration": "4h 15m",
+            "days": ["Mon", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["EC", "CC"],
+            "fares": {"EC": 2420, "CC": 1280}
+        },
+        {
+            "train_no": "12004",
+            "train_name": "LUCKNOW SHATABDI",
+            "from_time": "06:10",
+            "to_time": "11:20",
+            "duration": "5h 10m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["EC", "CC"],
+            "fares": {"EC": 2185, "CC": 1165}
+        },
+        {
+            "train_no": "12452",
+            "train_name": "SHRAM SHAKTI EXP",
+            "from_time": "23:55",
+            "to_time": "06:00",
+            "duration": "6h 05m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["1A", "2A", "3A", "SL"],
+            "fares": {"1A": 2150, "2A": 1290, "3A": 910, "SL": 340}
+        },
+        {
+            "train_no": "12418",
+            "train_name": "PRAYAGRAJ EXP",
+            "from_time": "22:10",
+            "to_time": "03:50",
+            "duration": "5h 40m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["1A", "2A", "3A", "SL"],
+            "fares": {"1A": 2150, "2A": 1290, "3A": 910, "SL": 340}
+        },
+        {
+            "train_no": "12302",
+            "train_name": "HOWRAH RAJDHANI",
+            "from_time": "16:50",
+            "to_time": "21:32",
+            "duration": "4h 42m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+            "classes": ["1A", "2A", "3A"],
+            "fares": {"1A": 2580, "2A": 1640, "3A": 1190}
+        }
     ]
 }
+
+
+def format_connecting_route_card(src_code: str, src_name: str, dest_code: str, dest_name: str, journey_date: str) -> str:
+    """Format rich connecting itinerary card for routes without direct trains (e.g. Orai <-> Delhi)."""
+    is_orai_to_delhi = (src_code == "ORAI")
+    
+    if is_orai_to_delhi:
+        lines = [
+            f"🚆 **रूट गाइड: {src_name} ({src_code}) ➔ {dest_name} ({dest_code})**",
+            f"📅 **यात्रा तिथि:** `{journey_date}`",
+            f"━━━━━━━━━━━━━━━━━━━━━",
+            f"⚠️ **सीधी (Direct) ट्रेन उपलब्ध नहीं है!**\n",
+            f"भारतीय रेलवे नेटवर्क पर उरई से दिल्ली के बीच कोई डायरेक्ट ट्रेन नहीं चलती है।",
+            f"बुंदेलखंड / उरई के यात्री दिल्ली जाने के लिए इन 2 प्रमुख कनेक्टिंग रूट्स का उपयोग करते हैं:\n",
+            f"📍 **विकल्प 1: वाया वीरांगना लक्ष्मीबाई झांसी (VGLJ) ⭐ [सर्वाधिक लोकप्रिय]**",
+            f"• **लेग 1:** उरई ➔ झांसी (~1.5 से 2 घंटे, 114 km)",
+            f"   - `11110` LKO VGLJ INTERCITY (`20:58` ➔ `22:35`)",
+            f"   - `22537` KUSHINAGAR EXP (`03:13` ➔ `05:20`)",
+            f"   - `19168` SABARMATI EXP (`04:20` ➔ `06:15`)",
+            f"• **लेग 2:** झांसी ➔ दिल्ली (~4.5 घंटे)",
+            f"   - `12049` GATIMAAN EXP (`15:05` ➔ `19:30`, NZM - सबसे तेज़)",
+            f"   - `12001` NDLS SHATABDI (`18:45` ➔ `23:50`, NDLS)",
+            f"   - `20171` VANDE BHARAT (`08:43` ➔ `13:15`, NDLS)",
+            f"   - `12279` TAJ EXPRESS (`15:20` ➔ `21:35`, NDLS)\n",
+            f"━━━━━━━━━━━━━━━━━━━━━",
+            f"📍 **विकल्प 2: वाया कानपुर सेंट्रल (CNB)**",
+            f"• **लेग 1:** उरई ➔ कानपुर (~2 घंटे, 106 km)",
+            f"   - `11109` VGLJ LKO INTERCITY (`07:40` ➔ `09:40`)",
+            f"   - `22538` KUSHINAGAR EXP (`00:12` ➔ `02:15`)",
+            f"   - `12143` LTT SLN SF EXP (`10:42` ➔ `13:00`)",
+            f"• **लेग 2:** कानपुर ➔ दिल्ली (~4 से 5 घंटे)",
+            f"   - `22435` VANDE BHARAT (`19:35` ➔ `23:05`)",
+            f"   - `12003` LKO SHATABDI (`16:53` ➔ `22:25`)",
+            f"   - `12451` SHRAM SHAKTI EXP (`23:55` ➔ `05:50`)",
+            f"   - `12417` PRAYAGRAJ EXP (`00:35` ➔ `07:00`)\n",
+            f"💡 *प्रत्येक लेग की ट्रेनें व सीटें देखने के लिए नीचे दिए गए बटन दबाएं:*",
+        ]
+    else:
+        lines = [
+            f"🚆 **रूट गाइड: {src_name} ({src_code}) ➔ {dest_name} ({dest_code})**",
+            f"📅 **यात्रा तिथि:** `{journey_date}`",
+            f"━━━━━━━━━━━━━━━━━━━━━",
+            f"⚠️ **सीधी (Direct) ट्रेन उपलब्ध नहीं है!**\n",
+            f"दिल्ली से उरई के बीच कोई डायरेक्ट ट्रेन नहीं चलती है।",
+            f"उरई आने के लिए 2 सबसे प्रमुख कनेक्टिंग विकल्प उपलब्ध हैं:\n",
+            f"📍 **विकल्प 1: वाया वीरांगना लक्ष्मीबाई झांसी (VGLJ) ⭐ [सर्वाधिक लोकप्रिय]**",
+            f"• **लेग 1:** दिल्ली ➔ झांसी (~4.5 घंटे)",
+            f"   - `12002` NDLS SHATABDI (`06:00` ➔ `10:45`)",
+            f"   - `12050` GATIMAAN EXP (`08:10` ➔ `12:35`, NZM से)",
+            f"   - `20172` VANDE BHARAT (`17:40` ➔ `22:15`)",
+            f"   - `12280` TAJ EXPRESS (`06:55` ➔ `14:00`)",
+            f"• **लेग 2:** झांसी ➔ उरई (~1.5 से 2 घंटे, 114 km)",
+            f"   - `11109` VGLJ LKO INTERCITY (`06:10` ➔ `07:38`)",
+            f"   - `11123` GWL BJU MAIL (`12:05` ➔ `14:08`)",
+            f"   - `19167` SABARMATI EXP (`17:45` ➔ `19:35`)",
+            f"   - `22538` KUSHINAGAR EXP (`22:05` ➔ `00:10`)\n",
+            f"━━━━━━━━━━━━━━━━━━━━━",
+            f"📍 **विकल्प 2: वाया कानपुर सेंट्रल (CNB)**",
+            f"• **लेग 1:** दिल्ली ➔ कानपुर (~4 से 5 घंटे)",
+            f"   - `22436` VANDE BHARAT (`06:00` ➔ `10:08`)",
+            f"   - `12004` LKO SHATABDI (`06:10` ➔ `11:20`)",
+            f"   - `12452` SHRAM SHAKTI EXP (`23:55` ➔ `06:00`)",
+            f"• **लेग 2:** कानपुर ➔ उरई (~2 से 2.5 घंटे, 106 km)",
+            f"   - `11110` LKO VGLJ INTERCITY (`18:15` ➔ `20:58`)",
+            f"   - `11124` BJU GWL MAIL (`11:30` ➔ `14:03`)",
+            f"   - `22537` KUSHINAGAR EXP (`01:10` ➔ `03:13`)\n",
+            f"💡 *प्रत्येक लेग की ट्रेनें व सीटें देखने के लिए नीचे दिए गए बटन दबाएं:*",
+        ]
+    return "\n".join(lines)
 
 
 # ── 1. Train Search Engine ──────────────────────────────────────────────────
@@ -636,6 +799,21 @@ def search_trains(src_query: str, dest_query: str, date_query: Optional[str] = N
     src_code, src_name = src_res
     dest_code, dest_name = dest_res
     journey_date = parse_travel_date(date_query)
+
+    # Check for routes without direct trains (e.g. Orai <-> Delhi)
+    delhi_stations = {"NDLS", "NZM", "DLI", "ANVT"}
+    if (src_code == "ORAI" and dest_code in delhi_stations) or (src_code in delhi_stations and dest_code == "ORAI"):
+        return {
+            "success": True,
+            "is_connecting": True,
+            "src_code": src_code,
+            "src_name": src_name,
+            "dest_code": dest_code,
+            "dest_name": dest_name,
+            "date": journey_date,
+            "trains": [],
+            "formatted_text": format_connecting_route_card(src_code, src_name, dest_code, dest_name, journey_date)
+        }
 
     trains = []
 
@@ -789,8 +967,8 @@ def check_seat_availability(
 
     src_code = "ORAI"
     src_name = "Orai"
-    dest_code = "NDLS"
-    dest_name = "New Delhi"
+    dest_code = "VGLJ"
+    dest_name = "Virangana Lakshmibai Jhansi"
 
     if src_query:
         s_res = resolve_station_code(src_query)
@@ -806,11 +984,15 @@ def check_seat_availability(
     train_name = "EXPRESS"
     prob = "High (94%)"
 
-    # Match train name from popular routes if available
-    for route_trains in POPULAR_ROUTES.values():
+    # Match train name and route from popular routes if available
+    for (r_src, r_dest), route_trains in POPULAR_ROUTES.items():
         for t in route_trains:
             if t["train_no"] == train_no:
                 train_name = t["train_name"]
+                if not src_query:
+                    src_code, src_name = r_src, r_src
+                if not dest_query:
+                    dest_code, dest_name = r_dest, r_dest
                 if travel_class in t.get("fares", {}):
                     fare = t["fares"][travel_class]
                 break
@@ -1264,9 +1446,12 @@ def try_handle_railway_natural_query(query: str) -> Optional[Dict[str, Any]]:
                     "type": "train_search",
                     "src": src_cand,
                     "dest": dest_cand,
+                    "src_code": res.get("src_code"),
+                    "dest_code": res.get("dest_code"),
                     "date": date_val,
                     "text": res.get("formatted_text", ""),
                     "trains": res.get("trains", []),
+                    "is_connecting": res.get("is_connecting", False),
                     "success": res.get("success", False)
                 }
 

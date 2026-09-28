@@ -70,13 +70,23 @@ class TestRailwayService:
     """Tests for train search, live seat availability, and PNR status."""
 
     def test_search_trains_popular_route(self):
-        res = search_trains("orai", "delhi", "tomorrow")
+        res = search_trains("kanpur", "delhi", "tomorrow")
         assert res["success"] is True
-        assert res["src_code"] == "ORAI"
+        assert res["src_code"] == "CNB"
         assert res["dest_code"] == "NDLS"
         assert len(res["trains"]) > 0
-        assert "12555" in [t["train_no"] for t in res["trains"]]
-        assert "GORAKHDHAM" in res["formatted_text"]
+        assert "22435" in [t["train_no"] for t in res["trains"]]
+        assert "VANDE BHARAT" in res["formatted_text"]
+
+    def test_search_trains_orai_to_delhi_connecting(self):
+        res = search_trains("orai", "delhi", "tomorrow")
+        assert res["success"] is True
+        assert res["is_connecting"] is True
+        assert res["src_code"] == "ORAI"
+        assert res["dest_code"] == "NDLS"
+        assert "सीधी (Direct) ट्रेन उपलब्ध नहीं है" in res["formatted_text"]
+        assert "झांसी" in res["formatted_text"]
+        assert "कानपुर" in res["formatted_text"]
 
     def test_search_trains_invalid_station(self):
         res = search_trains("unknown_xyz", "delhi")
@@ -134,7 +144,8 @@ class TestNaturalLanguageIntercept:
         assert res is not None
         assert res["type"] == "train_search"
         assert res["success"] is True
-        assert "12555" in res["text"]
+        assert res["is_connecting"] is True
+        assert "झांसी" in res["text"]
 
     def test_intercept_train_search_english(self):
         query = "train from kanpur to delhi"

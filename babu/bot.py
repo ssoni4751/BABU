@@ -7193,23 +7193,49 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     InlineKeyboardButton("🔔 Auto-Track PNR (बैकग्राउंड ट्रैकिंग)", callback_data=f"track_pnr|{rail_res['pnr']}")
                 ]])
             elif rail_res.get("type") == "train_search":
-                trains = rail_res.get("trains", [])[:5]
-                if trains:
-                    keyboard = []
-                    for t in trains:
-                        t_no = t.get("train_no")
-                        avail_classes = [c for c in ["3A", "2A", "SL", "CC", "EC", "1A", "2S"] if c in t.get("classes", [])][:3]
-                        if not avail_classes:
-                            avail_classes = ["3A", "2A", "SL"]
-                        row = [
-                            InlineKeyboardButton(
-                                f"💺 {t_no} ({c})",
-                                callback_data=f"rail_seats|{t_no}|{rail_res['src']}|{rail_res['dest']}|{rail_res.get('date') or ''}|{c}"
-                            )
-                            for c in avail_classes
+                if rail_res.get("is_connecting"):
+                    d_val = rail_res.get("date") or ""
+                    if rail_res.get("src_code") == "ORAI":
+                        keyboard = [
+                            [
+                                InlineKeyboardButton("🚆 उरई ➔ झांसी", callback_data=f"rail_search|ORAI|VGLJ|{d_val}"),
+                                InlineKeyboardButton("🚆 झांसी ➔ दिल्ली", callback_data=f"rail_search|VGLJ|NDLS|{d_val}")
+                            ],
+                            [
+                                InlineKeyboardButton("🚆 उरई ➔ कानपुर", callback_data=f"rail_search|ORAI|CNB|{d_val}"),
+                                InlineKeyboardButton("🚆 कानपुर ➔ दिल्ली", callback_data=f"rail_search|CNB|NDLS|{d_val}")
+                            ]
                         ]
-                        keyboard.append(row)
+                    else:
+                        keyboard = [
+                            [
+                                InlineKeyboardButton("🚆 दिल्ली ➔ झांसी", callback_data=f"rail_search|NDLS|VGLJ|{d_val}"),
+                                InlineKeyboardButton("🚆 झांसी ➔ उरई", callback_data=f"rail_search|VGLJ|ORAI|{d_val}")
+                            ],
+                            [
+                                InlineKeyboardButton("🚆 दिल्ली ➔ कानपुर", callback_data=f"rail_search|NDLS|CNB|{d_val}"),
+                                InlineKeyboardButton("🚆 कानपुर ➔ उरई", callback_data=f"rail_search|CNB|ORAI|{d_val}")
+                            ]
+                        ]
                     reply_markup = InlineKeyboardMarkup(keyboard)
+                else:
+                    trains = rail_res.get("trains", [])[:5]
+                    if trains:
+                        keyboard = []
+                        for t in trains:
+                            t_no = t.get("train_no")
+                            avail_classes = [c for c in ["3A", "2A", "SL", "CC", "EC", "1A", "2S"] if c in t.get("classes", [])][:3]
+                            if not avail_classes:
+                                avail_classes = ["3A", "2A", "SL"]
+                            row = [
+                                InlineKeyboardButton(
+                                    f"💺 {t_no} ({c})",
+                                    callback_data=f"rail_seats|{t_no}|{rail_res.get('src_code') or rail_res['src']}|{rail_res.get('dest_code') or rail_res['dest']}|{rail_res.get('date') or ''}|{c}"
+                                )
+                                for c in avail_classes
+                            ]
+                            keyboard.append(row)
+                        reply_markup = InlineKeyboardMarkup(keyboard)
             await send_long_telegram_message(update, rail_res["text"], reply_markup=reply_markup)
             return
     except Exception as rail_err:
@@ -7677,6 +7703,34 @@ async def cmd_train(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(res.get("error", "ट्रेन सर्च में त्रुटि हुई।"), parse_mode="Markdown")
             return
 
+        if res.get("is_connecting"):
+            d_val = res.get("date") or ""
+            if res.get("src_code") == "ORAI":
+                keyboard = [
+                    [
+                        InlineKeyboardButton("🚆 उरई ➔ झांसी", callback_data=f"rail_search|ORAI|VGLJ|{d_val}"),
+                        InlineKeyboardButton("🚆 झांसी ➔ दिल्ली", callback_data=f"rail_search|VGLJ|NDLS|{d_val}")
+                    ],
+                    [
+                        InlineKeyboardButton("🚆 उरई ➔ कानपुर", callback_data=f"rail_search|ORAI|CNB|{d_val}"),
+                        InlineKeyboardButton("🚆 कानपुर ➔ दिल्ली", callback_data=f"rail_search|CNB|NDLS|{d_val}")
+                    ]
+                ]
+            else:
+                keyboard = [
+                    [
+                        InlineKeyboardButton("🚆 दिल्ली ➔ झांसी", callback_data=f"rail_search|NDLS|VGLJ|{d_val}"),
+                        InlineKeyboardButton("🚆 झांसी ➔ उरई", callback_data=f"rail_search|VGLJ|ORAI|{d_val}")
+                    ],
+                    [
+                        InlineKeyboardButton("🚆 दिल्ली ➔ कानपुर", callback_data=f"rail_search|NDLS|CNB|{d_val}"),
+                        InlineKeyboardButton("🚆 कानपुर ➔ उरई", callback_data=f"rail_search|CNB|ORAI|{d_val}")
+                    ]
+                ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await send_long_telegram_message(update, res["formatted_text"], reply_markup=reply_markup)
+            return
+
         # Build inline keyboard for quick seat checks of top trains
         keyboard = []
         trains = res.get("trains", [])[:5]
@@ -7817,6 +7871,45 @@ async def on_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 print(f"[CALLBACK TRACK_PNR ERROR] {e}", flush=True)
                 await query.message.reply_text(f"❌ PNR ट्रैकिंग रजिस्टर करने में त्रुटि: {e}")
+            return
+
+        # ── Railway Route Search Callback ─────────────────────────────
+        if data.startswith("rail_search|"):
+            parts = data.split("|")
+            if len(parts) >= 3:
+                _, src_c, dest_c = parts[:3]
+                d_val = parts[3] if len(parts) > 3 and parts[3] else None
+                try:
+                    try:
+                        from .railway_service import search_trains
+                    except ImportError:
+                        from railway_service import search_trains
+                    res = search_trains(src_c, dest_c, d_val)
+                    if not res.get("success"):
+                        await query.message.reply_text(res.get("error", "ट्रेन सर्च में त्रुटि हुई।"), parse_mode="Markdown")
+                        return
+
+                    keyboard = []
+                    trains = res.get("trains", [])[:5]
+                    for t in trains:
+                        t_no = t.get("train_no")
+                        avail_classes = [c for c in ["3A", "2A", "SL", "CC", "EC", "1A", "2S"] if c in t.get("classes", [])][:3]
+                        if not avail_classes:
+                            avail_classes = ["3A", "2A", "SL"]
+                        row = [
+                            InlineKeyboardButton(
+                                f"💺 {t_no} ({c})",
+                                callback_data=f"rail_seats|{t_no}|{res['src_code']}|{res['dest_code']}|{res.get('date') or ''}|{c}"
+                            )
+                            for c in avail_classes
+                        ]
+                        keyboard.append(row)
+
+                    reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
+                    await send_long_telegram_message(query.message, res["formatted_text"], reply_markup=reply_markup)
+                except Exception as e:
+                    print(f"[CALLBACK RAIL_SEARCH ERROR] {e}", flush=True)
+                    await query.message.reply_text(f"❌ ट्रेन सर्च में त्रुटि: {e}")
             return
 
         if data.startswith("action_approve|"):
