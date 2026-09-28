@@ -435,6 +435,16 @@ POPULAR_ROUTES: Dict[Tuple[str, str], List[Dict[str, Any]]] = {
     ],
     ("VGLJ", "NDLS"): [
         {
+            "train_no": "12279",
+            "train_name": "TAJ EXPRESS",
+            "from_time": "15:20",
+            "to_time": "21:35",
+            "duration": "6h 15m",
+            "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "classes": ["CC", "2S"],
+            "fares": {"CC": 650, "2S": 190}
+        },
+        {
             "train_no": "12001",
             "train_name": "BHOPAL SHATABDI",
             "from_time": "18:45",
