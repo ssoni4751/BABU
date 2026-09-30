@@ -251,6 +251,14 @@ def sync_supabase_database(db_url: str = None) -> Dict[str, Any]:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_leads_category ON babu_leads (service_category);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_interactions_lead ON babu_interactions (lead_id);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_followups_lead_status ON babu_followups (lead_id, status);")
+        
+        # Ensure Row Level Security (RLS) is enabled on all tables
+        cursor.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public';")
+        for (tbl_name,) in cursor.fetchall():
+            try:
+                cursor.execute(f"ALTER TABLE {tbl_name} ENABLE ROW LEVEL SECURITY;")
+            except Exception:
+                pass
         conn.commit()
 
         # 4. Sync 95 ADRs from local SQLite or memory into Supabase

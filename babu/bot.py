@@ -365,6 +365,20 @@ def init_postgres_db():
                     INSERT INTO architecture_knowledge (record_id, record_type, title, phase, problem, decision, reason, outcome, tradeoff, impact_score, supersedes, status, timestamp)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
                 """, rec)
+        # Ensure Row Level Security (RLS) is enabled on all tables
+        # Protects against public PostgREST exposure without impacting psycopg2 superuser connections
+        tables_to_secure = [
+            "sealed_epochs", "search_cache", "execution_ledger", "system_memory",
+            "trusted_templates", "babu_temporal_timeline", "architecture_knowledge",
+            "babu_k0_working_memory", "planned_graphs_cache", "babu_leads",
+            "babu_interactions", "babu_followups", "babu_tracked_pnrs", "babu_knowledge"
+        ]
+        for tbl in tables_to_secure:
+            try:
+                cursor.execute(f"ALTER TABLE IF EXISTS {tbl} ENABLE ROW LEVEL SECURITY;")
+            except Exception:
+                pass
+
         conn.commit()
         cursor.close()
         conn.close()

@@ -70,6 +70,7 @@ def ensure_railway_tables(conn, is_pg: bool = False):
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+            ALTER TABLE babu_tracked_pnrs ENABLE ROW LEVEL SECURITY;
         """)
     else:
         cursor.execute("""
