@@ -6971,9 +6971,15 @@ def build_seat_check_reply_markup(res: Dict[str, Any]) -> InlineKeyboardMarkup:
     ]
     keyboard.append(date_stepper_row)
 
-    # Row 3: Back to Trains List
+    # Row 3: Action Buttons (ConfirmTkt Live View & Back to List)
     if src and dest:
+        try:
+            ct_date = cur_dt.strftime("%d-%m-%Y")
+        except Exception:
+            ct_date = d_val
+        ct_url = f"https://www.confirmtkt.com/rbooking/trains/from/{src}/to/{dest}/{ct_date}"
         keyboard.append([
+            InlineKeyboardButton("🌐 ConfirmTkt लाइव सीट", url=ct_url),
             InlineKeyboardButton(f"🔙 ट्रेन लिस्ट ({src} ➔ {dest})", callback_data=f"rail_search|{src}|{dest}|{cur_str}")
         ])
 

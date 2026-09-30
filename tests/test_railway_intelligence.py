@@ -305,8 +305,10 @@ class TestDynamicSeatAvailability:
         assert "rail_noop|2026-10-05" in keyboard[1][1].callback_data
         assert "rail_seats|12279|VGLJ|NDLS|2026-10-06|2S" in keyboard[1][2].callback_data
 
-        # Row 3: Back to train list
-        assert len(keyboard[2]) == 1
-        assert "rail_search|VGLJ|NDLS|2026-10-05" in keyboard[2][0].callback_data
+        # Row 3: Live ConfirmTkt link and Back to train list
+        assert len(keyboard[2]) == 2
+        assert keyboard[2][0].url is not None
+        assert "confirmtkt.com" in keyboard[2][0].url
+        assert "rail_search|VGLJ|NDLS|2026-10-05" in keyboard[2][1].callback_data
 
 
